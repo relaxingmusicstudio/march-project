@@ -22,12 +22,10 @@ const VapiVoiceDemo = ({ isOpen, onClose }: VapiVoiceDemoProps) => {
   const [transcript, setTranscript] = useState<string[]>([]);
   const [callDuration, setCallDuration] = useState(0);
 
-  // Initialize Vapi - Public key from environment
-  const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY;
-  
+  // Initialize Vapi
   useEffect(() => {
-    if (isOpen && !vapi && VAPI_PUBLIC_KEY) {
-      const vapiInstance = new Vapi(VAPI_PUBLIC_KEY);
+    if (isOpen && !vapi) {
+      const vapiInstance = new Vapi("6a190658-a99b-44be-a009-94a8110195bb");
       setVapi(vapiInstance);
 
       vapiInstance.on("call-start", () => {
