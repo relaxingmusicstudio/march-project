@@ -5,6 +5,7 @@ import VoiceDemo from "@/components/VoiceDemo";
 import ProcessTimeline from "@/components/ProcessTimeline";
 import PricingPlans from "@/components/PricingPlans";
 import SocialProof from "@/components/SocialProof";
+import ContactForm from "@/components/ContactForm";
 import Chatbot from "@/components/Chatbot";
 import StickyFooter from "@/components/StickyFooter";
 import Footer from "@/components/Footer";
@@ -20,6 +21,7 @@ const Index = () => {
       <ProcessTimeline />
       <PricingPlans />
       <SocialProof />
+      <ContactForm />
       <Footer />
       <Chatbot />
       <StickyFooter />
