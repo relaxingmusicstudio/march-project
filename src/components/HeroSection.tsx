@@ -39,17 +39,16 @@ const HeroSection = () => {
               <span className="font-semibold text-primary-foreground"> Done-for-you in 48 hours. No contracts.</span>
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+            <div className="flex flex-col gap-4 justify-center lg:justify-start max-w-md mx-auto lg:mx-0">
               {/* Primary CTA - Live Video Call */}
               <Button 
                 variant="hero" 
                 size="xl" 
                 onClick={() => setIsVideoCallOpen(true)}
-                className="group relative overflow-hidden"
+                className="w-full group"
               >
-                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary-foreground/20 to-transparent shimmer" />
-                <Video className="w-5 h-5 group-hover:animate-pulse" />
-                START LIVE VIDEO CALL
+                <Video className="w-6 h-6" />
+                <span>TALK TO AN AI ADVISOR NOW</span>
               </Button>
               
               {/* Secondary CTA - Demo */}
@@ -57,9 +56,10 @@ const HeroSection = () => {
                 variant="heroSecondary" 
                 size="xl"
                 onClick={() => scrollToSection("demo")}
+                className="w-full"
               >
                 <Volume2 className="w-5 h-5" />
-                LISTEN TO DEMO
+                HEAR A DEMO CALL FIRST
               </Button>
             </div>
 
