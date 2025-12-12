@@ -34,9 +34,6 @@ const businessTypes = [
   "HVAC",
   "Electrical",
   "Roofing",
-  "General Contractor",
-  "Landscaping",
-  "Pest Control",
   "Other",
 ];
 
@@ -62,10 +59,11 @@ const aiTimelines = [
 ];
 
 const interestOptions = [
-  "SEO",
-  "Google Ads",
-  "Review management",
-  "Multi-location",
+  "Website SEO",
+  "Google Maps SEO",
+  "Paid Ads",
+  "Sales Funnels",
+  "Websites That Convert",
 ];
 
 const ContactForm = () => {
