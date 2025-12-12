@@ -213,12 +213,21 @@ ${notes || "None"}
     const website = sanitizeString(requestData.website, 255);
     
     const webhookPayload = {
+      // Standard GHL contact fields (multiple formats for compatibility)
       firstName: firstName,
       lastName: lastName,
+      first_name: firstName,
+      last_name: lastName,
+      name: name,
+      fullName: name,
+      full_name: name,
       email: email,
+      Email: email,
       phone: phone || "",
+      Phone: phone || "",
       source: source,
       tags: tags,
+      Tags: tags.join(", "),
       tags_string: tags.join(", "),
       
       customField: {
@@ -267,9 +276,6 @@ ${notes || "None"}
         full_name: name,
       },
       
-      name: name,
-      first_name: firstName,
-      last_name: lastName,
       message: ghlNotes,
       formName: formName,
       services_offered: businessType || "",
