@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,13 +15,50 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const stripeWebhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
+  
+  if (!stripeWebhookSecret) {
+    console.error("STRIPE_WEBHOOK_SECRET is not configured");
+    return new Response(
+      JSON.stringify({ error: "Webhook secret not configured" }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
+  }
+
   try {
-    const payload = await req.json();
-    console.log("Stripe event type:", payload.type);
+    // Get the raw body for signature verification
+    const body = await req.text();
+    const signature = req.headers.get("stripe-signature");
+
+    if (!signature) {
+      console.error("No stripe-signature header found");
+      return new Response(
+        JSON.stringify({ error: "Missing stripe-signature header" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Verify the webhook signature
+    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+      apiVersion: "2023-10-16",
+    });
+
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, stripeWebhookSecret);
+    } catch (err: any) {
+      console.error("Webhook signature verification failed:", err.message);
+      return new Response(
+        JSON.stringify({ error: "Invalid signature" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    console.log("Stripe event type:", event.type);
 
     // Handle checkout.session.completed event
-    if (payload.type === "checkout.session.completed") {
-      const session = payload.data.object;
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
       console.log("Checkout session completed:", session.id);
 
       const customerEmail = session.customer_details?.email || session.customer_email;
