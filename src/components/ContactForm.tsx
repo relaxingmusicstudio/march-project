@@ -54,7 +54,7 @@ const ContactForm = () => {
 
     try {
       // Send directly to GHL webhook
-      await fetch("https://services.leadconnectorhq.com/hooks/R76edRoS33Lv8KfpIU5i/webhook-trigger/WeAIRnNsvI426RVqtQhX", {
+      await fetch("https://services.leadconnectorhq.com/hooks/R76edRoS33Lv8KfplU5i/webhook-trigger/WeAIRnNsvl426RVqtQhX", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
