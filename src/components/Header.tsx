@@ -43,6 +43,12 @@ const Header = () => {
           >
             Pricing
           </button>
+          <button 
+            onClick={() => scrollToSection("contact")}
+            className="text-primary-foreground/80 hover:text-accent transition-colors font-medium"
+          >
+            Sign Up
+          </button>
         </nav>
 
         {/* Desktop CTA */}
@@ -86,6 +92,12 @@ const Header = () => {
               className="text-primary-foreground/80 hover:text-accent transition-colors font-medium text-left py-2"
             >
               Pricing
+            </button>
+            <button 
+              onClick={() => scrollToSection("contact")}
+              className="text-primary-foreground/80 hover:text-accent transition-colors font-medium text-left py-2"
+            >
+              Sign Up
             </button>
             <Button 
               variant="accent" 
