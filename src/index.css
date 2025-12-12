@@ -6,90 +6,90 @@
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 215 25% 15%;
+    --background: 200 25% 97%;
+    --foreground: 200 30% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card-foreground: 200 30% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover-foreground: 200 30% 12%;
 
-    --primary: 210 60% 25%;
+    --primary: 195 85% 35%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 20% 94%;
-    --secondary-foreground: 210 60% 25%;
+    --secondary: 200 25% 93%;
+    --secondary-foreground: 195 85% 30%;
 
-    --muted: 210 15% 92%;
-    --muted-foreground: 215 15% 45%;
+    --muted: 200 20% 90%;
+    --muted-foreground: 200 15% 40%;
 
-    --accent: 24 95% 53%;
+    --accent: 165 80% 40%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 20% 88%;
-    --input: 214 20% 88%;
-    --ring: 24 95% 53%;
+    --border: 200 25% 85%;
+    --input: 200 25% 85%;
+    --ring: 165 80% 40%;
 
     --radius: 0.75rem;
 
-    /* Custom tokens */
-    --hero-gradient: linear-gradient(135deg, hsl(210 60% 25%) 0%, hsl(210 50% 35%) 100%);
-    --card-shadow: 0 4px 24px -4px hsl(210 60% 25% / 0.15);
-    --card-shadow-hover: 0 8px 32px -4px hsl(210 60% 25% / 0.25);
-    --accent-glow: 0 0 40px hsl(24 95% 53% / 0.4);
-    --text-gradient: linear-gradient(135deg, hsl(24 95% 53%) 0%, hsl(24 90% 45%) 100%);
+    /* Custom tokens - HVAC Cool Theme */
+    --hero-gradient: linear-gradient(135deg, hsl(195 85% 30%) 0%, hsl(200 70% 40%) 100%);
+    --card-shadow: 0 4px 24px -4px hsl(195 85% 35% / 0.15);
+    --card-shadow-hover: 0 8px 32px -4px hsl(195 85% 35% / 0.25);
+    --accent-glow: 0 0 40px hsl(165 80% 40% / 0.4);
+    --text-gradient: linear-gradient(135deg, hsl(165 80% 40%) 0%, hsl(175 75% 35%) 100%);
 
     --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-foreground: 200 20% 26%;
+    --sidebar-primary: 195 85% 35%;
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 200 20% 95%;
+    --sidebar-accent-foreground: 200 30% 12%;
+    --sidebar-border: 200 20% 90%;
+    --sidebar-ring: 195 85% 50%;
   }
 
   .dark {
-    --background: 215 25% 10%;
-    --foreground: 210 20% 98%;
+    --background: 200 30% 8%;
+    --foreground: 200 20% 98%;
 
-    --card: 215 25% 13%;
-    --card-foreground: 210 20% 98%;
+    --card: 200 30% 11%;
+    --card-foreground: 200 20% 98%;
 
-    --popover: 215 25% 13%;
-    --popover-foreground: 210 20% 98%;
+    --popover: 200 30% 11%;
+    --popover-foreground: 200 20% 98%;
 
-    --primary: 210 50% 60%;
-    --primary-foreground: 215 25% 10%;
+    --primary: 195 75% 55%;
+    --primary-foreground: 200 30% 8%;
 
-    --secondary: 215 20% 20%;
-    --secondary-foreground: 210 20% 98%;
+    --secondary: 200 25% 18%;
+    --secondary-foreground: 200 20% 98%;
 
-    --muted: 215 20% 18%;
-    --muted-foreground: 215 15% 60%;
+    --muted: 200 25% 15%;
+    --muted-foreground: 200 15% 55%;
 
-    --accent: 24 95% 53%;
+    --accent: 165 80% 45%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62% 30%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 20% 22%;
-    --input: 215 20% 22%;
-    --ring: 24 95% 53%;
+    --border: 200 25% 20%;
+    --input: 200 25% 20%;
+    --ring: 165 80% 45%;
 
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-background: 200 30% 8%;
+    --sidebar-foreground: 200 20% 95%;
+    --sidebar-primary: 195 75% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 200 25% 15%;
+    --sidebar-accent-foreground: 200 20% 95%;
+    --sidebar-border: 200 25% 18%;
+    --sidebar-ring: 195 75% 55%;
   }
 }
 
@@ -204,7 +204,7 @@
   background: linear-gradient(
     90deg,
     hsl(var(--accent)) 0%,
-    hsl(24 95% 65%) 50%,
+    hsl(165 80% 55%) 50%,
     hsl(var(--accent)) 100%
   );
   background-size: 200% 100%;
