@@ -16,13 +16,13 @@ type LeadData = {
   businessName: string;
   email: string;
   phone: string;
-  trade: string;
-  teamSize: string;
-  callHandling: string;
-  callVolume: number;
-  ticketValue: number;
-  hesitation: string;
-  missedCalls: number;
+  // Match form fields exactly
+  trade: string;           // businessType in form
+  teamSize: string;        // Solo, 2-5, 6-10, 10+ trucks
+  callVolume: string;      // <50, 50-100, 100-200, 200+
+  aiTimeline: string;      // Within 3 months, 3-6 months, etc.
+  interests: string[];     // Multi-select array
+  // Calculated fields
   potentialLoss: number;
   conversationPhase: string;
   isQualified: boolean;
@@ -32,7 +32,7 @@ type LeadData = {
 type AIResponse = {
   text: string;
   suggestedActions: string[] | null;
-  extractedData: Record<string, string | number> | null;
+  extractedData: Record<string, string | number | string[]> | null;
   conversationPhase: string;
   error?: string;
 };
@@ -52,11 +52,9 @@ const Chatbot = () => {
     phone: "",
     trade: "",
     teamSize: "",
-    callHandling: "",
-    callVolume: 0,
-    ticketValue: 0,
-    hesitation: "",
-    missedCalls: 0,
+    callVolume: "",
+    aiTimeline: "",
+    interests: [],
     potentialLoss: 0,
     conversationPhase: "opener",
     isQualified: false,
@@ -131,28 +129,15 @@ const Chatbot = () => {
     
     setHasSubmitted(true);
     try {
-      // Map ticket value to display format
-      const ticketDisplay = leadData.ticketValue <= 350 ? "Under $500" 
-        : leadData.ticketValue <= 750 ? "$500-1,000"
-        : leadData.ticketValue <= 1750 ? "$1,000-2,500"
-        : "$2,500+";
-      
-      // Map call volume to display format  
-      const callVolumeDisplay = leadData.callVolume <= 3 ? "Under 5 calls"
-        : leadData.callVolume <= 7 ? "5-10 calls"
-        : leadData.callVolume <= 15 ? "10-20 calls"
-        : "20+ calls";
-
       const qualificationNotes = `
 === PARTIAL CAPTURE (Chat closed/timeout) ===
 Name: ${leadData.name}
 Business: ${leadData.businessName}
 Trade: ${leadData.trade}
 Team Size: ${leadData.teamSize}
-Daily Call Volume: ${callVolumeDisplay}
-Avg Job Value: ${ticketDisplay}
-Call Handling: ${leadData.callHandling}
-Calculated Missed Calls/Month: ${leadData.missedCalls}
+Monthly Call Volume: ${leadData.callVolume}
+Timeline: ${leadData.aiTimeline}
+Interests: ${leadData.interests.join(", ")}
 Potential Monthly Loss: $${leadData.potentialLoss}
 Phase: ${leadData.conversationPhase}`;
 
@@ -165,11 +150,9 @@ Phase: ${leadData.conversationPhase}`;
           businessType: leadData.trade,
           businessTypeOther: leadData.businessName,
           teamSize: leadData.teamSize,
-          callVolume: callVolumeDisplay,
-          avgJobValue: ticketDisplay,
-          currentSolution: leadData.callHandling,
-          missedCalls: String(leadData.missedCalls),
-          potentialLoss: String(leadData.potentialLoss),
+          callVolume: leadData.callVolume,
+          aiTimeline: leadData.aiTimeline,
+          interests: leadData.interests,
           isGoodFit: leadData.isQualified,
           fitReason: "Partial_Capture",
           notes: leadData.notes.join(" | "),
@@ -257,7 +240,7 @@ Phase: ${leadData.conversationPhase}`;
     }
   };
 
-  const updateLeadData = (extractedData: Record<string, string | number> | null) => {
+  const updateLeadData = (extractedData: Record<string, string | number | string[]> | null) => {
     if (!extractedData) return;
     
     setLeadData(prev => {
@@ -269,10 +252,15 @@ Phase: ${leadData.conversationPhase}`;
         }
       });
       
-      // Recalculate losses if we have volume and ticket value
-      if (updated.callVolume > 0 && updated.ticketValue > 0) {
-        updated.missedCalls = Math.round(updated.callVolume * 0.27);
-        updated.potentialLoss = updated.missedCalls * updated.ticketValue;
+      // Calculate potential loss based on call volume
+      if (updated.callVolume) {
+        const lossMap: Record<string, number> = {
+          "<50": 4000,
+          "50-100": 8000,
+          "100-200": 16000,
+          "200+": 32000
+        };
+        updated.potentialLoss = lossMap[updated.callVolume] || 0;
       }
       
       return updated;
@@ -336,12 +324,14 @@ Phase: ${leadData.conversationPhase}`;
     return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
   };
 
-  // Check if we're in phone collection phase
+  // Check if we're in phone collection phase (contact capture, not "what happens to the phone")
   const isPhoneInputPhase = (): boolean => {
     const lastBotMessage = messages.filter(m => m.sender === "bot").pop();
     if (!lastBotMessage) return false;
     const text = lastBotMessage.text.toLowerCase();
-    return text.includes("phone") || text.includes("number to reach") || text.includes("best number");
+    // Only trigger for contact phone number questions, not "what happens to the phone" question
+    const isAskingForContactPhone = (text.includes("number to reach") || text.includes("best number")) && !text.includes("what happens");
+    return isAskingForContactPhone;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -397,28 +387,15 @@ Phase: ${leadData.conversationPhase}`;
     
     setIsSubmitting(true);
     try {
-      // Map ticket value to display format
-      const ticketDisplay = leadData.ticketValue <= 350 ? "Under $500" 
-        : leadData.ticketValue <= 750 ? "$500-1,000"
-        : leadData.ticketValue <= 1750 ? "$1,000-2,500"
-        : "$2,500+";
-      
-      // Map call volume to display format  
-      const callVolumeDisplay = leadData.callVolume <= 3 ? "Under 5 calls"
-        : leadData.callVolume <= 7 ? "5-10 calls"
-        : leadData.callVolume <= 15 ? "10-20 calls"
-        : "20+ calls";
-
       const qualificationNotes = `
 === QUALIFIED LEAD (Chatbot) ===
 Name: ${leadData.name}
 Business: ${leadData.businessName}
 Trade: ${leadData.trade}
 Team Size: ${leadData.teamSize}
-Daily Call Volume: ${callVolumeDisplay}
-Avg Job Value: ${ticketDisplay}
-Call Handling: ${leadData.callHandling}
-Calculated Missed Calls/Month: ${leadData.missedCalls}
+Monthly Call Volume: ${leadData.callVolume}
+Timeline: ${leadData.aiTimeline}
+Interests: ${leadData.interests.join(", ")}
 Potential Monthly Loss: $${leadData.potentialLoss}
 Potential Annual Loss: $${leadData.potentialLoss * 12}`;
 
@@ -431,10 +408,9 @@ Potential Annual Loss: $${leadData.potentialLoss * 12}`;
           businessType: leadData.trade,
           businessTypeOther: leadData.businessName,
           teamSize: leadData.teamSize,
-          callVolume: callVolumeDisplay,
-          avgJobValue: ticketDisplay,
-          currentSolution: leadData.callHandling,
-          missedCalls: String(leadData.missedCalls),
+          callVolume: leadData.callVolume,
+          aiTimeline: leadData.aiTimeline,
+          interests: leadData.interests,
           potentialLoss: String(leadData.potentialLoss),
           isGoodFit: true,
           fitReason: "Chatbot_Qualified",
