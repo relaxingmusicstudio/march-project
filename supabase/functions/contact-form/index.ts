@@ -212,8 +212,35 @@ ${notes || "None"}
     const formName = rawFormName || (isChatbot ? "Chatbot - Alex" : isPDF ? "PDF Download" : isNewsletter ? "Newsletter" : "Contact Page Form");
     const website = sanitizeString(requestData.website, 255);
     
+    // Calculate lead score
+    const calculateLeadScore = () => {
+      let score = 0;
+      if (isChatbot) score += 40;
+      else if (source === "Contact Form") score += 30;
+      else if (isPDF) score += 20;
+      else if (isNewsletter) score += 10;
+      if (phone) score += 15;
+      if (businessType) score += 10;
+      if (isGoodFit) score += 20;
+      if (missedCalls && parseInt(missedCalls) > 0) score += 10;
+      if (missedCalls && parseInt(missedCalls) >= 20) score += 5;
+      return Math.min(score, 100);
+    };
+    
+    // Calculate missed call revenue (avgJobValue * missedCalls)
+    const avgJobNumeric = avgJobValue ? parseInt(avgJobValue.replace(/[^0-9]/g, '')) || 351 : 351;
+    const missedCallsNumeric = missedCalls ? parseInt(missedCalls.replace(/[^0-9]/g, '')) || 0 : 0;
+    const missedCallRevenue = avgJobNumeric * missedCallsNumeric;
+    
+    // Parse potential loss as numeric
+    const potentialLossNumeric = potentialLoss ? parseInt(potentialLoss.replace(/[^0-9]/g, '')) || 0 : 0;
+    
+    // Get interests/services
+    const interests = requestData.interests || [];
+    const otherServicesNeeded = interests.join(", ");
+    
     const webhookPayload = {
-      // Standard GHL contact fields (multiple formats for compatibility)
+      // Standard GHL contact fields
       firstName: firstName,
       lastName: lastName,
       first_name: firstName,
@@ -230,84 +257,124 @@ ${notes || "None"}
       Tags: tags.join(", "),
       tags_string: tags.join(", "),
       
+      // GHL Standard Fields
+      companyName: businessTypeOther || name + "'s Business",
+      company_name: businessTypeOther || name + "'s Business",
+      website: website,
+      
+      // Custom fields - using exact GHL field names from screenshot
       customField: {
-        message: ghlNotes,
+        // Form identification
         formName: formName,
-        contact_source: source,
-        services_offered: businessType || "",
+        form_name: formName,
+        
+        // Business info
+        business_name: businessTypeOther || "",
+        businessName: businessTypeOther || "",
         "Business Name": businessTypeOther || "",
+        services_offered: businessType || "",
+        "Services Offered": businessType || "",
+        
+        // Team & volume
+        team_size: teamSize || "",
         "Team Size": teamSize || "",
         call_volume_monthly: callVolume || "",
+        "Call Volume Monthly": callVolume || "",
+        
+        // Current solution
+        current_call_handling: currentSolution || "",
         "Current Call Handling": currentSolution || "",
+        
+        // Job value
+        avg_job_value: avgJobValue || "",
         "Avg Job Value": avgJobValue || "",
+        
+        // AI Timeline
         ai_timeline: sanitizeString(requestData.aiTimeline, 50) || "",
-        website: website,
-        tags: tags.join(", "),
-        tags_string: tags.join(", "),
-        // Closebot-helpful fields
+        "AI Timeline": sanitizeString(requestData.aiTimeline, 50) || "",
+        aiTimeline: sanitizeString(requestData.aiTimeline, 50) || "",
+        
+        // Other services/interests
+        other_services_needed: otherServicesNeeded,
+        "Other Services Needed": otherServicesNeeded,
+        interests: otherServicesNeeded,
+        
+        // Lead qualification
+        lead_qualification: isGoodFit ? "YES" : "NO",
+        "Lead Qualification": isGoodFit ? "YES" : "NO",
         lead_qualified: isGoodFit ? "YES" : "NO",
         fit_reason: fitReason || "",
-        missed_calls_monthly: missedCalls || "",
-        potential_monthly_loss: potentialLoss ? `$${potentialLoss}` : "",
+        
+        // Missed calls data
+        missed_calls_monthly: missedCallsNumeric.toString(),
+        "Missed Calls Monthly": missedCallsNumeric.toString(),
+        
+        // Revenue calculations
+        missed_call_revenue: `$${missedCallRevenue.toLocaleString()}`,
+        "Missed Call Revenue": `$${missedCallRevenue.toLocaleString()}`,
+        potential_revenue_loss: `$${potentialLossNumeric.toLocaleString()}`,
+        "Potential Revenue Loss": `$${potentialLossNumeric.toLocaleString()}`,
+        potential_monthly_loss: `$${potentialLossNumeric.toLocaleString()}`,
+        
+        // Lead scoring
         lead_temperature: isChatbot ? "HOT" : isPDF ? "WARM" : isNewsletter ? "NURTURE" : "WARM",
         lead_intent: isChatbot ? "High - Engaged in conversation" : isPDF ? "Medium - Downloaded resource" : isNewsletter ? "Low - Newsletter signup" : "Medium - Form submission",
-        // Lead Score (1-100) calculation
-        lead_score: (() => {
-          let score = 0;
-          // Source weight: Chatbot=40, ContactForm=30, PDF=20, Newsletter=10
-          if (isChatbot) score += 40;
-          else if (source === "Contact Form") score += 30;
-          else if (isPDF) score += 20;
-          else if (isNewsletter) score += 10;
-          // Has phone = +15
-          if (phone) score += 15;
-          // Has business type = +10
-          if (businessType) score += 10;
-          // Is qualified = +20
-          if (isGoodFit) score += 20;
-          // Has missed calls data = +10
-          if (missedCalls && parseInt(missedCalls) > 0) score += 10;
-          // High missed calls (20+) = +5 bonus
-          if (missedCalls && parseInt(missedCalls) >= 20) score += 5;
-          return Math.min(score, 100);
-        })(),
+        lead_score: calculateLeadScore(),
+        "Lead Score": calculateLeadScore(),
+        
+        // Contact source
+        contact_source: source,
+        
+        // Website
+        website: website,
+        
+        // Names (for closebot)
         first_name: firstName,
         last_name: lastName,
         full_name: name,
+        
+        // Tags
+        tags: tags.join(", "),
+        tags_string: tags.join(", "),
+        
+        // Notes/message
+        message: ghlNotes,
+        notes: notes || "",
       },
       
+      // Root level fields for compatibility
       message: ghlNotes,
       formName: formName,
       services_offered: businessType || "",
+      business_name: businessTypeOther || "",
       "Business Name": businessTypeOther || "",
+      team_size: teamSize || "",
       "Team Size": teamSize || "",
       call_volume_monthly: callVolume || "",
+      current_call_handling: currentSolution || "",
       "Current Call Handling": currentSolution || "",
+      avg_job_value: avgJobValue || "",
       "Avg Job Value": avgJobValue || "",
       ai_timeline: sanitizeString(requestData.aiTimeline, 50) || "",
-      website: website,
-      timestamp: new Date().toISOString(),
-      // Closebot fields at root level too
+      "AI Timeline": sanitizeString(requestData.aiTimeline, 50) || "",
+      other_services_needed: otherServicesNeeded,
+      "Other Services Needed": otherServicesNeeded,
+      lead_qualification: isGoodFit ? "YES" : "NO",
+      "Lead Qualification": isGoodFit ? "YES" : "NO",
       lead_qualified: isGoodFit ? "YES" : "NO",
       fit_reason: fitReason || "",
-      missed_calls_monthly: missedCalls || "",
-      potential_monthly_loss: potentialLoss ? `$${potentialLoss}` : "",
+      missed_calls_monthly: missedCallsNumeric.toString(),
+      "Missed Calls Monthly": missedCallsNumeric.toString(),
+      missed_call_revenue: `$${missedCallRevenue.toLocaleString()}`,
+      "Missed Call Revenue": `$${missedCallRevenue.toLocaleString()}`,
+      potential_revenue_loss: `$${potentialLossNumeric.toLocaleString()}`,
+      "Potential Revenue Loss": `$${potentialLossNumeric.toLocaleString()}`,
+      potential_monthly_loss: `$${potentialLossNumeric.toLocaleString()}`,
       lead_temperature: isChatbot ? "HOT" : isPDF ? "WARM" : isNewsletter ? "NURTURE" : "WARM",
       lead_intent: isChatbot ? "High - Engaged in conversation" : isPDF ? "Medium - Downloaded resource" : isNewsletter ? "Low - Newsletter signup" : "Medium - Form submission",
-      // Lead Score at root level
-      lead_score: (() => {
-        let score = 0;
-        if (isChatbot) score += 40;
-        else if (source === "Contact Form") score += 30;
-        else if (isPDF) score += 20;
-        else if (isNewsletter) score += 10;
-        if (phone) score += 15;
-        if (businessType) score += 10;
-        if (isGoodFit) score += 20;
-        if (missedCalls && parseInt(missedCalls) > 0) score += 10;
-        if (missedCalls && parseInt(missedCalls) >= 20) score += 5;
-        return Math.min(score, 100);
-      })(),
+      lead_score: calculateLeadScore(),
+      "Lead Score": calculateLeadScore(),
+      timestamp: new Date().toISOString(),
     };
     
     // Lead source tracking
