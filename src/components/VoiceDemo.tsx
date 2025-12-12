@@ -212,7 +212,7 @@ const VoiceDemo = () => {
           {/* Bottom CTA */}
           <div className="mt-10 text-center">
             <p className="text-muted-foreground mb-4">
-              Want to experience it yourself? Talk to a live AI agent right now.
+              Try an AI voice demo to see how it would work for your business.
             </p>
             <Button
               variant="hero"
