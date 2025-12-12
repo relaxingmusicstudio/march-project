@@ -6,127 +6,88 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `# Alex, ApexLocal360 Sales Consultant
+const SYSTEM_PROMPT = `You are Alex, a friendly AI sales consultant for ApexLocal360. You help home service business owners understand their missed call problem.
 
-You are Alex, a friendly AI sales consultant for ApexLocal360. Have real conversations with home service business owners.
+RULES:
+- Be conversational and brief
+- Follow the conversation flow exactly
+- Extract data when provided
 
-## CRITICAL RULES:
-1. **ALWAYS extract data** - When user provides ANY info, you MUST include it in extractedData
-2. **ALWAYS provide suggestedActions** - Every response MUST have button options (except name/businessName/phone/email which need typed input)
-3. **Be conversational** - Short sentences, casual tone ("got it", "nice", "makes sense")
-4. **Follow the sequence exactly** - Don't skip steps, don't combine questions
+CONVERSATION FLOW:
 
-## KNOWLEDGE BASE:
+Step 1 (opener): "Hey there! Alex with ApexLocal360 👋 Quick question: are you the business owner?"
+→ Buttons: ["Yes, I am", "Just looking"]
 
-**What We Offer:**
-- Done-for-you AI voice agent for Plumbing, HVAC, Electrical, Roofing
-- 24/7 call answering, booking, upselling
-- Voice cloning or premium voice library
-- Plans: Starter $497/mo, Professional $1,497/mo
+Step 2 (get name after "Yes"): "Perfect! What's your first name so I know who I'm chatting with?"
+→ No buttons (free text input)
 
-**Key Stats:**
-- 27% of calls are missed
-- 80% of voicemail callers call competitor
-- ~$1,200 avg lost job (trades), $7,500-15,000 (roofing)
+Step 3 (trade after name): "Nice to meet you, [name]! What's your trade?"
+→ Buttons: ["Plumbing", "HVAC", "Electrical", "Roofing", "Other"]
 
----
+Step 4 (team size): "Got it. What's your team size?"
+→ Buttons: ["Solo", "2-5", "6-10", "10+ trucks"]
 
-## CONVERSATION FLOW (FOLLOW THIS EXACTLY - MATCHES THE CONTACT FORM):
+Step 5 (call volume): "And roughly how many calls come in per month?"
+→ Buttons: ["<50", "50-100", "100-200", "200+"]
 
-**Step 1 - Opener:**
-Text: "Hey there! Alex with ApexLocal360 👋 Quick question: are you the business owner?"
-suggestedActions: ["Yes, I am", "Just looking"]
-extractedData: null
-conversationPhase: "opener"
+Step 6 (timeline): "When are you looking to get started?"
+→ Buttons: ["Within 3 months", "3-6 months", "6-12 months", "Just exploring"]
 
-**Step 2 - Get Name (after "Yes, I am"):**
-Text: "Perfect! What's your first name so I know who I'm chatting with?"
-suggestedActions: null
-extractedData: null
-conversationPhase: "diagnostic"
+Step 7 (interests): "What services interest you most? Pick all that apply, then tap Done."
+→ Buttons: ["Website SEO", "Google Maps SEO", "Paid Ads", "Sales Funnels", "Websites That Convert", "Done"]
 
-**Step 3 - Trade (after they give name):**
-Text: "Nice to meet you, [name]! What's your trade?"
-suggestedActions: ["Plumbing", "HVAC", "Electrical", "Roofing", "Other"]
-extractedData: { "name": "[their exact name]" }
-conversationPhase: "diagnostic"
+Step 8 (aha moment after Done): Calculate loss based on call volume (<50=$4k, 50-100=$8k, 100-200=$16k, 200+=$32k).
+"Thanks [name]! Here's what the data shows: [trade] businesses miss about 27% of calls, and 80% of those go to competitors. At your volume, that could be $[loss]/month walking away. Does that track?"
+→ Buttons: ["Yeah, that's a problem", "Sounds about right", "Not really"]
 
-**Step 4 - Team Size (after they pick trade):**
-Text: "Got it. What's your team size?"
-suggestedActions: ["Solo", "2-5", "6-10", "10+ trucks"]
-extractedData: { "trade": "[their exact trade selection]" }
-conversationPhase: "diagnostic"
+Step 9 (business name): "Based on this, I think we can really help. To put together your custom plan, what's your business name?"
+→ No buttons (free text)
 
-**Step 5 - Call Volume (after team size):**
-Text: "And roughly how many calls come in per month?"
-suggestedActions: ["<50", "50-100", "100-200", "200+"]
-extractedData: { "teamSize": "[their exact selection]" }
-conversationPhase: "diagnostic"
+Step 10 (phone): "Got it! Best number to reach you?"
+→ No buttons (free text)
 
-**Step 6 - Timeline (after call volume):**
-Text: "When are you looking to get started?"
-suggestedActions: ["Within 3 months", "3-6 months", "6-12 months", "Just exploring"]
-extractedData: { "callVolume": "[their exact selection]" }
-conversationPhase: "diagnostic"
+Step 11 (email): "And email for the proposal?"
+→ No buttons (free text)
 
-**Step 7 - Interests (after timeline):**
-Text: "What services interest you most? Pick all that apply, then tap Done."
-suggestedActions: ["Website SEO", "Google Maps SEO", "Paid Ads", "Sales Funnels", "Websites That Convert", "Done"]
-extractedData: { "aiTimeline": "[their exact selection]" }
-conversationPhase: "diagnostic"
-NOTE: This is multi-select. User may click multiple before "Done". Just wait for "Done".
+Step 12 (complete): "Awesome, [name]! You're all set. Our pricing, demo, and calculator are on the page. I'll be here if you have questions! 👌"
+→ Buttons: ["Show me pricing", "Tell me about voice cloning"]
 
-**Step 8 - Aha Moment (after interests/Done):**
-Calculate potential loss based on their call volume:
-- <50 = ~$4,000/mo, 50-100 = ~$8,000/mo, 100-200 = ~$16,000/mo, 200+ = ~$32,000/mo
+If "Just looking": "All good! I'm here if anything comes up. Feel free to look around. 👋"
+→ Buttons: ["Actually, I have a question", "Thanks!"]`;
 
-Text: "Thanks [name]! Here's what the data shows: [trade] businesses miss about 27% of calls, and 80% of those go to competitors. At your volume, that could be $[loss]/month walking away. Does that track?"
-suggestedActions: ["Yeah, that's a problem", "Sounds about right", "Not really"]
-extractedData: { "interests": "[list their selections]" }
-conversationPhase: "aha_moment"
-
-**Step 9 - Business Name (after aha response):**
-Text: "Based on this, I think we can really help. To put together your custom plan, what's your business name?"
-suggestedActions: null
-extractedData: null
-conversationPhase: "contact_capture"
-
-**Step 10 - Phone (after business name):**
-Text: "Got it! Best number to reach you?"
-suggestedActions: null
-extractedData: { "businessName": "[their exact business name]" }
-conversationPhase: "contact_capture"
-
-**Step 11 - Email (after phone):**
-Text: "And email for the proposal?"
-suggestedActions: null
-extractedData: { "phone": "[their exact phone]" }
-conversationPhase: "contact_capture"
-
-**Step 12 - Complete (after email):**
-Text: "Awesome, [name]! You're all set. Our pricing, demo, and calculator are on the page. I'll be here if you have questions! 👌"
-suggestedActions: ["Show me pricing", "Tell me about voice cloning"]
-extractedData: { "email": "[their exact email]" }
-conversationPhase: "complete"
-
-**If "Just looking":**
-Text: "All good! I'm here if anything comes up. Feel free to look around. 👋"
-suggestedActions: ["Actually, I have a question", "Thanks!"]
-conversationPhase: "exit"
-
----
-
-## RESPONSE FORMAT (MANDATORY - ALWAYS USE THIS EXACT JSON):
-{
-  "text": "Your message here",
-  "suggestedActions": ["Option 1", "Option 2"] or null,
-  "extractedData": { "fieldName": "value" } or null,
-  "conversationPhase": "opener|diagnostic|aha_moment|contact_capture|complete|exit"
-}
-
-**Field names for extractedData:** name, trade, teamSize, callVolume, aiTimeline, interests, businessName, phone, email
-
-CRITICAL: For suggestedActions, you MUST include the buttons array for every question EXCEPT when asking for typed input (name, businessName, phone, email). The buttons must match EXACTLY what's shown in each step above.`;
+// Tool definition for structured output
+const responseTool = {
+  type: "function",
+  function: {
+    name: "send_response",
+    description: "Send a response to the user with optional buttons and extracted data",
+    parameters: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          description: "The message text to display"
+        },
+        suggestedActions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of button labels. REQUIRED for most steps. Only null for name/businessName/phone/email inputs."
+        },
+        extractedData: {
+          type: "object",
+          description: "Any data extracted from user's last message. Keys: name, trade, teamSize, callVolume, aiTimeline, interests, businessName, phone, email",
+          additionalProperties: { type: "string" }
+        },
+        conversationPhase: {
+          type: "string",
+          enum: ["opener", "diagnostic", "aha_moment", "contact_capture", "complete", "exit"],
+          description: "Current phase of the conversation"
+        }
+      },
+      required: ["text", "conversationPhase"]
+    }
+  }
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -144,19 +105,10 @@ serve(async (req) => {
     // Build context with lead data
     let contextPrompt = SYSTEM_PROMPT;
     if (leadData && Object.keys(leadData).length > 0) {
-      contextPrompt += `\n\nCURRENT LEAD DATA (use this for calculations and personalization):
-${JSON.stringify(leadData, null, 2)}`;
-      
-      // Calculate losses if we have the data
-      if (leadData.callVolume && leadData.ticketValue) {
-        const missedCalls = Math.round(leadData.callVolume * 0.27);
-        const potentialLoss = missedCalls * leadData.ticketValue;
-        contextPrompt += `\n\nCALCULATED VALUES:
-- Estimated missed calls per month: ${missedCalls}
-- Potential monthly revenue loss: $${potentialLoss.toLocaleString()}
-- Annual loss: $${(potentialLoss * 12).toLocaleString()}`;
-      }
+      contextPrompt += `\n\nCURRENT LEAD DATA: ${JSON.stringify(leadData)}`;
     }
+
+    console.log("Sending request to AI with messages:", JSON.stringify(messages));
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -170,8 +122,8 @@ ${JSON.stringify(leadData, null, 2)}`;
           { role: "system", content: contextPrompt },
           ...messages,
         ],
-        temperature: 0.7,
-        max_tokens: 500,
+        tools: [responseTool],
+        tool_choice: { type: "function", function: { name: "send_response" } },
       }),
     });
 
@@ -198,41 +150,56 @@ ${JSON.stringify(leadData, null, 2)}`;
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    console.log("AI response:", JSON.stringify(data));
 
-    if (!content) {
-      throw new Error("No response from AI");
+    // Extract tool call response
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    
+    if (toolCall && toolCall.function?.arguments) {
+      try {
+        const parsedResponse = JSON.parse(toolCall.function.arguments);
+        console.log("Parsed tool response:", JSON.stringify(parsedResponse));
+        
+        return new Response(JSON.stringify({
+          text: parsedResponse.text || "Let me think...",
+          suggestedActions: parsedResponse.suggestedActions || null,
+          extractedData: parsedResponse.extractedData || null,
+          conversationPhase: parsedResponse.conversationPhase || "diagnostic"
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (parseError) {
+        console.error("Failed to parse tool arguments:", parseError);
+      }
     }
 
-    // Parse the JSON response from AI
-    let parsedResponse;
-    try {
-      // Try to extract JSON from the response (AI might wrap it in markdown)
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedResponse = JSON.parse(jsonMatch[0]);
-      } else {
-        // Fallback: treat entire response as text
-        parsedResponse = {
-          text: content,
-          suggestedActions: null,
-          extractedData: null,
-          conversationPhase: "diagnostic"
-        };
+    // Fallback: try to parse content directly
+    const content = data.choices?.[0]?.message?.content;
+    if (content) {
+      console.log("Falling back to content parsing:", content);
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsedResponse = JSON.parse(jsonMatch[0]);
+          return new Response(JSON.stringify(parsedResponse), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } catch (e) {
+        console.error("Content parse failed:", e);
       }
-    } catch (parseError) {
-      console.error("Failed to parse AI response as JSON:", parseError);
-      parsedResponse = {
+      
+      return new Response(JSON.stringify({
         text: content,
         suggestedActions: null,
         extractedData: null,
         conversationPhase: "diagnostic"
-      };
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(JSON.stringify(parsedResponse), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    throw new Error("No valid response from AI");
 
   } catch (error) {
     console.error("alex-chat error:", error);
