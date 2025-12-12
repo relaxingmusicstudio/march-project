@@ -13,6 +13,7 @@ interface ContactFormRequest {
   name: string;
   email: string;
   message: string;
+  phone?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -24,8 +25,8 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { name, email, message }: ContactFormRequest = await req.json();
-    console.log("Received form data:", { name, email, messageLength: message?.length });
+    const { name, email, message, phone }: ContactFormRequest = await req.json();
+    console.log("Received form data:", { name, email, phone, messageLength: message?.length });
 
     // Send to GHL webhook using GHL's default field names
     console.log("Sending to GHL webhook...");
@@ -35,13 +36,18 @@ const handler = async (req: Request): Promise<Response> => {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
     
+    // Determine source based on whether phone is provided (chatbot vs contact form)
+    const source = phone ? "Chatbot Qualification" : "Website Form";
+    const tags = phone ? ["Chatbot Lead", "Qualified"] : ["Website Lead"];
+    
     const webhookPayload = {
       // GHL default contact fields
       firstName: firstName,
       lastName: lastName,
       email: email,
-      source: "Website Form",
-      tags: ["Website Lead"],
+      phone: phone || "",
+      source: source,
+      tags: tags,
       // Custom field for message
       customField: {
         message: message

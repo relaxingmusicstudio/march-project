@@ -1,19 +1,53 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, X, Send, Bot, User } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 type Message = {
   id: number;
   sender: "bot" | "user";
   text: string;
   options?: string[];
+  inputType?: "text" | "email" | "phone";
+  inputPlaceholder?: string;
+  field?: string;
+};
+
+type LeadData = {
+  name: string;
+  email: string;
+  phone: string;
+  businessType: string;
+  teamSize: string;
+  callVolume: string;
 };
 
 const Chatbot = () => {
+  const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [hasAutoOpened, setHasAutoOpened] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [currentStep, setCurrentStep] = useState(0);
+  const [leadData, setLeadData] = useState<LeadData>({
+    name: "",
+    email: "",
+    phone: "",
+    businessType: "",
+    teamSize: "",
+    callVolume: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   // Auto-open after 15 seconds or scroll
   useEffect(() => {
@@ -46,10 +80,11 @@ const Chatbot = () => {
       {
         id: 1,
         sender: "bot",
-        text: "Hi there! 👋 I'm here to help you learn how ApexLocal360 can stop your missed calls. Quick question: Are you a solo plumber or do you have a team?",
-        options: ["Solo plumber", "I have a team"],
+        text: "Hi there! 👋 I'm here to help you stop losing money from missed calls. Let me ask a few quick questions to see how we can help. What type of service business do you run?",
+        options: ["Plumbing", "HVAC", "Electrical", "Roofing", "Other"],
       },
     ]);
+    setCurrentStep(1);
   };
 
   const handleOpen = () => {
@@ -59,105 +94,200 @@ const Chatbot = () => {
     }
   };
 
-  const handleOptionClick = (option: string) => {
-    const userMessage: Message = {
-      id: messages.length + 1,
-      sender: "user",
-      text: option,
+  const addBotMessage = (text: string, options?: string[], inputType?: "text" | "email" | "phone", inputPlaceholder?: string, field?: string) => {
+    const newMessage: Message = {
+      id: Date.now(),
+      sender: "bot",
+      text,
+      options,
+      inputType,
+      inputPlaceholder,
+      field,
     };
+    setMessages((prev) => [...prev, newMessage]);
+  };
 
-    setMessages((prev) => [...prev, userMessage]);
+  const addUserMessage = (text: string) => {
+    const newMessage: Message = {
+      id: Date.now(),
+      sender: "user",
+      text,
+    };
+    setMessages((prev) => [...prev, newMessage]);
+  };
+
+  const submitLead = async (finalData: LeadData) => {
+    setIsSubmitting(true);
+    try {
+      const qualificationSummary = `
+Business Type: ${finalData.businessType}
+Team Size: ${finalData.teamSize}
+Monthly Calls: ${finalData.callVolume}
+Source: Chatbot Qualification`;
+
+      const { error } = await supabase.functions.invoke('contact-form', {
+        body: {
+          name: finalData.name,
+          email: finalData.email,
+          phone: finalData.phone,
+          message: qualificationSummary,
+        },
+      });
+
+      if (error) throw error;
+
+      addBotMessage(
+        "🎉 Awesome! I've got all your info. One of our specialists will reach out within 24 hours to discuss how we can help you capture more jobs. In the meantime, want to explore our solutions?",
+        ["See Pricing", "Hear Demo", "Calculate My Losses"]
+      );
+      setCurrentStep(100); // Completed
+
+      toast({
+        title: "Info Submitted!",
+        description: "We'll be in touch soon.",
+      });
+    } catch (error) {
+      console.error("Error submitting lead:", error);
+      addBotMessage("Oops! Something went wrong. Please try again or contact us directly.");
+      toast({
+        title: "Error",
+        description: "Failed to submit. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOptionClick = (option: string) => {
+    addUserMessage(option);
 
     setTimeout(() => {
-      let botResponse: Message;
+      switch (currentStep) {
+        case 1: // Business type selected
+          setLeadData((prev) => ({ ...prev, businessType: option }));
+          setCurrentStep(2);
+          addBotMessage(
+            "Great! How many technicians/trucks do you have?",
+            ["Solo (just me)", "2-5 trucks", "6-10 trucks", "10+ trucks"]
+          );
+          break;
 
-      if (option === "Solo plumber") {
-        botResponse = {
-          id: messages.length + 2,
-          sender: "bot",
-          text: "Perfect! Our Starter Plan at $497/mo gives you a 24/7 dispatcher to never miss a job. Want to hear a quick demo or see the details?",
-          options: ["Hear Demo", "See Starter Plan", "Send me pricing PDF"],
-        };
-      } else if (option === "I have a team") {
-        botResponse = {
-          id: messages.length + 2,
-          sender: "bot",
-          text: "Great! For teams, our Professional Plan ($997/mo) adds upsells and a 'Closer' agent to follow up on big quotes. Want to calculate your revenue loss or see the full feature list?",
-          options: ["Calculate Loss", "See Pro Plan", "Send me pricing PDF"],
-        };
-      } else if (option === "Hear Demo" || option === "See Starter Plan" || option === "See Pro Plan") {
-        const sectionId = option === "Hear Demo" ? "demo" : "pricing";
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth" });
-        botResponse = {
-          id: messages.length + 2,
-          sender: "bot",
-          text: "I've scrolled you to that section! Let me know if you have any questions. 😊",
-          options: ["I have a question", "Thanks!"],
-        };
-      } else if (option === "Calculate Loss") {
-        document.getElementById("calculator")?.scrollIntoView({ behavior: "smooth" });
-        botResponse = {
-          id: messages.length + 2,
-          sender: "bot",
-          text: "Check out our calculator above! It shows exactly how much you're losing from missed calls. 📊",
-          options: ["Show me plans", "I have a question"],
-        };
-      } else if (option === "Send me pricing PDF") {
-        botResponse = {
-          id: messages.length + 2,
-          sender: "bot",
-          text: "I'd love to send you our pricing PDF! What's the best email to reach you?",
-        };
-      } else if (option === "Show me plans") {
-        document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
-        botResponse = {
-          id: messages.length + 2,
-          sender: "bot",
-          text: "Here are our plans! Both come with a 30-day ROI guarantee. 🚀",
-          options: ["I have a question", "Thanks!"],
-        };
-      } else {
-        botResponse = {
-          id: messages.length + 2,
-          sender: "bot",
-          text: "I'm here to help! What would you like to know about ApexLocal360?",
-          options: ["How does it work?", "Show me pricing", "Hear a demo"],
-        };
+        case 2: // Team size selected
+          setLeadData((prev) => ({ ...prev, teamSize: option }));
+          setCurrentStep(3);
+          addBotMessage(
+            "And roughly how many calls do you get per month?",
+            ["Less than 50", "50-100", "100-200", "200+"]
+          );
+          break;
+
+        case 3: // Call volume selected
+          setLeadData((prev) => ({ ...prev, callVolume: option }));
+          setCurrentStep(4);
+          addBotMessage(
+            "Perfect! Now let me get your info so we can show you exactly how much revenue you're leaving on the table. What's your name?",
+            undefined,
+            "text",
+            "Enter your name",
+            "name"
+          );
+          break;
+
+        case 100: // Post-submission navigation
+          if (option === "See Pricing") {
+            document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
+            addBotMessage("I've scrolled you to our pricing! Let me know if you have questions. 😊");
+          } else if (option === "Hear Demo") {
+            document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" });
+            addBotMessage("Check out our demo above! It shows exactly how our AI handles calls. 🎧");
+          } else if (option === "Calculate My Losses") {
+            document.getElementById("calculator")?.scrollIntoView({ behavior: "smooth" });
+            addBotMessage("Use the calculator to see your potential losses from missed calls! 📊");
+          }
+          break;
+
+        default:
+          addBotMessage(
+            "I'm here to help! What would you like to know?",
+            ["See Pricing", "Hear Demo", "Calculate My Losses"]
+          );
       }
-
-      setMessages((prev) => [...prev, botResponse]);
-    }, 800);
+    }, 500);
   };
 
   const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isSubmitting) return;
 
-    const userMessage: Message = {
-      id: messages.length + 1,
-      sender: "user",
-      text: inputValue,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+    const value = inputValue.trim();
+    addUserMessage(value);
     setInputValue("");
 
     setTimeout(() => {
-      const botResponse: Message = {
-        id: messages.length + 2,
-        sender: "bot",
-        text: "Thanks for your message! For detailed questions, I'd recommend checking out our demo or pricing sections. Is there something specific I can help with?",
-        options: ["Hear Demo", "See pricing", "How does it work?"],
-      };
-      setMessages((prev) => [...prev, botResponse]);
-    }, 1000);
+      switch (currentStep) {
+        case 4: // Name entered
+          setLeadData((prev) => ({ ...prev, name: value }));
+          setCurrentStep(5);
+          addBotMessage(
+            `Nice to meet you, ${value}! What's the best email to reach you?`,
+            undefined,
+            "email",
+            "Enter your email",
+            "email"
+          );
+          break;
+
+        case 5: // Email entered
+          if (!value.includes("@")) {
+            addBotMessage("That doesn't look like a valid email. Can you try again?", undefined, "email", "Enter your email", "email");
+            return;
+          }
+          setLeadData((prev) => ({ ...prev, email: value }));
+          setCurrentStep(6);
+          addBotMessage(
+            "Great! And what's the best phone number to reach you?",
+            undefined,
+            "phone",
+            "Enter your phone number",
+            "phone"
+          );
+          break;
+
+        case 6: // Phone entered
+          const updatedData = { ...leadData, phone: value };
+          setLeadData(updatedData);
+          submitLead(updatedData);
+          break;
+
+        default:
+          // Free-form question after qualification
+          addBotMessage(
+            "Thanks for your message! For detailed questions, I'd recommend checking out our demo or pricing. Is there something specific I can help with?",
+            ["See Pricing", "Hear Demo", "Calculate My Losses"]
+          );
+      }
+    }, 500);
   };
+
+  const getCurrentInputConfig = () => {
+    const lastBotMessage = [...messages].reverse().find((m) => m.sender === "bot");
+    if (lastBotMessage?.inputType) {
+      return {
+        type: lastBotMessage.inputType,
+        placeholder: lastBotMessage.inputPlaceholder || "Type a message...",
+      };
+    }
+    return { type: "text", placeholder: "Type a message..." };
+  };
+
+  const inputConfig = getCurrentInputConfig();
 
   return (
     <>
       {/* Chat Button */}
       <button
         onClick={handleOpen}
-        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full bg-accent text-accent-foreground shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center group ${
+        className={`fixed bottom-24 right-6 z-50 w-16 h-16 rounded-full bg-accent text-accent-foreground shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center group ${
           isOpen ? "scale-0" : "scale-100"
         }`}
       >
@@ -167,7 +297,7 @@ const Chatbot = () => {
 
       {/* Chat Window */}
       <div
-        className={`fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] bg-card rounded-2xl shadow-2xl transition-all duration-300 overflow-hidden ${
+        className={`fixed bottom-24 right-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] bg-card rounded-2xl shadow-2xl transition-all duration-300 overflow-hidden ${
           isOpen ? "scale-100 opacity-100" : "scale-0 opacity-0"
         }`}
       >
@@ -220,7 +350,8 @@ const Chatbot = () => {
                       <button
                         key={index}
                         onClick={() => handleOptionClick(option)}
-                        className="px-3 py-1.5 text-sm bg-card border-2 border-primary/30 text-primary rounded-full hover:bg-primary hover:text-primary-foreground transition-all"
+                        disabled={isSubmitting}
+                        className="px-3 py-1.5 text-sm bg-card border-2 border-primary/30 text-primary rounded-full hover:bg-primary hover:text-primary-foreground transition-all disabled:opacity-50"
                       >
                         {option}
                       </button>
@@ -236,24 +367,41 @@ const Chatbot = () => {
               )}
             </div>
           ))}
+          {isSubmitting && (
+            <div className="flex gap-2 justify-start">
+              <div className="w-8 h-8 rounded-full bg-primary shrink-0 flex items-center justify-center">
+                <Loader2 className="w-4 h-4 text-primary-foreground animate-spin" />
+              </div>
+              <div className="p-3 rounded-2xl bg-secondary text-secondary-foreground rounded-bl-sm">
+                Submitting your info...
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input */}
         <div className="p-4 border-t border-border">
           <div className="flex gap-2">
             <input
-              type="text"
+              type={inputConfig.type}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder="Type a message..."
-              className="flex-1 h-10 px-4 rounded-full border-2 border-border bg-background text-foreground focus:border-accent focus:ring-0 outline-none transition-all"
+              placeholder={inputConfig.placeholder}
+              disabled={isSubmitting}
+              className="flex-1 h-10 px-4 rounded-full border-2 border-border bg-background text-foreground focus:border-accent focus:ring-0 outline-none transition-all disabled:opacity-50"
             />
             <button
               onClick={handleSendMessage}
-              className="w-10 h-10 rounded-full bg-accent text-accent-foreground flex items-center justify-center hover:bg-accent/90 transition-colors"
+              disabled={isSubmitting || !inputValue.trim()}
+              className="w-10 h-10 rounded-full bg-accent text-accent-foreground flex items-center justify-center hover:bg-accent/90 transition-colors disabled:opacity-50"
             >
-              <Send className="w-4 h-4" />
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
             </button>
           </div>
         </div>
