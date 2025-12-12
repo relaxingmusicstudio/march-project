@@ -6,6 +6,7 @@ import VoiceDemo from "@/components/VoiceDemo";
 import ProcessTimeline from "@/components/ProcessTimeline";
 import PricingPlans from "@/components/PricingPlans";
 import SocialProof from "@/components/SocialProof";
+import FAQSection from "@/components/FAQSection";
 import ContactForm from "@/components/ContactForm";
 import Chatbot from "@/components/Chatbot";
 import StickyFooter from "@/components/StickyFooter";
@@ -37,6 +38,9 @@ const Index = () => {
           </section>
           <section id="testimonials" aria-label="Customer Testimonials">
             <SocialProof />
+          </section>
+          <section id="faq" aria-label="Frequently Asked Questions">
+            <FAQSection />
           </section>
           <section id="contact" aria-label="Contact Form">
             <ContactForm />
