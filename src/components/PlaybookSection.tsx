@@ -84,7 +84,7 @@ const PlaybookSection = () => {
         <div className="max-w-6xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left - PDF Preview */}
-            <div className="relative order-2 lg:order-1">
+            <div className="relative order-2 lg:order-1 pb-4">
               <div className="relative mx-auto max-w-sm lg:max-w-md">
                 {/* Shadow/depth effect */}
                 <div className="absolute inset-4 bg-primary/20 rounded-2xl blur-2xl" />
@@ -96,12 +96,12 @@ const PlaybookSection = () => {
                     alt="The Local Service Playbook Cover" 
                     className="w-full h-auto"
                   />
-                </div>
-                
-                {/* Stats badge */}
-                <div className="absolute -bottom-4 -right-4 bg-accent text-accent-foreground px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
-                  <Download className="w-4 h-4" />
-                  <span className="font-semibold text-sm">3,200+ downloads</span>
+                  
+                  {/* Stats badge */}
+                  <div className="absolute bottom-4 right-4 bg-accent text-accent-foreground px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+                    <Download className="w-4 h-4" />
+                    <span className="font-semibold text-sm">3,200+ downloads</span>
+                  </div>
                 </div>
               </div>
             </div>
