@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Download, Mail, ArrowRight, Gift } from "lucide-react";
+import leadMagnetCover from "@/assets/lead-magnet-cover.png";
 
 const ExitIntentPopup = () => {
   const [isVisible, setIsVisible] = useState(false);
@@ -87,9 +88,11 @@ const ExitIntentPopup = () => {
 
               {/* PDF Preview */}
               <div className="bg-secondary rounded-xl p-4 mb-6 flex items-center gap-4">
-                <div className="w-16 h-20 bg-destructive/10 rounded-lg flex items-center justify-center shrink-0 border-2 border-destructive/20">
-                  <span className="text-destructive font-bold text-xs">PDF</span>
-                </div>
+                <img 
+                  src={leadMagnetCover} 
+                  alt="7 Ways to Generate More Local Plumbing Leads" 
+                  className="w-20 h-28 object-cover rounded-lg shadow-md"
+                />
                 <div>
                   <div className="font-semibold text-foreground text-sm">Local Lead Generation Playbook</div>
                   <div className="text-muted-foreground text-xs mt-1">12 pages • Instant Download</div>
