@@ -48,7 +48,7 @@ const handler = async (req: Request): Promise<Response> => {
           lastName: lastName,
           email: customerEmail,
           source: "Stripe Payment",
-          tags: ["Stripe Customer", planName],
+          tags: ["Stripe Customer", planName, "Onboarding"],
           customField: {
             plan: planName,
             amount_paid: `$${amountTotal}`,
