@@ -337,13 +337,17 @@ Phase: ${leadData.conversationPhase}`;
     return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
   };
 
-  // Check if we're in phone collection phase (contact capture, not "what happens to the phone")
+  // Check if we're in phone collection phase - only during contact_capture, not post-completion
   const isPhoneInputPhase = (): boolean => {
+    // Only format as phone during contact_capture phase
+    if (leadData.conversationPhase !== "contact_capture" && leadData.conversationPhase !== "diagnostic") {
+      return false;
+    }
     const lastBotMessage = messages.filter(m => m.sender === "bot").pop();
     if (!lastBotMessage) return false;
     const text = lastBotMessage.text.toLowerCase();
-    // Only trigger for contact phone number questions, not "what happens to the phone" question
-    const isAskingForContactPhone = (text.includes("number to reach") || text.includes("best number")) && !text.includes("what happens");
+    // Only trigger for initial contact phone number questions
+    const isAskingForContactPhone = (text.includes("number to reach") || text.includes("best number")) && !text.includes("still the best");
     return isAskingForContactPhone;
   };
 
