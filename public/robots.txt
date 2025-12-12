@@ -1,14 +1,41 @@
+# ApexLocal360 - AI Voice Agents for Plumbing Businesses
+# https://apexlocal360.com
+
+# Default rules for all crawlers
+User-agent: *
+Allow: /
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://apexlocal360.com/sitemap.xml
+
+# Block sensitive paths
+Disallow: /api/
+Disallow: /.env
+Disallow: /node_modules/
+
+# Google
 User-agent: Googlebot
 Allow: /
 
+# Bing
 User-agent: Bingbot
+Allow: /
+
+# Yahoo
+User-agent: Slurp
+Allow: /
+
+# DuckDuckGo
+User-agent: DuckDuckBot
+Allow: /
+
+# Social media crawlers
+User-agent: facebookexternalhit
 Allow: /
 
 User-agent: Twitterbot
 Allow: /
 
-User-agent: facebookexternalhit
-Allow: /
-
-User-agent: *
+User-agent: LinkedInBot
 Allow: /

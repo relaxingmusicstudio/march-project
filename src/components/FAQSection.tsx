@@ -10,32 +10,57 @@ const faqs = [
   {
     question: "What is an AI voice agent for plumbers?",
     answer:
-      "An AI voice agent for plumbers is an automated phone answering system powered by artificial intelligence that handles incoming calls 24/7. It can answer customer inquiries, book appointments, provide quotes, upsell services, and qualify leads—all without human intervention. ApexLocal360's AI agents are specifically trained for plumbing businesses and sound natural in conversations.",
+      "Think of it as your best receptionist who never sleeps, never calls in sick, and never has a bad day. An AI voice agent answers your phone 24/7, talks to customers naturally, books jobs on your calendar, and even upsells services like water heater flushes or drain maintenance. The difference? It costs a fraction of a full-time employee and works every single night, weekend, and holiday.",
   },
   {
     question: "How much does a missed call cost a plumbing business?",
     answer:
-      "The average missed plumbing call represents $1,200+ in lost revenue. Emergency plumbing jobs can be worth $500-$3,000, and customers who can't reach you will call a competitor. Studies show 85% of callers who can't reach a business won't call back. ApexLocal360's AI ensures you never miss another valuable call.",
+      "Here's the math that keeps plumbers up at night: the average service call is worth $350-$500, but emergency jobs? Those run $800-$3,000. Miss just one emergency call a week, and you're leaving $50,000+ on the table every year. The real kicker? 85% of people who can't reach you won't bother leaving a voicemail—they'll just call the next plumber on Google.",
   },
   {
     question: "How quickly can I get an AI voice agent set up?",
     answer:
-      "ApexLocal360 offers done-for-you setup in just 48 hours. Our team handles everything: customizing the AI to your business, integrating with your existing systems, training the AI on your services and pricing, and testing to ensure perfect performance. You can start capturing more leads within 2 days.",
+      "We handle everything in 48 hours, start to finish. No tech headaches on your end. We'll hop on a quick call to learn your business, then our team builds and trains your custom AI agent with your pricing, service area, and booking preferences. By day three, you're capturing calls you used to miss.",
   },
   {
     question: "Does the AI voice agent sound robotic?",
     answer:
-      "No, ApexLocal360's AI voice agents use advanced natural language processing and voice synthesis to sound remarkably human. Callers often can't tell they're speaking with an AI. The agents understand context, handle interruptions, and respond naturally to questions—just like a trained human receptionist.",
+      "This isn't your grandma's automated phone tree. Our AI uses the same technology behind ChatGPT but optimized for natural phone conversations. Customers genuinely can't tell the difference—we've had business owners call to test it and get fooled by their own AI. It handles interruptions, asks follow-up questions, and even laughs at jokes.",
   },
   {
     question: "Can the AI handle emergency plumbing calls?",
     answer:
-      "Absolutely. ApexLocal360's AI is trained to identify emergency situations like burst pipes, flooding, and gas leaks. It prioritizes these calls, gathers critical information, and can immediately escalate to your on-call technician while keeping the customer informed and reassured.",
+      "Absolutely—this is where it really shines. The AI is trained to recognize urgency words like 'flooding,' 'burst pipe,' or 'no hot water with a newborn.' It immediately prioritizes these calls, gathers the critical info (address, access instructions, what's happening), and can text or call your on-call tech within seconds. No more middle-of-the-night calls waking up your whole house.",
   },
   {
     question: "What happens if the AI can't answer a question?",
     answer:
-      "If the AI encounters a question it can't confidently answer, it gracefully handles the situation by offering to take a message, schedule a callback with your team, or transfer the call to a human if one is available. The AI never makes up information—it acknowledges its limitations professionally.",
+      "The AI knows what it knows—and more importantly, knows what it doesn't. If a customer asks something outside its training (like a super technical question about your sump pump brand compatibility), it'll professionally say 'Let me have our team get back to you on that' and schedule a callback. It never makes stuff up or gives wrong information that could burn you.",
+  },
+  {
+    question: "Will the AI work with my existing scheduling software?",
+    answer:
+      "We integrate with pretty much everything plumbers actually use—ServiceTitan, Housecall Pro, Jobber, Google Calendar, you name it. During setup, we connect directly to your system so when the AI books a job, it shows up on your calendar instantly. No double-booking, no manual entry, no 'oops, I forgot to add that appointment.'",
+  },
+  {
+    question: "How does the AI know my pricing and services?",
+    answer:
+      "During onboarding, we do a deep dive into your business. You tell us your service area, pricing tiers, what services you offer (and which ones you want to push), your availability, and any special instructions. We then train your AI specifically on YOUR business—it's not a generic bot, it's YOUR virtual dispatcher who knows that you charge $99 for drain cleaning and don't service anything north of Highway 50.",
+  },
+  {
+    question: "What if I want to change something after setup?",
+    answer:
+      "Business changes, we get it. New pricing for the busy season? Hired another tech and expanded your service area? Just shoot us a message and we'll update your AI within 24 hours. Most changes are included in your plan—we're not going to nickel-and-dime you every time you want to tweak something.",
+  },
+  {
+    question: "Is there a long-term contract or commitment?",
+    answer:
+      "Nope, and that's intentional. We're confident enough in what we deliver that we don't need to lock you in. It's month-to-month, cancel anytime. That said, once you see your after-hours calls turning into booked jobs, you're not going to want to go back to voicemail purgatory.",
+  },
+  {
+    question: "How do I know the AI is actually working?",
+    answer:
+      "You get a dashboard that shows everything: how many calls came in, how many got booked, what times people are calling, even recordings of the conversations (with customer consent, of course). Most owners tell us they're shocked at how many calls they were missing at 6 AM or 9 PM. The data doesn't lie—you'll see exactly what the AI is doing for you.",
   },
 ];
 
