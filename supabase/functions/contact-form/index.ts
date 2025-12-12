@@ -131,17 +131,17 @@ const handler = async (req: Request): Promise<Response> => {
     const isPDF = rawFormName?.toLowerCase().includes('pdf') || rawFormName?.toLowerCase().includes('playbook') || rawFormName?.toLowerCase().includes('lead magnet');
     const isNewsletter = rawFormName?.toLowerCase().includes('newsletter');
     
-    // Set source for GHL
-    let source = "Website Form";
+    // Set source for GHL - using standard GHL-compatible source values
+    let source = "form";
     let sourceType = "CONTACT FORM";
     if (isChatbot) {
-      source = "Chatbot - Consultative";
+      source = "chat_widget";
       sourceType = "CHATBOT";
     } else if (isPDF) {
-      source = "Lead Magnet Download";
+      source = "form";
       sourceType = "PDF DOWNLOAD";
     } else if (isNewsletter) {
-      source = "Newsletter Signup";
+      source = "form";
       sourceType = "NEWSLETTER";
     }
     
