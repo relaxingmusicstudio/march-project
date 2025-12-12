@@ -131,22 +131,30 @@ const Chatbot = () => {
     
     setHasSubmitted(true);
     try {
+      // Map ticket value to display format
+      const ticketDisplay = leadData.ticketValue <= 350 ? "Under $500" 
+        : leadData.ticketValue <= 750 ? "$500-1,000"
+        : leadData.ticketValue <= 1750 ? "$1,000-2,500"
+        : "$2,500+";
+      
+      // Map call volume to display format  
+      const callVolumeDisplay = leadData.callVolume <= 3 ? "Under 5 calls"
+        : leadData.callVolume <= 7 ? "5-10 calls"
+        : leadData.callVolume <= 15 ? "10-20 calls"
+        : "20+ calls";
+
       const qualificationNotes = `
 === PARTIAL CAPTURE (Chat closed/timeout) ===
-Trade: ${leadData.trade}
+Name: ${leadData.name}
 Business: ${leadData.businessName}
+Trade: ${leadData.trade}
 Team Size: ${leadData.teamSize}
-Monthly Calls: ${leadData.callVolume}
-Avg Job Value: $${leadData.ticketValue}
+Daily Call Volume: ${callVolumeDisplay}
+Avg Job Value: ${ticketDisplay}
 Call Handling: ${leadData.callHandling}
-Hesitation: ${leadData.hesitation}
-Calculated Missed Calls: ${leadData.missedCalls}
+Calculated Missed Calls/Month: ${leadData.missedCalls}
 Potential Monthly Loss: $${leadData.potentialLoss}
-Conversation Phase: ${leadData.conversationPhase}
-Qualified: ${leadData.isQualified ? "YES" : "NO"}
-
-=== CONVERSATION NOTES ===
-${leadData.notes.join("\n") || "None"}`;
+Phase: ${leadData.conversationPhase}`;
 
       await supabase.functions.invoke('contact-form', {
         body: {
@@ -157,11 +165,13 @@ ${leadData.notes.join("\n") || "None"}`;
           businessType: leadData.trade,
           businessTypeOther: leadData.businessName,
           teamSize: leadData.teamSize,
-          callVolume: String(leadData.callVolume),
-          avgJobValue: `$${leadData.ticketValue}`,
+          callVolume: callVolumeDisplay,
+          avgJobValue: ticketDisplay,
           currentSolution: leadData.callHandling,
+          missedCalls: String(leadData.missedCalls),
+          potentialLoss: String(leadData.potentialLoss),
           isGoodFit: leadData.isQualified,
-          fitReason: leadData.conversationPhase,
+          fitReason: "Partial_Capture",
           notes: leadData.notes.join(" | "),
         },
       });
@@ -387,22 +397,30 @@ ${leadData.notes.join("\n") || "None"}`;
     
     setIsSubmitting(true);
     try {
-      const qualificationNotes = `
-=== QUALIFIED LEAD (Full Chat Completion) ===
-Trade: ${leadData.trade}
-Business: ${leadData.businessName}
-Team Size: ${leadData.teamSize}
-Monthly Calls: ${leadData.callVolume}
-Avg Job Value: $${leadData.ticketValue}
-Call Handling: ${leadData.callHandling}
-Hesitation: ${leadData.hesitation}
-Calculated Missed Calls: ${leadData.missedCalls}
-Potential Monthly Loss: $${leadData.potentialLoss}
-Potential Annual Loss: $${leadData.potentialLoss * 12}
-Conversation Phase: ${leadData.conversationPhase}
+      // Map ticket value to display format
+      const ticketDisplay = leadData.ticketValue <= 350 ? "Under $500" 
+        : leadData.ticketValue <= 750 ? "$500-1,000"
+        : leadData.ticketValue <= 1750 ? "$1,000-2,500"
+        : "$2,500+";
+      
+      // Map call volume to display format  
+      const callVolumeDisplay = leadData.callVolume <= 3 ? "Under 5 calls"
+        : leadData.callVolume <= 7 ? "5-10 calls"
+        : leadData.callVolume <= 15 ? "10-20 calls"
+        : "20+ calls";
 
-=== CONVERSATION NOTES ===
-${leadData.notes.join("\n") || "None"}`;
+      const qualificationNotes = `
+=== QUALIFIED LEAD (Chatbot) ===
+Name: ${leadData.name}
+Business: ${leadData.businessName}
+Trade: ${leadData.trade}
+Team Size: ${leadData.teamSize}
+Daily Call Volume: ${callVolumeDisplay}
+Avg Job Value: ${ticketDisplay}
+Call Handling: ${leadData.callHandling}
+Calculated Missed Calls/Month: ${leadData.missedCalls}
+Potential Monthly Loss: $${leadData.potentialLoss}
+Potential Annual Loss: $${leadData.potentialLoss * 12}`;
 
       await supabase.functions.invoke('contact-form', {
         body: {
@@ -413,9 +431,11 @@ ${leadData.notes.join("\n") || "None"}`;
           businessType: leadData.trade,
           businessTypeOther: leadData.businessName,
           teamSize: leadData.teamSize,
-          callVolume: String(leadData.callVolume),
-          avgJobValue: `$${leadData.ticketValue}`,
+          callVolume: callVolumeDisplay,
+          avgJobValue: ticketDisplay,
           currentSolution: leadData.callHandling,
+          missedCalls: String(leadData.missedCalls),
+          potentialLoss: String(leadData.potentialLoss),
           isGoodFit: true,
           fitReason: "Chatbot_Qualified",
           notes: leadData.notes.join(" | "),

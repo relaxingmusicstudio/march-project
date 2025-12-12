@@ -14,20 +14,23 @@ interface ContactFormRequest {
   email: string;
   message: string;
   phone?: string;
-  // Chatbot qualification fields
-  businessType?: string;
-  businessTypeOther?: string;
-  teamSize?: string;
-  callVolume?: string;
-  currentSolution?: string;
-  biggestChallenge?: string;
-  monthlyAdSpend?: string;
-  avgJobValue?: string;
-  aiTimeline?: string;
-  interests?: string[];
+  // Chatbot qualification fields (updated for new flow)
+  businessType?: string;        // trade: Plumbing, HVAC, etc.
+  businessTypeOther?: string;   // businessName
+  teamSize?: string;            // Solo operator, 2-5 trucks, 6+ trucks
+  callVolume?: string;          // daily calls as string
+  currentSolution?: string;     // callHandling: what happens to calls
+  avgJobValue?: string;         // ticketValue as string
+  missedCalls?: string;         // calculated missed calls
+  potentialLoss?: string;       // calculated monthly loss
   notes?: string;
   isGoodFit?: boolean;
   fitReason?: string;
+  // Legacy fields for backwards compatibility
+  biggestChallenge?: string;
+  monthlyAdSpend?: string;
+  aiTimeline?: string;
+  interests?: string[];
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -48,14 +51,17 @@ const handler = async (req: Request): Promise<Response> => {
       teamSize,
       callVolume,
       currentSolution,
-      biggestChallenge,
-      monthlyAdSpend,
       avgJobValue,
-      aiTimeline,
-      interests,
+      missedCalls,
+      potentialLoss,
       notes,
       isGoodFit,
       fitReason,
+      // Legacy fields
+      biggestChallenge,
+      monthlyAdSpend,
+      aiTimeline,
+      interests,
     }: ContactFormRequest = await req.json();
     
     console.log("Received form data:", { 
@@ -67,11 +73,9 @@ const handler = async (req: Request): Promise<Response> => {
       teamSize, 
       callVolume,
       currentSolution,
-      biggestChallenge,
-      monthlyAdSpend,
       avgJobValue,
-      aiTimeline,
-      interests,
+      missedCalls,
+      potentialLoss,
       notes,
       isGoodFit,
       fitReason,
@@ -106,21 +110,22 @@ const handler = async (req: Request): Promise<Response> => {
         tags.push(businessType);
       }
       
-      // Urgency tags based on timeline
-      if (aiTimeline === "Within 3 months") {
-        tags.push("Hot Lead");
-      } else if (aiTimeline === "3-6 months") {
+      // Urgency tags based on potential loss
+      const loss = parseInt(potentialLoss || "0");
+      if (loss >= 5000) {
+        tags.push("High Value Opportunity");
+      } else if (loss >= 2000) {
         tags.push("Warm Lead");
       }
       
-      // High-value tag
+      // High-value ticket tag
       if (avgJobValue === "$2,500+" || avgJobValue === "$1,000-2,500") {
         tags.push("High Ticket");
       }
       
-      // Running ads (urgent - wasting money)
-      if (monthlyAdSpend === "Running paid ads") {
-        tags.push("Running Ads");
+      // Volume tag
+      if (callVolume === "20+ calls" || callVolume === "10-20 calls") {
+        tags.push("High Volume");
       }
     } else {
       tags.push("Website Lead");
@@ -135,14 +140,19 @@ const handler = async (req: Request): Promise<Response> => {
     const ghlNotes = `
 ${message}
 
---- Conversation Notes ---
-${notes || "No additional notes"}
-
-Current Solution: ${currentSolution || "Not specified"}
-Biggest Challenge: ${biggestChallenge || "Not specified"}
-Monthly Ad Spend: ${monthlyAdSpend || "Not specified"}
+--- Qualification Summary ---
+Trade: ${businessType || "Not specified"}
+Business: ${businessTypeOther || "Not specified"}
+Team Size: ${teamSize || "Not specified"}
+Call Volume: ${callVolume || "Not specified"}
 Avg Job Value: ${avgJobValue || "Not specified"}
-Fit Assessment: ${isGoodFit ? "Qualified" : `Not Ready (${fitReason})`}
+Current Call Handling: ${currentSolution || "Not specified"}
+Estimated Missed Calls/Month: ${missedCalls || "Not calculated"}
+Potential Monthly Loss: $${potentialLoss || "Not calculated"}
+Fit Assessment: ${isGoodFit ? "QUALIFIED" : `Not Ready (${fitReason})`}
+
+--- Conversation Notes ---
+${notes || "None"}
     `.trim();
     
     const webhookPayload = {
@@ -158,17 +168,15 @@ Fit Assessment: ${isGoodFit ? "Qualified" : `Not Ready (${fitReason})`}
       // Custom fields matching GHL field names exactly
       customField: {
         message: ghlNotes,
-        "Services Offered": serviceOffered,
+        "Trade": businessType || "",
+        "Business Name": businessTypeOther || "",
         "Team Size": teamSize || "",
-        "Call Volume": callVolume || "",
-        "AI Timeline": aiTimeline || "",
-        "Interests": interests?.join(", ") || "",
-        "Current Solution": currentSolution || "",
-        "Biggest Challenge": biggestChallenge || "",
-        "Monthly Ad Spend": monthlyAdSpend || "",
+        "Daily Call Volume": callVolume || "",
+        "Call Handling": currentSolution || "",
         "Avg Job Value": avgJobValue || "",
+        "Missed Calls/Month": missedCalls || "",
+        "Potential Monthly Loss": potentialLoss ? `$${potentialLoss}` : "",
         "Lead Score": isGoodFit ? "Qualified" : "Nurture",
-        "Fit Reason": fitReason || "",
         "Conversation Notes": notes || "",
         tags: tags.join(", "),
       },
@@ -176,17 +184,15 @@ Fit Assessment: ${isGoodFit ? "Qualified" : `Not Ready (${fitReason})`}
       // Flat versions for flexible mapping
       name: name,
       message: ghlNotes,
-      "Services Offered": serviceOffered,
+      "Trade": businessType || "",
+      "Business Name": businessTypeOther || "",
       "Team Size": teamSize || "",
-      "Call Volume": callVolume || "",
-      "AI Timeline": aiTimeline || "",
-      "Interests": interests?.join(", ") || "",
-      "Current Solution": currentSolution || "",
-      "Biggest Challenge": biggestChallenge || "",
-      "Monthly Ad Spend": monthlyAdSpend || "",
+      "Daily Call Volume": callVolume || "",
+      "Call Handling": currentSolution || "",
       "Avg Job Value": avgJobValue || "",
+      "Missed Calls/Month": missedCalls || "",
+      "Potential Monthly Loss": potentialLoss ? `$${potentialLoss}` : "",
       "Lead Score": isGoodFit ? "Qualified" : "Nurture",
-      "Fit Reason": fitReason || "",
       "Conversation Notes": notes || "",
       timestamp: new Date().toISOString(),
     };
