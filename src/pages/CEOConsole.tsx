@@ -13,13 +13,13 @@ import {
   Zap,
   ArrowUpRight,
   ArrowDownRight,
-  Percent,
   Activity
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import CEOChatPanel from "@/components/CEOChatPanel";
 import ChannelPerformanceTable from "@/components/ChannelPerformanceTable";
 import ABTestsWidget from "@/components/ABTestsWidget";
+import AdminLayout from "@/components/AdminLayout";
 
 interface Metrics {
   totalRevenue: number;
@@ -78,7 +78,6 @@ const CEOConsole = () => {
   const [channelData, setChannelData] = useState<ChannelData[]>([]);
   const [abTests, setABTests] = useState<ABTest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const navigate = useNavigate();
 
   const fetchData = async () => {
@@ -87,7 +86,6 @@ const CEOConsole = () => {
     today.setHours(0, 0, 0, 0);
 
     try {
-      // Fetch all data in parallel
       const [visitorsRes, leadsRes, experimentsRes, variantsRes] = await Promise.all([
         supabase.from("visitors").select("*"),
         supabase.from("leads").select("*"),
@@ -100,7 +98,6 @@ const CEOConsole = () => {
       const experiments = experimentsRes.data || [];
       const variants = variantsRes.data || [];
 
-      // Calculate metrics
       const todayLeads = leads.filter(l => new Date(l.created_at || "") >= today);
       const todayVisitors = visitors.filter(v => new Date(v.created_at || "") >= today);
       const conversions = leads.filter(l => l.status === "converted" || l.status === "won");
@@ -130,7 +127,6 @@ const CEOConsole = () => {
         avgLeadScore: avgScore,
       });
 
-      // Calculate channel performance
       const sourceMap: Record<string, { visitors: number; leads: number; conversions: number; revenue: number }> = {};
       
       visitors.forEach((v: any) => {
@@ -142,7 +138,6 @@ const CEOConsole = () => {
       });
 
       leads.forEach((l: any) => {
-        // Find matching visitor to get source
         const visitor = visitors.find((v: any) => v.visitor_id === l.visitor_id);
         const source = visitor?.utm_source || "Direct";
         if (!sourceMap[source]) {
@@ -165,7 +160,6 @@ const CEOConsole = () => {
 
       setChannelData(channels);
 
-      // Process A/B tests
       const tests: ABTest[] = experiments.map((exp: any) => {
         const expVariants = variants
           .filter((v: any) => v.experiment_id === exp.id)
@@ -188,7 +182,6 @@ const CEOConsole = () => {
       });
 
       setABTests(tests);
-      setLastUpdated(new Date());
     } catch (error) {
       console.error("Error fetching CEO data:", error);
     } finally {
@@ -207,8 +200,7 @@ const CEOConsole = () => {
     subLabel, 
     icon: Icon, 
     trend,
-    accent = false,
-    large = false
+    accent = false
   }: { 
     title: string; 
     value: string | number; 
@@ -217,22 +209,21 @@ const CEOConsole = () => {
     icon: any; 
     trend?: "up" | "down";
     accent?: boolean;
-    large?: boolean;
   }) => (
-    <Card className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg ${accent ? 'border-accent/50 bg-gradient-to-br from-accent/5 to-accent/10' : ''}`}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className={`p-2 rounded-lg ${accent ? 'bg-accent/20 text-accent' : 'bg-secondary text-primary'}`}>
-          <Icon className="h-4 w-4" />
+    <Card className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg ${accent ? 'border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10' : ''}`}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</span>
+          <div className={`p-1.5 rounded-md ${accent ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
+            <Icon className="h-3.5 w-3.5" />
+          </div>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className={`font-bold text-foreground ${large ? 'text-4xl' : 'text-2xl'}`}>{value}</div>
+        <div className="text-2xl font-bold text-foreground">{value}</div>
         {subValue !== undefined && (
           <div className="flex items-center gap-1 mt-1">
             {trend === "up" && <ArrowUpRight className="h-3 w-3 text-green-500" />}
             {trend === "down" && <ArrowDownRight className="h-3 w-3 text-red-500" />}
-            <span className={`text-sm ${trend === "up" ? "text-green-500" : trend === "down" ? "text-red-500" : "text-muted-foreground"}`}>
+            <span className={`text-xs ${trend === "up" ? "text-green-500" : trend === "down" ? "text-red-500" : "text-muted-foreground"}`}>
               {subValue} {subLabel}
             </span>
           </div>
@@ -242,114 +233,107 @@ const CEOConsole = () => {
   );
 
   return (
-    <div className="min-h-screen bg-background p-4 lg:p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">CEO Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Last updated {lastUpdated.toLocaleTimeString()}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={fetchData}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button 
-            size="sm"
-            onClick={() => navigate("/admin/analytics")}
-          >
-            <BarChart3 className="h-4 w-4 mr-2" />
-            Deep Dive
-          </Button>
-        </div>
+    <AdminLayout 
+      title="CEO Dashboard" 
+      subtitle="Executive overview • Real-time business intelligence"
+    >
+      {/* Top Actions Bar */}
+      <div className="flex items-center justify-end gap-2 mb-4">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={fetchData}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+        <Button 
+          size="sm"
+          onClick={() => navigate("/admin/analytics")}
+        >
+          <BarChart3 className="h-4 w-4 mr-2" />
+          Deep Dive
+        </Button>
       </div>
 
-      <div className="grid grid-cols-12 gap-4 lg:gap-6">
-        {/* Left Column - Main Metrics & Table */}
-        <div className="col-span-12 lg:col-span-8 space-y-4 lg:space-y-6">
-          {/* Top Row: Money Metrics */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-            <MetricCard 
-              title="Total Revenue" 
-              value={`$${metrics.totalRevenue.toLocaleString()}`}
-              subValue={`+$${metrics.revenueToday.toLocaleString()}`}
-              subLabel="today"
-              icon={DollarSign}
-              trend={metrics.revenueToday > 0 ? "up" : undefined}
-              accent
-              large
-            />
-            <MetricCard 
-              title="Conversion Rate" 
-              value={`${metrics.conversionRate.toFixed(1)}%`}
-              subValue={`${metrics.conversions} sales`}
-              icon={Target}
-              trend={metrics.conversionRate > 5 ? "up" : "down"}
-            />
-            <MetricCard 
-              title="Hot Leads" 
-              value={metrics.hotLeads}
-              subValue="Ready to close"
-              icon={Zap}
-              accent
-            />
-            <MetricCard 
-              title="Avg Lead Score" 
-              value={metrics.avgLeadScore}
-              subValue="/ 100"
-              icon={TrendingUp}
-              trend={metrics.avgLeadScore > 50 ? "up" : "down"}
-            />
+      {/* Row 1: Key Metrics */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <MetricCard 
+          title="Total Revenue" 
+          value={`$${metrics.totalRevenue.toLocaleString()}`}
+          subValue={`+$${metrics.revenueToday.toLocaleString()}`}
+          subLabel="today"
+          icon={DollarSign}
+          trend={metrics.revenueToday > 0 ? "up" : undefined}
+          accent
+        />
+        <MetricCard 
+          title="Conversion Rate" 
+          value={`${metrics.conversionRate.toFixed(1)}%`}
+          subValue={`${metrics.conversions} sales`}
+          icon={Target}
+          trend={metrics.conversionRate > 5 ? "up" : "down"}
+        />
+        <MetricCard 
+          title="Hot Leads" 
+          value={metrics.hotLeads}
+          subValue="Ready to close"
+          icon={Zap}
+        />
+        <MetricCard 
+          title="Avg Lead Score" 
+          value={metrics.avgLeadScore}
+          subValue="/ 100"
+          icon={TrendingUp}
+          trend={metrics.avgLeadScore > 50 ? "up" : "down"}
+        />
+      </div>
+
+      {/* Row 2: Conversion Funnel */}
+      <Card className="mb-4">
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Conversion Funnel
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 text-center p-3 bg-muted/50 rounded-lg">
+              <p className="text-2xl font-bold">{metrics.totalVisitors.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Visitors</p>
+            </div>
+            <div className="flex flex-col items-center">
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground rotate-45" />
+              <Badge variant="outline" className="text-xs mt-1">
+                {metrics.visitorToLeadRate.toFixed(1)}%
+              </Badge>
+            </div>
+            <div className="flex-1 text-center p-3 bg-muted/50 rounded-lg">
+              <p className="text-2xl font-bold">{metrics.totalLeads}</p>
+              <p className="text-xs text-muted-foreground">Leads</p>
+            </div>
+            <div className="flex flex-col items-center">
+              <ArrowUpRight className="h-4 w-4 text-muted-foreground rotate-45" />
+              <Badge variant="outline" className="text-xs mt-1">
+                {metrics.leadToCustomerRate.toFixed(1)}%
+              </Badge>
+            </div>
+            <div className="flex-1 text-center p-3 bg-primary/10 rounded-lg border border-primary/20">
+              <p className="text-2xl font-bold text-primary">{metrics.conversions}</p>
+              <p className="text-xs text-muted-foreground">Customers</p>
+            </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Conversion Funnel */}
+      {/* Row 3: Split View - Channel Performance + AI Chat */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Left: Channel Performance (60%) */}
+        <div className="lg:col-span-3 space-y-4">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary" />
-                Conversion Funnel
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 text-center p-3 bg-muted/50 rounded-lg">
-                  <p className="text-2xl font-bold">{metrics.totalVisitors.toLocaleString()}</p>
-                  <p className="text-xs text-muted-foreground">Visitors</p>
-                </div>
-                <div className="flex flex-col items-center">
-                  <ArrowUpRight className="h-5 w-5 text-muted-foreground rotate-45" />
-                  <Badge variant="outline" className="text-xs mt-1">
-                    {metrics.visitorToLeadRate.toFixed(1)}%
-                  </Badge>
-                </div>
-                <div className="flex-1 text-center p-3 bg-muted/50 rounded-lg">
-                  <p className="text-2xl font-bold">{metrics.totalLeads}</p>
-                  <p className="text-xs text-muted-foreground">Leads</p>
-                </div>
-                <div className="flex flex-col items-center">
-                  <ArrowUpRight className="h-5 w-5 text-muted-foreground rotate-45" />
-                  <Badge variant="outline" className="text-xs mt-1">
-                    {metrics.leadToCustomerRate.toFixed(1)}%
-                  </Badge>
-                </div>
-                <div className="flex-1 text-center p-3 bg-accent/10 rounded-lg border border-accent/20">
-                  <p className="text-2xl font-bold text-accent">{metrics.conversions}</p>
-                  <p className="text-xs text-muted-foreground">Customers</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Channel Performance */}
-          <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <BarChart3 className="h-4 w-4 text-primary" />
                 Channel Performance
@@ -362,30 +346,24 @@ const CEOConsole = () => {
               <ChannelPerformanceTable data={channelData} isLoading={loading} />
             </CardContent>
           </Card>
-        </div>
 
-        {/* Right Column - AI Chat & A/B Tests */}
-        <div className="col-span-12 lg:col-span-4 space-y-4 lg:space-y-6">
-          <CEOChatPanel 
-            className="h-[400px]" 
-            onInsightGenerated={(metrics) => {
-              // Could update UI with real-time metrics from AI
-              console.log("AI metrics:", metrics);
-            }}
-          />
-          
           <ABTestsWidget 
             tests={abTests} 
             onRefresh={fetchData}
             isLoading={loading}
           />
+        </div>
 
+        {/* Right: AI Chat + Quick Actions (40%) */}
+        <div className="lg:col-span-2 space-y-4">
+          <CEOChatPanel className="h-[420px]" />
+          
           {/* Quick Actions */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm font-medium">Quick Actions</CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-2">
+            <CardContent className="grid grid-cols-2 gap-2 p-4 pt-0">
               <Button 
                 variant="outline" 
                 size="sm"
@@ -426,7 +404,7 @@ const CEOConsole = () => {
           </Card>
         </div>
       </div>
-    </div>
+    </AdminLayout>
   );
 };
 
