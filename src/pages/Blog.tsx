@@ -7,15 +7,23 @@ import { blogPosts, getAllCategories } from "@/data/blogPosts";
 import { Calendar, Clock, ArrowRight, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useVisitor } from "@/contexts/VisitorContext";
 
 const Blog = () => {
   const categories = getAllCategories();
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { trackCtaClick, trackSectionView } = useVisitor();
+
+  // Track blog page view on mount
+  useState(() => {
+    trackSectionView("blog-page");
+  });
 
   const handleNewsletterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    trackCtaClick("blog-newsletter-submit");
     if (!newsletterEmail.trim()) {
       toast({
         title: "Missing email",
@@ -103,6 +111,7 @@ const Blog = () => {
                   key={category}
                   variant="secondary"
                   className="cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
+                  onClick={() => trackCtaClick(`blog-category-${category.toLowerCase().replace(/\s+/g, '-')}`)}
                 >
                   {category}
                 </Badge>
@@ -172,6 +181,7 @@ const Blog = () => {
                     <Link
                       to={`/blog/${post.slug}`}
                       className="inline-flex items-center gap-2 text-accent font-semibold hover:underline"
+                      onClick={() => trackCtaClick(`blog-read-${post.slug}`)}
                     >
                       Read Article
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />

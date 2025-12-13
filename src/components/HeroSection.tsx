@@ -3,13 +3,26 @@ import { Button } from "@/components/ui/button";
 import { Video, Phone, BarChart3 } from "lucide-react";
 import LiveVideoCall from "./LiveVideoCall";
 import VapiVoiceDemo from "./VapiVoiceDemo";
+import { useVisitor } from "@/contexts/VisitorContext";
 
 const HeroSection = () => {
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
   const [isVoiceDemoOpen, setIsVoiceDemoOpen] = useState(false);
+  const { trackCtaClick } = useVisitor();
 
   const scrollToSection = (id: string) => {
+    trackCtaClick(`hero-scroll-${id}`);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleVideoCallOpen = () => {
+    trackCtaClick("hero-video-call-cta");
+    setIsVideoCallOpen(true);
+  };
+
+  const handleVoiceDemoOpen = () => {
+    trackCtaClick("hero-voice-demo-cta");
+    setIsVoiceDemoOpen(true);
   };
 
   return (
@@ -41,7 +54,7 @@ const HeroSection = () => {
               <Button 
                 variant="hero" 
                 size="xl" 
-                onClick={() => setIsVideoCallOpen(true)}
+                onClick={handleVideoCallOpen}
                 className="w-full group"
               >
                 <Video className="w-6 h-6" />
@@ -52,7 +65,7 @@ const HeroSection = () => {
               <Button 
                 variant="heroSecondary" 
                 size="xl"
-                onClick={() => setIsVoiceDemoOpen(true)}
+                onClick={handleVoiceDemoOpen}
                 className="w-full"
               >
                 <Phone className="w-5 h-5" />
@@ -95,7 +108,7 @@ const HeroSection = () => {
             <div className="relative">
               {/* Video Call Preview Card */}
               <div 
-                onClick={() => setIsVideoCallOpen(true)}
+                onClick={handleVideoCallOpen}
                 className="w-80 md:w-96 bg-gradient-to-br from-primary-foreground/10 to-accent/20 rounded-2xl p-1 shadow-2xl cursor-pointer group hover:scale-105 transition-all duration-300"
               >
                 <div className="bg-primary rounded-xl overflow-hidden">
