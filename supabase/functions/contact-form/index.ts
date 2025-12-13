@@ -389,19 +389,28 @@ ${notes || "None"}
     const otherServicesNeeded = interests.join(", ");
     
     const webhookPayload = {
-      // GHL Standard Contact Fields - both formats for compatibility
+      // GHL Standard Contact Fields - using GHL's expected field names
+      // Primary fields (camelCase - GHL's preferred format)
       firstName: firstName,
       lastName: lastName,
-      first_name: firstName,
-      last_name: lastName,
-      name: name,
+      fullName: name,
       email: email,
       phone: phone || "",
       companyName: derivedBusinessName,
-      company_name: derivedBusinessName,
-      website: website,
+      website: website || "",
       source: source,
       tags: tags,
+      // Also include snake_case for webhook compatibility
+      first_name: firstName,
+      last_name: lastName,
+      full_name: name,
+      company_name: derivedBusinessName,
+      // GHL also accepts 'name' for full name
+      name: name,
+      // GHL accepts 'company' as alternative
+      company: derivedBusinessName,
+      // GHL business name field
+      businessName: derivedBusinessName,
       
       // Custom fields object
       customField: {
