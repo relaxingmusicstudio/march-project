@@ -110,3 +110,27 @@ verify_jwt = false
 
 [functions.churn-intervention]
 verify_jwt = false
+
+[functions.product-provisioning]
+verify_jwt = false
+
+[functions.welcome-sequence]
+verify_jwt = false
+
+[functions.onboarding-tracker]
+verify_jwt = false
+
+[functions.value-report-generator]
+verify_jwt = false
+
+[functions.nps-survey]
+verify_jwt = false
+
+[functions.referral-tracker]
+verify_jwt = false
+
+[functions.cohort-analysis]
+verify_jwt = false
+
+[functions.qbr-generator]
+verify_jwt = false

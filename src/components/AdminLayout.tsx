@@ -32,6 +32,7 @@ const navItems = [
   { path: "/admin/agent/inbox", label: "Inbox", icon: MessageSquare },
   { path: "/admin/leads", label: "Leads", icon: Users },
   { path: "/admin/clients", label: "Clients", icon: Users },
+  { path: "/admin/onboarding", label: "Onboarding", icon: Zap },
   { path: "/admin/agent/content", label: "Content", icon: FileText },
   { path: "/admin/agent/youtube", label: "YouTube", icon: Youtube },
   { path: "/admin/agent/social", label: "Social", icon: Share2 },
