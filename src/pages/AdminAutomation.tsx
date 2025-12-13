@@ -413,20 +413,69 @@ function FunctionCard({
 }
 
 function AudioEffectsPanel() {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingMusic, setIsGeneratingMusic] = useState(false);
+  const [isGeneratingSfx, setIsGeneratingSfx] = useState(false);
   const [musicPrompt, setMusicPrompt] = useState('Upbeat corporate background music for HVAC promotional video');
   const [sfxPrompt, setSfxPrompt] = useState('Air conditioning unit starting up, mechanical hum');
+  const [musicAudio, setMusicAudio] = useState<string | null>(null);
+  const [sfxAudio, setSfxAudio] = useState<string | null>(null);
 
   const testMusicGeneration = async () => {
-    setIsGenerating(true);
-    toast.info('Music generation requires ELEVENLABS_API_KEY. Add it in settings to enable.');
-    setIsGenerating(false);
+    setIsGeneratingMusic(true);
+    toast.info('Generating music... This may take 20-30 seconds.');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-music`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: musicPrompt, duration: 30 }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate music');
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      setMusicAudio(audioUrl);
+      toast.success('Music generated successfully! Click play to listen.');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Music generation error:', msg);
+      toast.error(`Failed to generate music: ${msg}`);
+    } finally {
+      setIsGeneratingMusic(false);
+    }
   };
 
   const testSfxGeneration = async () => {
-    setIsGenerating(true);
-    toast.info('SFX generation requires ELEVENLABS_API_KEY. Add it in settings to enable.');
-    setIsGenerating(false);
+    setIsGeneratingSfx(true);
+    toast.info('Generating sound effect... This may take 5-10 seconds.');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-sfx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: sfxPrompt, duration: 5 }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate SFX');
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      setSfxAudio(audioUrl);
+      toast.success('Sound effect generated! Click play to listen.');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('SFX generation error:', msg);
+      toast.error(`Failed to generate SFX: ${msg}`);
+    } finally {
+      setIsGeneratingSfx(false);
+    }
   };
 
   return (
@@ -459,15 +508,26 @@ function AudioEffectsPanel() {
             onChange={(e) => setMusicPrompt(e.target.value)}
             placeholder="Describe the music you want..."
           />
+
+          {musicAudio && (
+            <audio controls className="w-full" src={musicAudio}>
+              Your browser does not support audio playback.
+            </audio>
+          )}
           
-          <Button onClick={testMusicGeneration} disabled={isGenerating} className="w-full">
-            <Music className="h-4 w-4 mr-2" />
-            Generate Music (Requires API Key)
+          <Button onClick={testMusicGeneration} disabled={isGeneratingMusic} className="w-full">
+            {isGeneratingMusic ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Music className="h-4 w-4 mr-2" />
+                Generate Music
+              </>
+            )}
           </Button>
-          
-          <p className="text-xs text-muted-foreground text-center">
-            Requires ELEVENLABS_API_KEY secret
-          </p>
         </CardContent>
       </Card>
 
@@ -499,15 +559,26 @@ function AudioEffectsPanel() {
             onChange={(e) => setSfxPrompt(e.target.value)}
             placeholder="Describe the sound effect..."
           />
+
+          {sfxAudio && (
+            <audio controls className="w-full" src={sfxAudio}>
+              Your browser does not support audio playback.
+            </audio>
+          )}
           
-          <Button onClick={testSfxGeneration} disabled={isGenerating} className="w-full">
-            <Zap className="h-4 w-4 mr-2" />
-            Generate SFX (Requires API Key)
+          <Button onClick={testSfxGeneration} disabled={isGeneratingSfx} className="w-full">
+            {isGeneratingSfx ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Zap className="h-4 w-4 mr-2" />
+                Generate SFX
+              </>
+            )}
           </Button>
-          
-          <p className="text-xs text-muted-foreground text-center">
-            Requires ELEVENLABS_API_KEY secret
-          </p>
         </CardContent>
       </Card>
 
