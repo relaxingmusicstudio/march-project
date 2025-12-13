@@ -74,3 +74,9 @@ verify_jwt = false
 
 [functions.did-video-status]
 verify_jwt = false
+
+[functions.elevenlabs-music]
+verify_jwt = false
+
+[functions.elevenlabs-sfx]
+verify_jwt = false
