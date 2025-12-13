@@ -80,6 +80,35 @@ interface ContactFormRequest {
   aiAuthorityScore?: number;
   aiNeedScore?: number;
   aiTimelineScore?: number;
+  // Visitor Intelligence fields
+  visitorId?: string;
+  isReturningVisitor?: string;
+  visitCount?: string;
+  firstVisitDate?: string;
+  lastVisitDate?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  utmTerm?: string;
+  referrerSource?: string;
+  landingPage?: string;
+  entryPage?: string;
+  deviceType?: string;
+  browser?: string;
+  pagesViewed?: string;
+  sectionsViewed?: string;
+  ctaClicks?: string;
+  calculatorUsed?: string;
+  demoWatched?: string;
+  demoWatchTime?: string;
+  scrollDepth?: string;
+  timeOnSite?: string;
+  chatbotOpened?: string;
+  chatbotEngaged?: string;
+  engagementScore?: string;
+  interestSignals?: string;
+  behavioralIntent?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -175,6 +204,36 @@ const handler = async (req: Request): Promise<Response> => {
     const aiAuthorityScore = requestData.aiAuthorityScore;
     const aiNeedScore = requestData.aiNeedScore;
     const aiTimelineScore = requestData.aiTimelineScore;
+    
+    // Visitor Intelligence fields
+    const visitorId = sanitizeString(requestData.visitorId, 50);
+    const isReturningVisitor = sanitizeString(requestData.isReturningVisitor, 5);
+    const visitCount = sanitizeString(requestData.visitCount, 10);
+    const firstVisitDate = sanitizeString(requestData.firstVisitDate, 50);
+    const lastVisitDate = sanitizeString(requestData.lastVisitDate, 50);
+    const utmSource = sanitizeString(requestData.utmSource, 100);
+    const utmMedium = sanitizeString(requestData.utmMedium, 100);
+    const utmCampaign = sanitizeString(requestData.utmCampaign, 200);
+    const utmContent = sanitizeString(requestData.utmContent, 200);
+    const utmTerm = sanitizeString(requestData.utmTerm, 200);
+    const referrerSource = sanitizeString(requestData.referrerSource, 500);
+    const landingPage = sanitizeString(requestData.landingPage, 500);
+    const entryPage = sanitizeString(requestData.entryPage, 200);
+    const deviceType = sanitizeString(requestData.deviceType, 20);
+    const browser = sanitizeString(requestData.browser, 50);
+    const pagesViewed = sanitizeString(requestData.pagesViewed, 500);
+    const sectionsViewed = sanitizeString(requestData.sectionsViewed, 500);
+    const ctaClicks = sanitizeString(requestData.ctaClicks, 500);
+    const calculatorUsed = sanitizeString(requestData.calculatorUsed, 5);
+    const demoWatched = sanitizeString(requestData.demoWatched, 5);
+    const demoWatchTime = sanitizeString(requestData.demoWatchTime, 20);
+    const scrollDepth = sanitizeString(requestData.scrollDepth, 10);
+    const timeOnSite = sanitizeString(requestData.timeOnSite, 20);
+    const chatbotOpened = sanitizeString(requestData.chatbotOpened, 5);
+    const chatbotEngaged = sanitizeString(requestData.chatbotEngaged, 5);
+    const engagementScore = sanitizeString(requestData.engagementScore, 10);
+    const interestSignals = sanitizeString(requestData.interestSignals, 500);
+    const behavioralIntent = sanitizeString(requestData.behavioralIntent, 100);
 
     // Split name into firstName and lastName for GHL
     const nameParts = name.split(' ');
@@ -400,6 +459,35 @@ ${notes || "None"}
         ai_bant_authority: aiAuthorityScore?.toString() || "",
         ai_bant_need: aiNeedScore?.toString() || "",
         ai_bant_timeline: aiTimelineScore?.toString() || "",
+        // Visitor Intelligence fields
+        visitor_id: visitorId || "",
+        is_returning_visitor: isReturningVisitor || "NO",
+        visit_count: visitCount || "1",
+        first_visit_date: firstVisitDate || "",
+        last_visit_date: lastVisitDate || "",
+        utm_source: utmSource || "",
+        utm_medium: utmMedium || "",
+        utm_campaign: utmCampaign || "",
+        utm_content: utmContent || "",
+        utm_term: utmTerm || "",
+        referrer_source: referrerSource || "Direct",
+        landing_page: landingPage || "",
+        entry_page: entryPage || "",
+        device_type: deviceType || "",
+        browser: browser || "",
+        pages_viewed: pagesViewed || "",
+        sections_viewed: sectionsViewed || "",
+        cta_clicks: ctaClicks || "",
+        calculator_used: calculatorUsed || "NO",
+        demo_watched: demoWatched || "NO",
+        demo_watch_time: demoWatchTime || "0s",
+        scroll_depth: scrollDepth || "0%",
+        time_on_site: timeOnSite || "0min",
+        chatbot_opened: chatbotOpened || "NO",
+        chatbot_engaged: chatbotEngaged || "NO",
+        engagement_score: engagementScore || "0",
+        interest_signals: interestSignals || "",
+        behavioral_intent: behavioralIntent || "Unknown",
       },
       
       // Root level duplicates for GHL webhook compatibility
@@ -451,6 +539,35 @@ ${notes || "None"}
       plan: plan,
       stripe_session_id: stripeSessionId,
       payment_date: paymentDate,
+      // Visitor Intelligence fields (root level)
+      visitor_id: visitorId || "",
+      is_returning_visitor: isReturningVisitor || "NO",
+      visit_count: visitCount || "1",
+      first_visit_date: firstVisitDate || "",
+      last_visit_date: lastVisitDate || "",
+      utm_source: utmSource || "",
+      utm_medium: utmMedium || "",
+      utm_campaign: utmCampaign || "",
+      utm_content: utmContent || "",
+      utm_term: utmTerm || "",
+      referrer_source: referrerSource || "Direct",
+      landing_page: landingPage || "",
+      entry_page: entryPage || "",
+      device_type: deviceType || "",
+      browser: browser || "",
+      pages_viewed: pagesViewed || "",
+      sections_viewed: sectionsViewed || "",
+      cta_clicks: ctaClicks || "",
+      calculator_used: calculatorUsed || "NO",
+      demo_watched: demoWatched || "NO",
+      demo_watch_time: demoWatchTime || "0s",
+      scroll_depth: scrollDepth || "0%",
+      time_on_site: timeOnSite || "0min",
+      chatbot_opened: chatbotOpened || "NO",
+      chatbot_engaged: chatbotEngaged || "NO",
+      engagement_score: engagementScore || "0",
+      interest_signals: interestSignals || "",
+      behavioral_intent: behavioralIntent || "Unknown",
       
       // Notes
       notes: ghlNotes,

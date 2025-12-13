@@ -1,4 +1,5 @@
 import { Helmet } from "react-helmet-async";
+import { useEffect } from "react";
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import RevenueCalculator from "@/components/RevenueCalculator";
@@ -13,8 +14,12 @@ import StickyFooter from "@/components/StickyFooter";
 import Footer from "@/components/Footer";
 import ExitIntentPopup from "@/components/ExitIntentPopup";
 import PlaybookSection from "@/components/PlaybookSection";
+import { useScrollTracking } from "@/hooks/useScrollTracking";
 
 const Index = () => {
+  // Initialize scroll and section tracking
+  useScrollTracking();
+  
   return (
     <>
       <Helmet>

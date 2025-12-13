@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Send, MessageSquare, Mail, User, Phone, Building, Users, PhoneCall, Clock, DollarSign, Headphones } from "lucide-react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import { useVisitor } from "@/contexts/VisitorContext";
 import {
   Select,
   SelectContent,
@@ -80,6 +81,7 @@ const aiTimelines = [
 
 const ContactForm = () => {
   const { toast } = useToast();
+  const { getGHLData, trackSectionView } = useVisitor();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<ContactFormData>({
     firstName: "",
@@ -132,8 +134,12 @@ const ContactForm = () => {
     setIsSubmitting(true);
 
     try {
+      // Get visitor intelligence data
+      const visitorData = getGHLData();
+      
       const { data, error } = await supabase.functions.invoke('contact-form', {
         body: {
+          name: `${result.data.firstName} ${result.data.lastName}`,
           firstName: result.data.firstName,
           lastName: result.data.lastName,
           email: result.data.email,
@@ -146,6 +152,36 @@ const ContactForm = () => {
           currentSolution: result.data.currentCallHandling,
           avgJobValue: result.data.avgJobValue,
           aiTimeline: result.data.aiTimeline,
+          formName: "Contact Form",
+          // Visitor Intelligence fields
+          visitorId: visitorData.visitor_id,
+          isReturningVisitor: visitorData.is_returning_visitor,
+          visitCount: visitorData.visit_count,
+          firstVisitDate: visitorData.first_visit_date,
+          lastVisitDate: visitorData.last_visit_date,
+          utmSource: visitorData.utm_source,
+          utmMedium: visitorData.utm_medium,
+          utmCampaign: visitorData.utm_campaign,
+          utmContent: visitorData.utm_content,
+          utmTerm: visitorData.utm_term,
+          referrerSource: visitorData.referrer_source,
+          landingPage: visitorData.landing_page,
+          entryPage: visitorData.entry_page,
+          deviceType: visitorData.device_type,
+          browser: visitorData.browser,
+          pagesViewed: visitorData.pages_viewed,
+          sectionsViewed: visitorData.sections_viewed,
+          ctaClicks: visitorData.cta_clicks,
+          calculatorUsed: visitorData.calculator_used,
+          demoWatched: visitorData.demo_watched,
+          demoWatchTime: visitorData.demo_watch_time,
+          scrollDepth: visitorData.scroll_depth,
+          timeOnSite: visitorData.time_on_site,
+          chatbotOpened: visitorData.chatbot_opened,
+          chatbotEngaged: visitorData.chatbot_engaged,
+          engagementScore: visitorData.engagement_score,
+          interestSignals: visitorData.interest_signals,
+          behavioralIntent: visitorData.behavioral_intent,
         },
       });
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { MessageCircle, X, Send, User, Loader2, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useVisitor } from "@/contexts/VisitorContext";
 
 type Message = {
   id: number;
@@ -41,6 +42,7 @@ const ALEX_AVATAR = "/alex-avatar.png";
 
 const Chatbot = () => {
   const { toast } = useToast();
+  const { trackChatbotOpen, trackChatbotEngage, getGHLData } = useVisitor();
   const [isOpen, setIsOpen] = useState(false);
   const [hasAutoOpened, setHasAutoOpened] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -362,6 +364,7 @@ Phase: ${leadData.conversationPhase}`;
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isSubmitting || isTyping) return;
     trackActivity();
+    trackChatbotEngage();
 
     const value = inputValue.trim();
     addUserMessage(value);
@@ -456,6 +459,9 @@ Objections: ${aiAnalysis?.objections_raised?.join(', ') || 'None'}
 Recommended Followup: ${aiAnalysis?.recommended_followup || 'Standard sequence'}
 Summary: ${aiAnalysis?.conversation_summary || 'N/A'}`;
 
+      // Get visitor intelligence data
+      const visitorData = getGHLData();
+      
       await supabase.functions.invoke('contact-form', {
         body: {
           name: leadData.name,
@@ -489,6 +495,35 @@ Summary: ${aiAnalysis?.conversation_summary || 'N/A'}`;
           aiAuthorityScore: aiAnalysis?.qualification_breakdown?.authority_score,
           aiNeedScore: aiAnalysis?.qualification_breakdown?.need_score,
           aiTimelineScore: aiAnalysis?.qualification_breakdown?.timeline_score,
+          // Visitor Intelligence fields
+          visitorId: visitorData.visitor_id,
+          isReturningVisitor: visitorData.is_returning_visitor,
+          visitCount: visitorData.visit_count,
+          firstVisitDate: visitorData.first_visit_date,
+          lastVisitDate: visitorData.last_visit_date,
+          utmSource: visitorData.utm_source,
+          utmMedium: visitorData.utm_medium,
+          utmCampaign: visitorData.utm_campaign,
+          utmContent: visitorData.utm_content,
+          utmTerm: visitorData.utm_term,
+          referrerSource: visitorData.referrer_source,
+          landingPage: visitorData.landing_page,
+          entryPage: visitorData.entry_page,
+          deviceType: visitorData.device_type,
+          browser: visitorData.browser,
+          pagesViewed: visitorData.pages_viewed,
+          sectionsViewed: visitorData.sections_viewed,
+          ctaClicks: visitorData.cta_clicks,
+          calculatorUsed: visitorData.calculator_used,
+          demoWatched: visitorData.demo_watched,
+          demoWatchTime: visitorData.demo_watch_time,
+          scrollDepth: visitorData.scroll_depth,
+          timeOnSite: visitorData.time_on_site,
+          chatbotOpened: visitorData.chatbot_opened,
+          chatbotEngaged: visitorData.chatbot_engaged,
+          engagementScore: visitorData.engagement_score,
+          interestSignals: visitorData.interest_signals,
+          behavioralIntent: visitorData.behavioral_intent,
         },
       });
 
@@ -509,6 +544,7 @@ Summary: ${aiAnalysis?.conversation_summary || 'N/A'}`;
 
   const handleOpen = () => {
     setIsOpen(true);
+    trackChatbotOpen();
     if (messages.length === 0) {
       initializeChat();
     }
