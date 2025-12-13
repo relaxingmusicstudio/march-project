@@ -49,6 +49,22 @@ interface ContactFormRequest {
   interests?: string[];
   formName?: string;
   website?: string;
+  // NEW: Address fields
+  streetAddress?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  // NEW: Business/lead fields
+  businessOverview?: string;
+  callRoutingHours?: string;
+  contactType?: string;
+  // NEW: Payment/Stripe fields
+  amountPaid?: string;
+  downloadDate?: string;
+  plan?: string;
+  stripeSessionId?: string;
+  paymentDate?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -110,6 +126,24 @@ const handler = async (req: Request): Promise<Response> => {
     const isGoodFit = requestData.isGoodFit;
     const fitReason = sanitizeString(requestData.fitReason, 200);
     const aiTimeline = sanitizeString(requestData.aiTimeline, 50);
+    
+    // NEW: Address fields
+    const streetAddress = sanitizeString(requestData.streetAddress, 200);
+    const city = sanitizeString(requestData.city, 100);
+    const state = sanitizeString(requestData.state, 50);
+    const postalCode = sanitizeString(requestData.postalCode, 20);
+    const country = sanitizeString(requestData.country, 100);
+    
+    // NEW: Business/lead fields
+    const businessOverview = sanitizeString(requestData.businessOverview, 500);
+    const callRoutingHours = sanitizeString(requestData.callRoutingHours, 200);
+    
+    // NEW: Payment/Stripe fields
+    const amountPaid = sanitizeString(requestData.amountPaid, 20);
+    const downloadDate = sanitizeString(requestData.downloadDate, 50);
+    const plan = sanitizeString(requestData.plan, 50);
+    const stripeSessionId = sanitizeString(requestData.stripeSessionId, 100);
+    const paymentDate = sanitizeString(requestData.paymentDate, 50);
 
     // Split name into firstName and lastName for GHL
     const nameParts = name.split(' ');
@@ -287,6 +321,22 @@ ${notes || "None"}
         missed_calls_monthly: missedCallsNumeric.toString(),
         current_call_handling: currentSolution || "",
         form_name: formName,
+        // NEW: Address fields
+        street_address: streetAddress,
+        city: city,
+        state: state,
+        postal_code: postalCode,
+        country: country,
+        // NEW: Business/lead fields
+        business_overview: businessOverview,
+        call_routing_hours: callRoutingHours,
+        contact_type: requestData.contactType || (isChatbot ? "Lead" : isPDF ? "Subscriber" : "Prospect"),
+        // NEW: Payment/Stripe fields
+        amount_paid: amountPaid,
+        download_date: downloadDate,
+        plan: plan,
+        stripe_session_id: stripeSessionId,
+        payment_date: paymentDate,
       },
       
       // Root level duplicates for GHL webhook compatibility
@@ -307,6 +357,22 @@ ${notes || "None"}
       missed_calls_monthly: missedCallsNumeric.toString(),
       current_call_handling: currentSolution || "",
       form_name: formName,
+      // NEW: Address fields (root level)
+      street_address: streetAddress,
+      city: city,
+      state: state,
+      postal_code: postalCode,
+      country: country,
+      // NEW: Business/lead fields (root level)
+      business_overview: businessOverview,
+      call_routing_hours: callRoutingHours,
+      contact_type: requestData.contactType || (isChatbot ? "Lead" : isPDF ? "Subscriber" : "Prospect"),
+      // NEW: Payment/Stripe fields (root level)
+      amount_paid: amountPaid,
+      download_date: downloadDate,
+      plan: plan,
+      stripe_session_id: stripeSessionId,
+      payment_date: paymentDate,
       
       // Notes
       notes: ghlNotes,
