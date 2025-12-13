@@ -2,13 +2,16 @@ import { Button } from "@/components/ui/button";
 import { Phone, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useVisitor } from "@/contexts/VisitorContext";
 
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const isHomePage = location.pathname === "/";
+  const { trackCtaClick } = useVisitor();
 
   const scrollToSection = (id: string) => {
+    trackCtaClick(`nav-${id}`);
     if (isHomePage) {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
     } else {
@@ -59,6 +62,7 @@ const Header = () => {
           <Link 
             to="/blog"
             className="text-primary-foreground/80 hover:text-accent transition-colors font-medium"
+            onClick={() => trackCtaClick("nav-blog")}
           >
             Blog
           </Link>
@@ -114,7 +118,10 @@ const Header = () => {
             </button>
             <Link 
               to="/blog"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={() => {
+                trackCtaClick("nav-blog-mobile");
+                setIsMobileMenuOpen(false);
+              }}
               className="text-primary-foreground/80 hover:text-accent transition-colors font-medium text-left py-2"
             >
               Blog

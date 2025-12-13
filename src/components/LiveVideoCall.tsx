@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { X, Video, VideoOff, Mic, MicOff, Phone, MessageSquare, Maximize2, Volume2 } from "lucide-react";
+import { useVisitor } from "@/contexts/VisitorContext";
 
 interface LiveVideoCallProps {
   isOpen: boolean;
@@ -12,24 +13,56 @@ const LiveVideoCall = ({ isOpen, onClose }: LiveVideoCallProps) => {
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isConnecting, setIsConnecting] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
+  const { trackCtaClick, trackDemoProgress } = useVisitor();
+  const sessionStartRef = useRef<number | null>(null);
+  const lastTrackedRef = useRef<number>(0);
+
+  // Track video call session start
+  useEffect(() => {
+    if (isOpen && !sessionStartRef.current) {
+      sessionStartRef.current = Date.now();
+      trackCtaClick("video-call-started");
+    }
+    if (!isOpen) {
+      // Track total session time when closing
+      if (sessionStartRef.current) {
+        const totalSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+        if (totalSeconds > 0) {
+          trackDemoProgress(totalSeconds);
+          trackCtaClick(`video-call-ended-${totalSeconds}s`);
+        }
+      }
+      sessionStartRef.current = null;
+      lastTrackedRef.current = 0;
+    }
+  }, [isOpen, trackCtaClick, trackDemoProgress]);
 
   useEffect(() => {
     if (isOpen && isConnecting) {
       const timer = setTimeout(() => {
         setIsConnecting(false);
+        trackCtaClick("video-call-connected");
       }, 2500);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, isConnecting]);
+  }, [isOpen, isConnecting, trackCtaClick]);
 
   useEffect(() => {
     if (isOpen && !isConnecting) {
       const interval = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
+        setCallDuration((prev) => {
+          const newDuration = prev + 1;
+          // Track progress every 30 seconds
+          if (newDuration % 30 === 0 && newDuration > lastTrackedRef.current) {
+            lastTrackedRef.current = newDuration;
+            trackDemoProgress(newDuration);
+          }
+          return newDuration;
+        });
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [isOpen, isConnecting]);
+  }, [isOpen, isConnecting, trackDemoProgress]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -42,6 +75,21 @@ const LiveVideoCall = ({ isOpen, onClose }: LiveVideoCallProps) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const handleClose = () => {
+    trackCtaClick("video-call-ended-by-user");
+    onClose();
+  };
+
+  const handleMuteToggle = () => {
+    setIsMuted(!isMuted);
+    trackCtaClick(isMuted ? "video-call-unmuted" : "video-call-muted");
+  };
+
+  const handleVideoToggle = () => {
+    setIsVideoOn(!isVideoOn);
+    trackCtaClick(isVideoOn ? "video-call-video-off" : "video-call-video-on");
   };
 
   if (!isOpen) return null;
@@ -58,7 +106,7 @@ const LiveVideoCall = ({ isOpen, onClose }: LiveVideoCallProps) => {
             </span>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-10 h-10 rounded-full bg-primary-foreground/10 flex items-center justify-center hover:bg-primary-foreground/20 transition-colors"
           >
             <X className="w-5 h-5 text-primary-foreground" />
@@ -149,7 +197,7 @@ const LiveVideoCall = ({ isOpen, onClose }: LiveVideoCallProps) => {
         <div className="p-6 bg-primary/20">
           <div className="flex items-center justify-center gap-4">
             <button
-              onClick={() => setIsMuted(!isMuted)}
+              onClick={handleMuteToggle}
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
                 isMuted ? "bg-destructive" : "bg-primary-foreground/20 hover:bg-primary-foreground/30"
               }`}
@@ -162,7 +210,7 @@ const LiveVideoCall = ({ isOpen, onClose }: LiveVideoCallProps) => {
             </button>
 
             <button
-              onClick={() => setIsVideoOn(!isVideoOn)}
+              onClick={handleVideoToggle}
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
                 !isVideoOn ? "bg-destructive" : "bg-primary-foreground/20 hover:bg-primary-foreground/30"
               }`}
@@ -175,7 +223,7 @@ const LiveVideoCall = ({ isOpen, onClose }: LiveVideoCallProps) => {
             </button>
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-16 h-16 rounded-full bg-destructive flex items-center justify-center hover:bg-destructive/90 transition-all shadow-lg hover:scale-105"
             >
               <Phone className="w-7 h-7 text-primary-foreground rotate-[135deg]" />

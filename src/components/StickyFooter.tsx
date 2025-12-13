@@ -1,8 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Clock, Rocket } from "lucide-react";
+import { useVisitor } from "@/contexts/VisitorContext";
 
 const StickyFooter = () => {
+  const { trackCtaClick } = useVisitor();
+
   const scrollToContact = () => {
+    trackCtaClick("sticky-footer-cta");
     document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
   };
 
