@@ -408,9 +408,13 @@ Phase: ${leadData.conversationPhase}`;
     if (hasSubmitted) return;
     
     setIsSubmitting(true);
+    
+    // Get visitor intelligence data first (only get once)
+    const visitorGHLData = getGHLData();
+    
     try {
-      // First, analyze the lead with AI
-      console.log("Analyzing lead with AI...");
+      // First, analyze the lead with AI including behavioral data
+      console.log("Analyzing lead with AI + behavioral data...");
       let aiAnalysis = null;
       
       try {
@@ -418,6 +422,28 @@ Phase: ${leadData.conversationPhase}`;
           body: {
             conversationHistory: conversationHistory,
             leadData: leadData,
+            visitorData: {
+              visitorId: visitorGHLData.visitor_id,
+              isReturningVisitor: visitorGHLData.is_returning_visitor === 'YES',
+              visitCount: parseInt(visitorGHLData.visit_count) || 1,
+              firstVisitAt: visitorGHLData.first_visit_date,
+              utmSource: visitorGHLData.utm_source,
+              utmMedium: visitorGHLData.utm_medium,
+              utmCampaign: visitorGHLData.utm_campaign,
+              referrer: visitorGHLData.referrer_source,
+              engagementScore: parseInt(visitorGHLData.engagement_score) || 0,
+              behavioralIntent: visitorGHLData.behavioral_intent,
+              scrollDepth: parseInt(visitorGHLData.scroll_depth) || 0,
+              timeOnPage: visitorGHLData.time_on_site,
+              pagesViewed: visitorGHLData.pages_viewed?.split(', ')?.length || 1,
+              calculatorUsed: visitorGHLData.calculator_used === 'YES',
+              demoWatched: visitorGHLData.demo_watched === 'YES',
+              demoWatchTime: parseInt(visitorGHLData.demo_watch_time) || 0,
+              chatbotEngaged: visitorGHLData.chatbot_engaged === 'YES',
+              ctaClicks: visitorGHLData.cta_clicks?.split(', ').filter(Boolean) || [],
+              sectionsViewed: visitorGHLData.sections_viewed?.split(', ').filter(Boolean) || [],
+              interestSignals: visitorGHLData.interest_signals?.split(', ').filter(Boolean) || [],
+            },
           },
         });
         
@@ -441,27 +467,37 @@ Interests: ${leadData.interests.join(", ")}
 Potential Monthly Loss: $${leadData.potentialLoss}
 Potential Annual Loss: $${leadData.potentialLoss * 12}
 
-=== AI ANALYSIS ===
+=== AI ANALYSIS (Enhanced with Behavioral Data) ===
 Lead Score: ${aiAnalysis?.lead_score || 'N/A'}/100
 Temperature: ${aiAnalysis?.lead_temperature?.toUpperCase() || 'N/A'}
 Intent: ${aiAnalysis?.lead_intent || 'N/A'}
 Conversion Probability: ${aiAnalysis?.conversion_probability || 'N/A'}%
 Urgency: ${aiAnalysis?.urgency_level?.toUpperCase() || 'N/A'}
+Traffic Quality: ${aiAnalysis?.traffic_quality?.toUpperCase() || 'N/A'}
+Engagement Level: ${aiAnalysis?.engagement_level || 'N/A'}
 
-BANT Breakdown:
-- Budget: ${aiAnalysis?.qualification_breakdown?.budget_score || 'N/A'}/25
-- Authority: ${aiAnalysis?.qualification_breakdown?.authority_score || 'N/A'}/20
-- Need: ${aiAnalysis?.qualification_breakdown?.need_score || 'N/A'}/25
-- Timeline: ${aiAnalysis?.qualification_breakdown?.timeline_score || 'N/A'}/30
+BANTE Breakdown (Budget/Authority/Need/Timeline/Engagement):
+- Budget: ${aiAnalysis?.qualification_breakdown?.budget_score || 'N/A'}/20
+- Authority: ${aiAnalysis?.qualification_breakdown?.authority_score || 'N/A'}/15
+- Need: ${aiAnalysis?.qualification_breakdown?.need_score || 'N/A'}/20
+- Timeline: ${aiAnalysis?.qualification_breakdown?.timeline_score || 'N/A'}/20
+- Engagement: ${aiAnalysis?.qualification_breakdown?.engagement_score || 'N/A'}/25
 
-Buying Signals: ${aiAnalysis?.buying_signals?.join(', ') || 'None detected'}
+Buying Signals (Conversation + Behavior): ${aiAnalysis?.buying_signals?.join(', ') || 'None detected'}
+Behavioral Insights: ${aiAnalysis?.behavioral_insights?.join(', ') || 'None'}
 Objections: ${aiAnalysis?.objections_raised?.join(', ') || 'None'}
 Recommended Followup: ${aiAnalysis?.recommended_followup || 'Standard sequence'}
-Summary: ${aiAnalysis?.conversation_summary || 'N/A'}`;
+Summary: ${aiAnalysis?.conversation_summary || 'N/A'}
 
-      // Get visitor intelligence data
-      const visitorData = getGHLData();
-      
+=== VISITOR BEHAVIORAL DATA ===
+Returning Visitor: ${visitorGHLData.is_returning_visitor}
+Visit Count: ${visitorGHLData.visit_count}
+Engagement Score: ${visitorGHLData.engagement_score}/100
+Calculator Used: ${visitorGHLData.calculator_used}
+Demo Watched: ${visitorGHLData.demo_watched}
+CTA Clicks: ${visitorGHLData.cta_clicks}
+Traffic Source: ${visitorGHLData.utm_source || visitorGHLData.referrer_source || 'Direct'}`;
+
       await supabase.functions.invoke('contact-form', {
         body: {
           name: leadData.name,
@@ -496,34 +532,39 @@ Summary: ${aiAnalysis?.conversation_summary || 'N/A'}`;
           aiNeedScore: aiAnalysis?.qualification_breakdown?.need_score,
           aiTimelineScore: aiAnalysis?.qualification_breakdown?.timeline_score,
           // Visitor Intelligence fields
-          visitorId: visitorData.visitor_id,
-          isReturningVisitor: visitorData.is_returning_visitor,
-          visitCount: visitorData.visit_count,
-          firstVisitDate: visitorData.first_visit_date,
-          lastVisitDate: visitorData.last_visit_date,
-          utmSource: visitorData.utm_source,
-          utmMedium: visitorData.utm_medium,
-          utmCampaign: visitorData.utm_campaign,
-          utmContent: visitorData.utm_content,
-          utmTerm: visitorData.utm_term,
-          referrerSource: visitorData.referrer_source,
-          landingPage: visitorData.landing_page,
-          entryPage: visitorData.entry_page,
-          deviceType: visitorData.device_type,
-          browser: visitorData.browser,
-          pagesViewed: visitorData.pages_viewed,
-          sectionsViewed: visitorData.sections_viewed,
-          ctaClicks: visitorData.cta_clicks,
-          calculatorUsed: visitorData.calculator_used,
-          demoWatched: visitorData.demo_watched,
-          demoWatchTime: visitorData.demo_watch_time,
-          scrollDepth: visitorData.scroll_depth,
-          timeOnSite: visitorData.time_on_site,
-          chatbotOpened: visitorData.chatbot_opened,
-          chatbotEngaged: visitorData.chatbot_engaged,
-          engagementScore: visitorData.engagement_score,
-          interestSignals: visitorData.interest_signals,
-          behavioralIntent: visitorData.behavioral_intent,
+          visitorId: visitorGHLData.visitor_id,
+          isReturningVisitor: visitorGHLData.is_returning_visitor,
+          visitCount: visitorGHLData.visit_count,
+          firstVisitDate: visitorGHLData.first_visit_date,
+          lastVisitDate: visitorGHLData.last_visit_date,
+          utmSource: visitorGHLData.utm_source,
+          utmMedium: visitorGHLData.utm_medium,
+          utmCampaign: visitorGHLData.utm_campaign,
+          utmContent: visitorGHLData.utm_content,
+          utmTerm: visitorGHLData.utm_term,
+          referrerSource: visitorGHLData.referrer_source,
+          landingPage: visitorGHLData.landing_page,
+          entryPage: visitorGHLData.entry_page,
+          deviceType: visitorGHLData.device_type,
+          browser: visitorGHLData.browser,
+          pagesViewed: visitorGHLData.pages_viewed,
+          sectionsViewed: visitorGHLData.sections_viewed,
+          ctaClicks: visitorGHLData.cta_clicks,
+          calculatorUsed: visitorGHLData.calculator_used,
+          demoWatched: visitorGHLData.demo_watched,
+          demoWatchTime: visitorGHLData.demo_watch_time,
+          scrollDepth: visitorGHLData.scroll_depth,
+          timeOnSite: visitorGHLData.time_on_site,
+          chatbotOpened: visitorGHLData.chatbot_opened,
+          chatbotEngaged: visitorGHLData.chatbot_engaged,
+          engagementScore: visitorGHLData.engagement_score,
+          interestSignals: visitorGHLData.interest_signals,
+          behavioralIntent: visitorGHLData.behavioral_intent,
+          // New AI behavioral analysis fields
+          aiEngagementLevel: aiAnalysis?.engagement_level,
+          aiTrafficQuality: aiAnalysis?.traffic_quality,
+          aiBehavioralInsights: aiAnalysis?.behavioral_insights,
+          aiEngagementScore: aiAnalysis?.qualification_breakdown?.engagement_score,
         },
       });
 
