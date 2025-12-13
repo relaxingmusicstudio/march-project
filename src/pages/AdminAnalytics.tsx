@@ -1,304 +1,404 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Users, MessageSquare, TrendingUp, Send, Loader2, Brain, ArrowLeft } from "lucide-react";
+import { 
+  BarChart3, Users, MessageSquare, TrendingUp, Send, Loader2, Brain, ArrowLeft,
+  Zap, AlertTriangle, FileText, Target, Lightbulb, StopCircle
+} from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCEOAgent } from "@/hooks/useCEOAgent";
+
+interface ChatMessage {
+  role: "user" | "ceo";
+  content: string;
+}
+
+const STORAGE_KEY = "ceo-agent-chat-history";
 
 const AdminAnalytics = () => {
   const navigate = useNavigate();
-  const { askCEO, isLoading, lastResponse, getWeeklySummary, getTrafficAnalysis, getConversionInsights, getLeadQualityReport } = useCEOAgent();
+  const { 
+    askCEOStream, 
+    cancelStream,
+    isLoading, 
+    isStreaming,
+    lastResponse, 
+    getWeeklySummary,
+    analyzeObjections,
+    findDropoffPatterns,
+    suggestPromptImprovements,
+    analyzeSuccessfulCloses
+  } = useCEOAgent();
+  
   const [query, setQuery] = useState("");
-  const [chatHistory, setChatHistory] = useState<Array<{ role: "user" | "ceo"; content: string }>>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [currentStreamContent, setCurrentStreamContent] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load initial summary on mount
+  // Load chat history from localStorage
   useEffect(() => {
-    getWeeklySummary();
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        setChatHistory(JSON.parse(saved));
+      } catch {
+        // Invalid JSON, clear it
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
   }, []);
 
-  // Update chat when response comes in
+  // Save chat history to localStorage
   useEffect(() => {
-    if (lastResponse?.response) {
-      setChatHistory(prev => [...prev, { role: "ceo", content: lastResponse.response }]);
+    if (chatHistory.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory.slice(-50))); // Keep last 50 messages
     }
-  }, [lastResponse]);
+  }, [chatHistory]);
 
-  const handleSend = async () => {
-    if (!query.trim() || isLoading) return;
+  // Auto-scroll to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, currentStreamContent]);
+
+  // Load initial summary on mount if no history
+  useEffect(() => {
+    if (chatHistory.length === 0) {
+      handlePresetQuery("Give me a quick overview of how we're doing", "Weekly Overview");
+    }
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    if (!query.trim() || isStreaming) return;
     
-    setChatHistory(prev => [...prev, { role: "user", content: query }]);
+    const userMessage = query.trim();
     setQuery("");
-    await askCEO(query);
-  };
+    
+    // Add user message
+    const newHistory = [...chatHistory, { role: "user" as const, content: userMessage }];
+    setChatHistory(newHistory);
+    setCurrentStreamContent("");
 
-  const handlePresetQuery = async (queryFn: () => Promise<any>, label: string) => {
-    setChatHistory(prev => [...prev, { role: "user", content: label }]);
-    await queryFn();
+    // Stream the response
+    await askCEOStream(
+      userMessage,
+      "7d",
+      newHistory,
+      (chunk) => {
+        setCurrentStreamContent(prev => prev + chunk);
+      },
+      () => {
+        // On done, add the complete message to history
+        setCurrentStreamContent(prev => {
+          if (prev) {
+            setChatHistory(h => [...h, { role: "ceo", content: prev }]);
+          }
+          return "";
+        });
+        inputRef.current?.focus();
+      }
+    );
+  }, [query, chatHistory, isStreaming, askCEOStream]);
+
+  const handlePresetQuery = useCallback(async (prompt: string, label: string) => {
+    if (isStreaming) return;
+    
+    const newHistory = [...chatHistory, { role: "user" as const, content: label }];
+    setChatHistory(newHistory);
+    setCurrentStreamContent("");
+
+    await askCEOStream(
+      prompt,
+      "7d",
+      newHistory,
+      (chunk) => {
+        setCurrentStreamContent(prev => prev + chunk);
+      },
+      () => {
+        setCurrentStreamContent(prev => {
+          if (prev) {
+            setChatHistory(h => [...h, { role: "ceo", content: prev }]);
+          }
+          return "";
+        });
+      }
+    );
+  }, [chatHistory, isStreaming, askCEOStream]);
+
+  const clearHistory = () => {
+    setChatHistory([]);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const metrics = lastResponse?.metrics;
 
+  // Format message content with basic markdown support
+  const formatContent = (content: string) => {
+    // Convert markdown headers
+    let formatted = content
+      .replace(/^### (.*$)/gim, '<h4 class="font-semibold text-base mt-3 mb-1">$1</h4>')
+      .replace(/^## (.*$)/gim, '<h3 class="font-semibold text-lg mt-4 mb-2">$1</h3>')
+      .replace(/^# (.*$)/gim, '<h2 class="font-bold text-xl mt-4 mb-2">$1</h2>')
+      // Bold
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Italic
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      // Bullet points
+      .replace(/^[•\-] (.*$)/gim, '<li class="ml-4">$1</li>')
+      // Numbered lists
+      .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 list-decimal">$1</li>')
+      // Line breaks
+      .replace(/\n\n/g, '<br/><br/>')
+      .replace(/\n/g, '<br/>');
+    
+    return formatted;
+  };
+
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto p-4 lg:p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate("/")} className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
               <ArrowLeft className="w-4 h-4" />
-              Back to Site
+              Back
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-                <Brain className="w-8 h-8 text-primary" />
-                CEO Agent Dashboard
+              <h1 className="text-2xl lg:text-3xl font-bold text-foreground flex items-center gap-3">
+                <Brain className="w-7 h-7 text-primary" />
+                CEO Agent
               </h1>
-              <p className="text-muted-foreground mt-1">AI-powered business intelligence for ApexLocal360</p>
+              <p className="text-sm text-muted-foreground mt-0.5">AI-powered business intelligence</p>
             </div>
           </div>
+          <Button variant="outline" size="sm" onClick={clearHistory}>
+            Clear Chat
+          </Button>
         </div>
 
         {/* Metrics Cards */}
         {metrics && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Visitors</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <Card className="bg-card/50">
+              <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground">Visitors</CardTitle>
+                <Users className="h-4 w-4 text-primary" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="py-0 px-4 pb-3">
                 <div className="text-2xl font-bold">{metrics.totalVisitors}</div>
-                <p className="text-xs text-muted-foreground">Last 7 days</p>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Conversations</CardTitle>
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <Card className="bg-card/50">
+              <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground">Conversations</CardTitle>
+                <MessageSquare className="h-4 w-4 text-primary" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="py-0 px-4 pb-3">
                 <div className="text-2xl font-bold">{metrics.totalConversations}</div>
-                <p className="text-xs text-muted-foreground">Chatbot interactions</p>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <Card className="bg-card/50">
+              <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground">Leads</CardTitle>
+                <TrendingUp className="h-4 w-4 text-primary" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="py-0 px-4 pb-3">
                 <div className="text-2xl font-bold">{metrics.totalLeads}</div>
-                <div className="flex gap-2 text-xs mt-1">
-                  <span className="text-green-500">{metrics.hotLeads} hot</span>
-                  <span className="text-yellow-500">{metrics.warmLeads} warm</span>
-                  <span className="text-muted-foreground">{metrics.coldLeads} cold</span>
+                <div className="flex gap-1.5 text-[10px] mt-0.5">
+                  <span className="text-green-500">{metrics.hotLeads}🔥</span>
+                  <span className="text-yellow-500">{metrics.warmLeads}🌡️</span>
+                  <span className="text-muted-foreground">{metrics.coldLeads}❄️</span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <Card className="bg-card/50">
+              <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground">Conversion</CardTitle>
+                <BarChart3 className="h-4 w-4 text-primary" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="py-0 px-4 pb-3">
                 <div className="text-2xl font-bold">{metrics.conversionRate}%</div>
-                <p className="text-xs text-muted-foreground">Visitor to lead</p>
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* CEO Agent Chat */}
-          <div className="lg:col-span-2">
-            <Card className="h-[600px] flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-primary" />
-                  Ask the CEO Agent
-                </CardTitle>
-                <CardDescription>
-                  Get AI-powered insights about your traffic, leads, and sales performance
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
-                {/* Chat Messages */}
-                <div className="flex-1 overflow-y-auto space-y-4 mb-4 p-4 bg-secondary/30 rounded-lg">
-                  {chatHistory.length === 0 && !isLoading && (
-                    <div className="text-center text-muted-foreground py-8">
+        {/* Main Chat Interface */}
+        <Card className="h-[calc(100vh-280px)] min-h-[500px] flex flex-col">
+          <CardHeader className="py-3 px-4 border-b">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <CardTitle className="text-sm font-medium">Chat with CEO Agent</CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Ask about traffic, leads, transcripts, or get optimization suggestions
+              </CardDescription>
+            </div>
+          </CardHeader>
+          
+          <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
+            {/* Chat Messages */}
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4">
+                {chatHistory.length === 0 && !isStreaming && (
+                  <div className="text-center py-12">
+                    <Brain className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+                    <p className="text-muted-foreground text-sm">
                       Ask me anything about your business performance...
-                    </div>
-                  )}
-                  
-                  {chatHistory.map((msg, i) => (
+                    </p>
+                  </div>
+                )}
+                
+                {chatHistory.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
                     <div
-                      key={i}
-                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                      className={`max-w-[85%] lg:max-w-[75%] p-3 rounded-2xl ${
+                        msg.role === "user"
+                          ? "bg-primary text-primary-foreground rounded-br-sm"
+                          : "bg-secondary/50 border border-border rounded-bl-sm"
+                      }`}
                     >
-                      <div
-                        className={`max-w-[80%] p-3 rounded-lg ${
-                          msg.role === "user"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-card border border-border"
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                      </div>
+                      {msg.role === "user" ? (
+                        <p className="text-sm">{msg.content}</p>
+                      ) : (
+                        <div 
+                          className="text-sm prose prose-sm dark:prose-invert max-w-none"
+                          dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }}
+                        />
+                      )}
                     </div>
-                  ))}
-                  
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="bg-card border border-border p-3 rounded-lg flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Analyzing data...
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick Actions */}
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePresetQuery(getTrafficAnalysis, "Analyze traffic sources")}
-                    disabled={isLoading}
-                  >
-                    Traffic Analysis
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePresetQuery(getConversionInsights, "Show conversion insights")}
-                    disabled={isLoading}
-                  >
-                    Conversion Insights
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePresetQuery(getLeadQualityReport, "Lead quality report")}
-                    disabled={isLoading}
-                  >
-                    Lead Quality
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePresetQuery(getWeeklySummary, "Weekly summary")}
-                    disabled={isLoading}
-                  >
-                    Weekly Summary
-                  </Button>
-                </div>
-
-                {/* Input */}
-                <div className="flex gap-2">
-                  <Input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                    placeholder="Ask about traffic, leads, conversions..."
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                  <Button onClick={handleSend} disabled={isLoading || !query.trim()}>
-                    <Send className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Sidebar - Insights & Traffic */}
-          <div className="space-y-6">
-            {/* Latest Insights */}
-            {lastResponse?.insights && lastResponse.insights.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Latest Insight</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {lastResponse.insights.map((insight, i) => (
-                    <div key={i} className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{insight.title}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          insight.priority === "high" ? "bg-red-500/20 text-red-500" :
-                          insight.priority === "medium" ? "bg-yellow-500/20 text-yellow-500" :
-                          "bg-green-500/20 text-green-500"
-                        }`}>
-                          {insight.priority}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{insight.summary}</p>
-                      {insight.recommendations.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-xs font-medium text-muted-foreground">Recommendations:</span>
-                          <ul className="text-xs space-y-1">
-                            {insight.recommendations.slice(0, 3).map((rec, j) => (
-                              <li key={j} className="flex items-start gap-2">
-                                <span className="text-primary">•</span>
-                                {rec}
-                              </li>
-                            ))}
-                          </ul>
+                  </div>
+                ))}
+                
+                {/* Streaming message */}
+                {(isStreaming || currentStreamContent) && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] lg:max-w-[75%] p-3 rounded-2xl bg-secondary/50 border border-border rounded-bl-sm">
+                      {currentStreamContent ? (
+                        <div 
+                          className="text-sm prose prose-sm dark:prose-invert max-w-none"
+                          dangerouslySetInnerHTML={{ __html: formatContent(currentStreamContent) }}
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Analyzing...
                         </div>
                       )}
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Traffic Sources */}
-            {metrics?.trafficSources && Object.keys(metrics.trafficSources).length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Traffic Sources</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {Object.entries(metrics.trafficSources)
-                      .sort(([,a], [,b]) => b - a)
-                      .slice(0, 5)
-                      .map(([source, count]) => (
-                        <div key={source} className="flex items-center justify-between">
-                          <span className="text-sm">{source}</span>
-                          <span className="text-sm font-medium">{count}</span>
-                        </div>
-                      ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                )}
+                
+                <div ref={chatEndRef} />
+              </div>
+            </ScrollArea>
 
-            {/* Conversation Outcomes */}
-            {metrics?.outcomeBreakdown && Object.keys(metrics.outcomeBreakdown).length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Conversation Outcomes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {Object.entries(metrics.outcomeBreakdown).map(([outcome, count]) => (
-                      <div key={outcome} className="flex items-center justify-between">
-                        <span className="text-sm capitalize">{outcome}</span>
-                        <span className="text-sm font-medium">{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
+            {/* Quick Actions */}
+            <div className="px-4 py-2 border-t bg-secondary/20">
+              <div className="flex flex-wrap gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => handlePresetQuery(
+                    "Analyze our conversation transcripts. What are the most common objections and how should we handle them better?",
+                    "Analyze Objections"
+                  )}
+                  disabled={isStreaming}
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  Objections
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => handlePresetQuery(
+                    "Where are leads dropping off in our conversations? Analyze the transcripts and show me the weak points.",
+                    "Find Drop-offs"
+                  )}
+                  disabled={isStreaming}
+                >
+                  <Target className="w-3 h-3" />
+                  Drop-offs
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => handlePresetQuery(
+                    "Based on transcript analysis, suggest specific improvements to our chatbot prompts with before/after examples.",
+                    "Improve Scripts"
+                  )}
+                  disabled={isStreaming}
+                >
+                  <Lightbulb className="w-3 h-3" />
+                  Script Ideas
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => handlePresetQuery(
+                    "Look at conversations that converted. What language and approaches lead to successful closes?",
+                    "Winning Patterns"
+                  )}
+                  disabled={isStreaming}
+                >
+                  <Zap className="w-3 h-3" />
+                  Winners
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => handlePresetQuery(
+                    "Give me an executive summary of this week with key wins, concerns, and action items.",
+                    "Weekly Summary"
+                  )}
+                  disabled={isStreaming}
+                >
+                  <FileText className="w-3 h-3" />
+                  Summary
+                </Button>
+              </div>
+            </div>
+
+            {/* Input */}
+            <div className="p-4 border-t bg-background">
+              <div className="flex gap-2">
+                <Input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                  placeholder="Ask about traffic, leads, objections, or how to improve..."
+                  disabled={isStreaming}
+                  className="flex-1"
+                />
+                {isStreaming ? (
+                  <Button variant="destructive" onClick={cancelStream}>
+                    <StopCircle className="w-4 h-4" />
+                  </Button>
+                ) : (
+                  <Button onClick={handleSend} disabled={!query.trim()}>
+                    <Send className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
