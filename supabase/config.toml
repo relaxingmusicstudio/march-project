@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.client-health-score]
 verify_jwt = false
+
+[functions.ceo-daily-briefing]
+verify_jwt = false
