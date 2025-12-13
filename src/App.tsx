@@ -27,6 +27,7 @@ import AdminAgentSequences from "./pages/AdminAgentSequences";
 import AdminAgentInbox from "./pages/AdminAgentInbox";
 import AdminAgentFunnels from "./pages/AdminAgentFunnels";
 import AdminAgentYouTube from "./pages/AdminAgentYouTube";
+import AdminAutomation from "./pages/AdminAutomation";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -62,6 +63,7 @@ const App = () => (
               <Route path="/admin/agent/sequences" element={<ProtectedRoute requireAdmin><AdminAgentSequences /></ProtectedRoute>} />
               <Route path="/admin/agent/inbox" element={<ProtectedRoute requireAdmin><AdminAgentInbox /></ProtectedRoute>} />
               <Route path="/admin/agent/youtube" element={<ProtectedRoute requireAdmin><AdminAgentYouTube /></ProtectedRoute>} />
+              <Route path="/admin/automation" element={<ProtectedRoute requireAdmin><AdminAutomation /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

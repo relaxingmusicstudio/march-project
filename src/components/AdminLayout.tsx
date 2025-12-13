@@ -35,6 +35,7 @@ const navItems = [
   { path: "/admin/agent/social", label: "Social", icon: Share2 },
   { path: "/admin/agent/ads", label: "Ads", icon: Megaphone },
   { path: "/admin/agent/sequences", label: "Sequences", icon: Zap },
+  { path: "/admin/automation", label: "Automation", icon: Zap },
   { path: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
