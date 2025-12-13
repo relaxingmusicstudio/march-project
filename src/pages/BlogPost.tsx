@@ -1,16 +1,26 @@
 import { useParams, Link, Navigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
+import { useEffect } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { getPostBySlug, getRecentPosts } from "@/data/blogPosts";
 import { Calendar, Clock, ArrowLeft, User, Tag, Share2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useVisitor } from "@/contexts/VisitorContext";
 
 const BlogPost = () => {
   const { slug } = useParams<{ slug: string }>();
   const post = slug ? getPostBySlug(slug) : undefined;
   const recentPosts = getRecentPosts(3).filter((p) => p.slug !== slug);
+  const { trackCtaClick, trackSectionView } = useVisitor();
+
+  // Track blog post view
+  useEffect(() => {
+    if (post) {
+      trackSectionView(`blog-post-${post.slug}`);
+    }
+  }, [post, trackSectionView]);
 
   if (!post) {
     return <Navigate to="/blog" replace />;
@@ -237,6 +247,7 @@ const BlogPost = () => {
                   <Button
                     variant="outline"
                     onClick={() => {
+                      trackCtaClick(`blog-share-${post.slug}`);
                       navigator.clipboard.writeText(shareUrl);
                     }}
                   >
@@ -258,6 +269,7 @@ const BlogPost = () => {
                 <Link
                   to="/#contact"
                   className="inline-block px-6 py-3 bg-accent text-accent-foreground font-semibold rounded-lg hover:bg-accent/90 transition-colors"
+                  onClick={() => trackCtaClick("blog-post-contact-cta")}
                 >
                   Talk to Our Team
                 </Link>
@@ -279,6 +291,7 @@ const BlogPost = () => {
                     key={relatedPost.slug}
                     to={`/blog/${relatedPost.slug}`}
                     className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow group"
+                    onClick={() => trackCtaClick(`blog-related-${relatedPost.slug}`)}
                   >
                     <Badge variant="outline" className="mb-3">
                       {relatedPost.category}
