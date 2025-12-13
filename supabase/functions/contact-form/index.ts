@@ -271,7 +271,23 @@ ${notes || "None"}
     };
     
     // Calculate missed call revenue (avgJobValue * missedCalls)
-    const avgJobNumeric = avgJobValue ? parseInt(avgJobValue.replace(/[^0-9]/g, '')) || 351 : 351;
+    // Parse avgJobValue properly - extract first number from ranges like "$500-1,000"
+    const parseAvgJobValue = (value: string): number => {
+      if (!value) return 351;
+      // Remove $ and commas, then split by dash to get range
+      const cleaned = value.replace(/[$,]/g, '');
+      const parts = cleaned.split('-');
+      if (parts.length >= 2) {
+        // It's a range like "500-1000", take average
+        const low = parseInt(parts[0]) || 0;
+        const high = parseInt(parts[1]) || 0;
+        return low && high ? Math.round((low + high) / 2) : (low || high || 351);
+      }
+      // Single value like "$2500+"
+      const num = parseInt(cleaned.replace(/[^0-9]/g, ''));
+      return num || 351;
+    };
+    const avgJobNumeric = parseAvgJobValue(avgJobValue || "");
     const missedCallsNumeric = missedCalls ? parseInt(missedCalls.replace(/[^0-9]/g, '')) || 0 : 0;
     const missedCallRevenue = avgJobNumeric * missedCallsNumeric;
     
