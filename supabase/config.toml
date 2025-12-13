@@ -26,3 +26,33 @@ verify_jwt = false
 
 [functions.save-analytics]
 verify_jwt = false
+
+[functions.messaging-send]
+verify_jwt = false
+
+[functions.twilio-webhook]
+verify_jwt = false
+
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.youtube-discover]
+verify_jwt = false
+
+[functions.content-generator]
+verify_jwt = false
+
+[functions.content-image]
+verify_jwt = false
+
+[functions.heygen-video]
+verify_jwt = false
+
+[functions.keyword-planner]
+verify_jwt = false
+
+[functions.comment-responder]
+verify_jwt = false
+
+[functions.test-integration]
+verify_jwt = false

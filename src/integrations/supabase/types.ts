@@ -44,6 +44,48 @@ export type Database = {
         }
         Relationships: []
       }
+      ad_campaigns: {
+        Row: {
+          budget_daily: number | null
+          created_at: string | null
+          external_campaign_id: string | null
+          id: string
+          name: string | null
+          objective: string | null
+          performance: Json | null
+          platform: string
+          status: string | null
+          targeting: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          budget_daily?: number | null
+          created_at?: string | null
+          external_campaign_id?: string | null
+          id?: string
+          name?: string | null
+          objective?: string | null
+          performance?: Json | null
+          platform: string
+          status?: string | null
+          targeting?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          budget_daily?: number | null
+          created_at?: string | null
+          external_campaign_id?: string | null
+          id?: string
+          name?: string | null
+          objective?: string | null
+          performance?: Json | null
+          platform?: string
+          status?: string | null
+          targeting?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       analytics_events: {
         Row: {
           created_at: string | null
@@ -80,6 +122,39 @@ export type Database = {
           utm_medium?: string | null
           utm_source?: string | null
           visitor_id?: string | null
+        }
+        Relationships: []
+      }
+      api_settings: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_configured: boolean | null
+          last_tested_at: string | null
+          setting_key: string
+          setting_value: string | null
+          test_status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_configured?: boolean | null
+          last_tested_at?: string | null
+          setting_key: string
+          setting_value?: string | null
+          test_status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_configured?: boolean | null
+          last_tested_at?: string | null
+          setting_key?: string
+          setting_value?: string | null
+          test_status?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -246,6 +321,183 @@ export type Database = {
           },
         ]
       }
+      content: {
+        Row: {
+          body: string | null
+          content_type: string | null
+          created_at: string | null
+          engagement: Json | null
+          id: string
+          idea_id: string | null
+          media_url: string | null
+          platform: string | null
+          published_at: string | null
+          scheduled_for: string | null
+          status: string | null
+          title: string | null
+          user_feedback: string | null
+        }
+        Insert: {
+          body?: string | null
+          content_type?: string | null
+          created_at?: string | null
+          engagement?: Json | null
+          id?: string
+          idea_id?: string | null
+          media_url?: string | null
+          platform?: string | null
+          published_at?: string | null
+          scheduled_for?: string | null
+          status?: string | null
+          title?: string | null
+          user_feedback?: string | null
+        }
+        Update: {
+          body?: string | null
+          content_type?: string | null
+          created_at?: string | null
+          engagement?: Json | null
+          id?: string
+          idea_id?: string | null
+          media_url?: string | null
+          platform?: string | null
+          published_at?: string | null
+          scheduled_for?: string | null
+          status?: string | null
+          title?: string | null
+          user_feedback?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "content_ideas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_calendar: {
+        Row: {
+          content_id: string | null
+          created_at: string | null
+          id: string
+          platform: string | null
+          scheduled_date: string | null
+          status: string | null
+          time_slot: string | null
+        }
+        Insert: {
+          content_id?: string | null
+          created_at?: string | null
+          id?: string
+          platform?: string | null
+          scheduled_date?: string | null
+          status?: string | null
+          time_slot?: string | null
+        }
+        Update: {
+          content_id?: string | null
+          created_at?: string | null
+          id?: string
+          platform?: string | null
+          scheduled_date?: string | null
+          status?: string | null
+          time_slot?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_calendar_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "content"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_comments: {
+        Row: {
+          ai_reply: string | null
+          comment_text: string | null
+          commenter_name: string | null
+          content_id: string | null
+          created_at: string | null
+          external_comment_id: string | null
+          id: string
+          platform: string | null
+          reply_status: string | null
+        }
+        Insert: {
+          ai_reply?: string | null
+          comment_text?: string | null
+          commenter_name?: string | null
+          content_id?: string | null
+          created_at?: string | null
+          external_comment_id?: string | null
+          id?: string
+          platform?: string | null
+          reply_status?: string | null
+        }
+        Update: {
+          ai_reply?: string | null
+          comment_text?: string | null
+          commenter_name?: string | null
+          content_id?: string | null
+          created_at?: string | null
+          external_comment_id?: string | null
+          id?: string
+          platform?: string | null
+          reply_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_comments_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "content"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_ideas: {
+        Row: {
+          created_at: string | null
+          id: string
+          niche: string | null
+          source: string | null
+          source_transcript: string | null
+          source_url: string | null
+          status: string | null
+          suggested_formats: string[] | null
+          topic: string | null
+          viral_score: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          niche?: string | null
+          source?: string | null
+          source_transcript?: string | null
+          source_url?: string | null
+          status?: string | null
+          suggested_formats?: string[] | null
+          topic?: string | null
+          viral_score?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          niche?: string | null
+          source?: string | null
+          source_transcript?: string | null
+          source_url?: string | null
+          status?: string | null
+          suggested_formats?: string[] | null
+          topic?: string | null
+          viral_score?: number | null
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           ai_analysis: Json | null
@@ -345,6 +597,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      keywords: {
+        Row: {
+          competition: string | null
+          cpc_estimate: number | null
+          created_at: string | null
+          current_rank: number | null
+          id: string
+          keyword: string
+          search_volume: number | null
+          status: string | null
+          trend_data: Json | null
+        }
+        Insert: {
+          competition?: string | null
+          cpc_estimate?: number | null
+          created_at?: string | null
+          current_rank?: number | null
+          id?: string
+          keyword: string
+          search_volume?: number | null
+          status?: string | null
+          trend_data?: Json | null
+        }
+        Update: {
+          competition?: string | null
+          cpc_estimate?: number | null
+          created_at?: string | null
+          current_rank?: number | null
+          id?: string
+          keyword?: string
+          search_volume?: number | null
+          status?: string | null
+          trend_data?: Json | null
+        }
+        Relationships: []
       }
       leads: {
         Row: {
