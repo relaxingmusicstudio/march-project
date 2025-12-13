@@ -68,3 +68,9 @@ verify_jwt = false
 
 [functions.content-calendar-checker]
 verify_jwt = false
+
+[functions.did-video]
+verify_jwt = false
+
+[functions.did-video-status]
+verify_jwt = false
