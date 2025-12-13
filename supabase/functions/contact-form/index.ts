@@ -389,27 +389,24 @@ ${notes || "None"}
     const otherServicesNeeded = interests.join(", ");
     
     const webhookPayload = {
-      // GHL Standard Contact Fields - using GHL's expected field names
-      // Primary fields (camelCase - GHL's preferred format)
-      firstName: firstName,
-      lastName: lastName,
-      fullName: name,
-      email: email,
-      phone: phone || "",
-      companyName: derivedBusinessName,
-      website: website || "",
-      source: source,
-      tags: tags,
-      // Also include snake_case for webhook compatibility
+      // GHL Standard Contact Fields - snake_case is GHL's native format
+      // CRITICAL: These must be at root level for GHL to map correctly
       first_name: firstName,
       last_name: lastName,
       full_name: name,
+      email: email,
+      phone: phone || "",
       company_name: derivedBusinessName,
-      // GHL also accepts 'name' for full name
+      website: website || "",
+      source: source,
+      tags: tags,
+      // Also include camelCase as backup (some GHL integrations use this)
+      firstName: firstName,
+      lastName: lastName,
       name: name,
-      // GHL accepts 'company' as alternative
+      companyName: derivedBusinessName,
+      fullName: name,
       company: derivedBusinessName,
-      // GHL business name field
       businessName: derivedBusinessName,
       
       // Custom fields object
