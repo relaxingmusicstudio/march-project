@@ -351,6 +351,12 @@ ${notes || "None"}
     const formName = rawFormName || (isChatbot ? "Chatbot - Alex" : isPDF ? "PDF Download" : isNewsletter ? "Newsletter" : "Contact Page Form");
     const website = sanitizeString(requestData.website, 255);
     
+    // Get interests/services - handle both array (interests) and string (otherServicesNeeded)
+    // IMPORTANT: This must be defined BEFORE analyzeLeadWithAI function uses it
+    const interests = requestData.interests || [];
+    const rawOtherServices = sanitizeString((requestData as any).otherServicesNeeded, 200);
+    const otherServicesNeeded = rawOtherServices || interests.join(", ");
+    
     // Calculate lead score
     const calculateLeadScore = () => {
       let score = 0;
@@ -577,11 +583,6 @@ ALWAYS respond with valid JSON only. No markdown, no explanations.`
     
     // Parse potential loss as numeric - use calculated value if not provided
     const potentialLossNumeric = potentialLoss ? parseInt(potentialLoss.replace(/[^0-9]/g, '')) || 0 : missedCallRevenue;
-    
-    // Get interests/services - handle both array (interests) and string (otherServicesNeeded)
-    const interests = requestData.interests || [];
-    const rawOtherServices = sanitizeString((requestData as any).otherServicesNeeded, 200);
-    const otherServicesNeeded = rawOtherServices || interests.join(", ");
     
     const webhookPayload = {
       // GHL Standard Contact Fields - snake_case is GHL's native format
