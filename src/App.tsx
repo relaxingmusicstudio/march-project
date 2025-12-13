@@ -11,6 +11,10 @@ import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import Auth from "./pages/Auth";
 import AdminAnalytics from "./pages/AdminAnalytics";
+import AdminInbox from "./pages/AdminInbox";
+import AdminContacts from "./pages/AdminContacts";
+import AdminSequences from "./pages/AdminSequences";
+import CEOConsole from "./pages/CEOConsole";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +37,38 @@ const App = () => (
                 element={
                   <ProtectedRoute requireAdmin>
                     <AdminAnalytics />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/ceo"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <CEOConsole />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/inbox"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminInbox />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/contacts"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminContacts />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/sequences"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <AdminSequences />
                   </ProtectedRoute>
                 }
               />
