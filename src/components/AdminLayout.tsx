@@ -15,6 +15,7 @@ import {
   LogOut,
   ChevronLeft,
   GitBranch,
+  Youtube,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -26,10 +27,11 @@ interface AdminLayoutProps {
 
 const navItems = [
   { path: "/admin/ceo", label: "CEO Console", icon: Brain },
-  { path: "/admin/agent/funnels", label: "Funnels", icon: GitBranch, priority: true },
+  { path: "/admin/agent/funnels", label: "Funnels", icon: GitBranch },
   { path: "/admin/agent/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/admin/agent/inbox", label: "Inbox", icon: MessageSquare },
   { path: "/admin/agent/content", label: "Content", icon: FileText },
+  { path: "/admin/agent/youtube", label: "YouTube", icon: Youtube },
   { path: "/admin/agent/social", label: "Social", icon: Share2 },
   { path: "/admin/agent/ads", label: "Ads", icon: Megaphone },
   { path: "/admin/agent/sequences", label: "Sequences", icon: Zap },
