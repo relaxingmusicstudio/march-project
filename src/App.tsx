@@ -19,6 +19,12 @@ import AdminSettings from "./pages/AdminSettings";
 import AdminContent from "./pages/AdminContent";
 import AdminSocial from "./pages/AdminSocial";
 import AdminAds from "./pages/AdminAds";
+import AdminAgentAnalytics from "./pages/AdminAgentAnalytics";
+import AdminAgentContent from "./pages/AdminAgentContent";
+import AdminAgentSocial from "./pages/AdminAgentSocial";
+import AdminAgentAds from "./pages/AdminAgentAds";
+import AdminAgentSequences from "./pages/AdminAgentSequences";
+import AdminAgentInbox from "./pages/AdminAgentInbox";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +51,13 @@ const App = () => (
               <Route path="/admin/content" element={<ProtectedRoute requireAdmin><AdminContent /></ProtectedRoute>} />
               <Route path="/admin/social" element={<ProtectedRoute requireAdmin><AdminSocial /></ProtectedRoute>} />
               <Route path="/admin/ads" element={<ProtectedRoute requireAdmin><AdminAds /></ProtectedRoute>} />
+              {/* Agent Pages */}
+              <Route path="/admin/agent/analytics" element={<ProtectedRoute requireAdmin><AdminAgentAnalytics /></ProtectedRoute>} />
+              <Route path="/admin/agent/content" element={<ProtectedRoute requireAdmin><AdminAgentContent /></ProtectedRoute>} />
+              <Route path="/admin/agent/social" element={<ProtectedRoute requireAdmin><AdminAgentSocial /></ProtectedRoute>} />
+              <Route path="/admin/agent/ads" element={<ProtectedRoute requireAdmin><AdminAgentAds /></ProtectedRoute>} />
+              <Route path="/admin/agent/sequences" element={<ProtectedRoute requireAdmin><AdminAgentSequences /></ProtectedRoute>} />
+              <Route path="/admin/agent/inbox" element={<ProtectedRoute requireAdmin><AdminAgentInbox /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
