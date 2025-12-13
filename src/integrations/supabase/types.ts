@@ -1176,6 +1176,45 @@ export type Database = {
           },
         ]
       }
+      competitor_watch: {
+        Row: {
+          competitor_facebook: string | null
+          competitor_name: string
+          competitor_website: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          last_checked_at: string | null
+          monitor_type: string[] | null
+          prospects_found: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          competitor_facebook?: string | null
+          competitor_name: string
+          competitor_website?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_checked_at?: string | null
+          monitor_type?: string[] | null
+          prospects_found?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          competitor_facebook?: string | null
+          competitor_name?: string
+          competitor_website?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_checked_at?: string | null
+          monitor_type?: string[] | null
+          prospects_found?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       consent_audit_log: {
         Row: {
           action: string
@@ -2759,6 +2798,113 @@ export type Database = {
         }
         Relationships: []
       }
+      scraped_prospects: {
+        Row: {
+          address: string | null
+          business_name: string | null
+          categories: string[] | null
+          city: string | null
+          competitor_of: string | null
+          consent_status: string | null
+          contact_name: string | null
+          converted_to_lead_id: string | null
+          created_at: string | null
+          do_not_contact: boolean | null
+          email: string | null
+          id: string
+          intent_score: number | null
+          is_verified: boolean | null
+          outreach_channel: string | null
+          outreach_priority: number | null
+          outreach_status: string | null
+          pain_signals: string[] | null
+          phone: string | null
+          phone_type: string | null
+          place_id: string | null
+          rating: number | null
+          review_count: number | null
+          scraped_at: string | null
+          source: string
+          source_url: string | null
+          state: string | null
+          updated_at: string | null
+          website: string | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          business_name?: string | null
+          categories?: string[] | null
+          city?: string | null
+          competitor_of?: string | null
+          consent_status?: string | null
+          contact_name?: string | null
+          converted_to_lead_id?: string | null
+          created_at?: string | null
+          do_not_contact?: boolean | null
+          email?: string | null
+          id?: string
+          intent_score?: number | null
+          is_verified?: boolean | null
+          outreach_channel?: string | null
+          outreach_priority?: number | null
+          outreach_status?: string | null
+          pain_signals?: string[] | null
+          phone?: string | null
+          phone_type?: string | null
+          place_id?: string | null
+          rating?: number | null
+          review_count?: number | null
+          scraped_at?: string | null
+          source: string
+          source_url?: string | null
+          state?: string | null
+          updated_at?: string | null
+          website?: string | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          business_name?: string | null
+          categories?: string[] | null
+          city?: string | null
+          competitor_of?: string | null
+          consent_status?: string | null
+          contact_name?: string | null
+          converted_to_lead_id?: string | null
+          created_at?: string | null
+          do_not_contact?: boolean | null
+          email?: string | null
+          id?: string
+          intent_score?: number | null
+          is_verified?: boolean | null
+          outreach_channel?: string | null
+          outreach_priority?: number | null
+          outreach_status?: string | null
+          pain_signals?: string[] | null
+          phone?: string | null
+          phone_type?: string | null
+          place_id?: string | null
+          rating?: number | null
+          review_count?: number | null
+          scraped_at?: string | null
+          source?: string
+          source_url?: string | null
+          state?: string | null
+          updated_at?: string | null
+          website?: string | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scraped_prospects_converted_to_lead_id_fkey"
+            columns: ["converted_to_lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_enrollments: {
         Row: {
           completed_at: string | null
@@ -2958,6 +3104,53 @@ export type Database = {
             columns: ["phone_number_id"]
             isOneToOne: false
             referencedRelation: "phone_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_keywords: {
+        Row: {
+          auto_tag: string | null
+          created_at: string | null
+          funnel_id: string | null
+          id: string
+          is_active: boolean | null
+          keyword: string
+          lead_magnet_url: string | null
+          response_message: string
+          updated_at: string | null
+          uses_count: number | null
+        }
+        Insert: {
+          auto_tag?: string | null
+          created_at?: string | null
+          funnel_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          keyword: string
+          lead_magnet_url?: string | null
+          response_message: string
+          updated_at?: string | null
+          uses_count?: number | null
+        }
+        Update: {
+          auto_tag?: string | null
+          created_at?: string | null
+          funnel_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          keyword?: string
+          lead_magnet_url?: string | null
+          response_message?: string
+          updated_at?: string | null
+          uses_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_keywords_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
             referencedColumns: ["id"]
           },
         ]
