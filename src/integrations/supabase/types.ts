@@ -6482,32 +6482,41 @@ export type Database = {
       tenants: {
         Row: {
           created_at: string | null
+          features_enabled: Json | null
           id: string
           is_active: boolean | null
           name: string
+          owner_user_id: string | null
           settings: Json | null
           slug: string
           subscription_plan: string | null
+          update_channel: string | null
           updated_at: string | null
         }
         Insert: {
           created_at?: string | null
+          features_enabled?: Json | null
           id?: string
           is_active?: boolean | null
           name: string
+          owner_user_id?: string | null
           settings?: Json | null
           slug: string
           subscription_plan?: string | null
+          update_channel?: string | null
           updated_at?: string | null
         }
         Update: {
           created_at?: string | null
+          features_enabled?: Json | null
           id?: string
           is_active?: boolean | null
           name?: string
+          owner_user_id?: string | null
           settings?: Json | null
           slug?: string
           subscription_plan?: string | null
+          update_channel?: string | null
           updated_at?: string | null
         }
         Relationships: []
