@@ -170,3 +170,9 @@ verify_jwt = false
 
 [functions.visual-content-generator]
 verify_jwt = false
+
+[functions.methodology-selector]
+verify_jwt = false
+
+[functions.api-gateway]
+verify_jwt = false

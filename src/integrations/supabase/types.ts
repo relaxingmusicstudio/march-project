@@ -187,9 +187,11 @@ export type Database = {
           id: string
           last_used_at: string | null
           metadata: Json | null
+          methodology_effectiveness: Json | null
           query: string
           query_embedding: string | null
           response: string
+          sales_methodology: string | null
           success_score: number | null
           updated_at: string | null
           usage_count: number | null
@@ -200,9 +202,11 @@ export type Database = {
           id?: string
           last_used_at?: string | null
           metadata?: Json | null
+          methodology_effectiveness?: Json | null
           query: string
           query_embedding?: string | null
           response: string
+          sales_methodology?: string | null
           success_score?: number | null
           updated_at?: string | null
           usage_count?: number | null
@@ -213,9 +217,11 @@ export type Database = {
           id?: string
           last_used_at?: string | null
           metadata?: Json | null
+          methodology_effectiveness?: Json | null
           query?: string
           query_embedding?: string | null
           response?: string
+          sales_methodology?: string | null
           success_score?: number | null
           updated_at?: string | null
           usage_count?: number | null
@@ -303,6 +309,45 @@ export type Database = {
           utm_medium?: string | null
           utm_source?: string | null
           visitor_id?: string | null
+        }
+        Relationships: []
+      }
+      api_logs: {
+        Row: {
+          cost_cents: number | null
+          created_at: string
+          endpoint: string
+          error_message: string | null
+          id: string
+          method: string
+          request_body: Json | null
+          response_status: number | null
+          response_time_ms: number | null
+          service: string
+        }
+        Insert: {
+          cost_cents?: number | null
+          created_at?: string
+          endpoint: string
+          error_message?: string | null
+          id?: string
+          method?: string
+          request_body?: Json | null
+          response_status?: number | null
+          response_time_ms?: number | null
+          service: string
+        }
+        Update: {
+          cost_cents?: number | null
+          created_at?: string
+          endpoint?: string
+          error_message?: string | null
+          id?: string
+          method?: string
+          request_body?: Json | null
+          response_status?: number | null
+          response_time_ms?: number | null
+          service?: string
         }
         Relationships: []
       }
@@ -1791,6 +1836,81 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts_unified"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deal_pipeline: {
+        Row: {
+          buying_signals: Json | null
+          client_id: string | null
+          company: string | null
+          competitor_mentions: Json | null
+          created_at: string
+          days_in_stage: number | null
+          expected_close_date: string | null
+          id: string
+          lead_id: string | null
+          name: string
+          next_action: string | null
+          probability: number
+          sales_methodology: string | null
+          sentiment_score: number | null
+          stage: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          buying_signals?: Json | null
+          client_id?: string | null
+          company?: string | null
+          competitor_mentions?: Json | null
+          created_at?: string
+          days_in_stage?: number | null
+          expected_close_date?: string | null
+          id?: string
+          lead_id?: string | null
+          name: string
+          next_action?: string | null
+          probability?: number
+          sales_methodology?: string | null
+          sentiment_score?: number | null
+          stage?: string
+          updated_at?: string
+          value?: number
+        }
+        Update: {
+          buying_signals?: Json | null
+          client_id?: string | null
+          company?: string | null
+          competitor_mentions?: Json | null
+          created_at?: string
+          days_in_stage?: number | null
+          expected_close_date?: string | null
+          id?: string
+          lead_id?: string | null
+          name?: string
+          next_action?: string | null
+          probability?: number
+          sales_methodology?: string | null
+          sentiment_score?: number | null
+          stage?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_pipeline_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_pipeline_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]
