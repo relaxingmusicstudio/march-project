@@ -161,3 +161,12 @@ verify_jwt = false
 
 [functions.learn-from-success]
 verify_jwt = false
+
+[functions.solo-optimization]
+verify_jwt = false
+
+[functions.multi-agent-coordinator]
+verify_jwt = false
+
+[functions.visual-content-generator]
+verify_jwt = false

@@ -35,6 +35,8 @@ import AdminCRM from "./pages/AdminCRM";
 import AdminDialer from "./pages/AdminDialer";
 import AdminOutreach from "./pages/AdminOutreach";
 import AdminSMSBlast from "./pages/AdminSMSBlast";
+import AdminLearning from "./pages/AdminLearning";
+import AdminSolo from "./pages/AdminSolo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -78,6 +80,8 @@ const App = () => (
               <Route path="/admin/agent/inbox" element={<ProtectedRoute requireAdmin><AdminAgentInbox /></ProtectedRoute>} />
               <Route path="/admin/agent/youtube" element={<ProtectedRoute requireAdmin><AdminAgentYouTube /></ProtectedRoute>} />
               <Route path="/admin/automation" element={<ProtectedRoute requireAdmin><AdminAutomation /></ProtectedRoute>} />
+              <Route path="/admin/learning" element={<ProtectedRoute requireAdmin><AdminLearning /></ProtectedRoute>} />
+              <Route path="/admin/solo" element={<ProtectedRoute requireAdmin><AdminSolo /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
