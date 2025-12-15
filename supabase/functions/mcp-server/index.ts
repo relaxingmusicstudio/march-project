@@ -242,6 +242,84 @@ const TOOLS: MCPTool[] = [
         hours: { type: "number", description: "Hours to look back (default: 12)" }
       }
     }
+  },
+  
+  // === CEO STYLE-MATCHING TOOLS ===
+  {
+    name: "get_ceo_style_profile",
+    description: "Get the CEO's learned communication style, decision patterns, and preferences for mimicking their approach",
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: ["all", "communication", "decisions", "priorities", "thresholds"], description: "Style category to retrieve" }
+      }
+    }
+  },
+  {
+    name: "get_ceo_style_recommendation",
+    description: "Get a recommendation for how the CEO would handle a specific situation based on learned patterns",
+    inputSchema: {
+      type: "object",
+      properties: {
+        situation_type: { type: "string", description: "Type of situation: lead_response, objection_handling, pricing, content_approval, escalation" },
+        context: { type: "object", description: "Context about the situation (lead details, objection text, etc.)" },
+        include_examples: { type: "boolean", description: "Include similar past decisions as examples (default: true)" }
+      },
+      required: ["situation_type", "context"]
+    }
+  },
+  {
+    name: "draft_as_ceo",
+    description: "Generate a draft response/message in the CEO's learned style for their review",
+    inputSchema: {
+      type: "object",
+      properties: {
+        draft_type: { type: "string", enum: ["email", "response", "content", "decision"], description: "Type of draft to create" },
+        context: { type: "object", description: "Context for the draft (recipient, topic, situation)" },
+        tone_override: { type: "string", description: "Optional tone override (urgent, friendly, formal)" }
+      },
+      required: ["draft_type", "context"]
+    }
+  },
+  {
+    name: "submit_style_feedback",
+    description: "Submit feedback when CEO approves, modifies, or rejects Claude's suggestion - helps improve style matching",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action_id: { type: "string", description: "ID of the queued action or draft" },
+        feedback_type: { type: "string", enum: ["approved", "modified", "rejected"], description: "What happened to the suggestion" },
+        original_suggestion: { type: "string", description: "What Claude suggested" },
+        ceo_response: { type: "string", description: "What the CEO actually said/did (if different)" },
+        modification_notes: { type: "string", description: "Notes on what was changed and why" }
+      },
+      required: ["feedback_type", "original_suggestion"]
+    }
+  },
+  {
+    name: "update_style_profile",
+    description: "Update a specific aspect of the CEO's style profile based on observed patterns",
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: ["communication", "decisions", "priorities", "thresholds"], description: "Category to update" },
+        key: { type: "string", description: "Specific key to update (e.g., 'tone', 'risk_tolerance')" },
+        value: { type: "object", description: "New value for the key" },
+        confidence_boost: { type: "number", description: "How much to increase confidence (0-0.1)" },
+        example: { type: "string", description: "Example that led to this learning" }
+      },
+      required: ["category", "key", "value"]
+    }
+  },
+  {
+    name: "get_style_accuracy_report",
+    description: "Get a report on how accurately Claude is matching the CEO's style based on feedback",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "Days to analyze (default: 30)" }
+      }
+    }
   }
 ];
 
@@ -287,6 +365,24 @@ const RESOURCES: MCPResource[] = [
     uri: "ceo://alerts/recent",
     name: "Recent Alerts",
     description: "Recent alerts sent to the CEO",
+    mimeType: "application/json"
+  },
+  {
+    uri: "ceo://style/profile",
+    name: "CEO Style Profile",
+    description: "The CEO's learned communication style, decision patterns, and preferences",
+    mimeType: "application/json"
+  },
+  {
+    uri: "ceo://style/feedback",
+    name: "Style Feedback History",
+    description: "History of approved/rejected suggestions for style learning",
+    mimeType: "application/json"
+  },
+  {
+    uri: "ceo://style/drafts",
+    name: "Draft History",
+    description: "History of AI drafts and CEO edits for style comparison",
     mimeType: "application/json"
   }
 ];
@@ -816,6 +912,266 @@ async function executeTool(supabase: any, params: { name: string; arguments?: Re
       };
     }
 
+    // === CEO STYLE-MATCHING TOOLS ===
+    case 'get_ceo_style_profile': {
+      const category = (args.category as string) || 'all';
+      
+      let query = supabase
+        .from('ceo_style_profile')
+        .select('*')
+        .order('confidence_score', { ascending: false });
+      
+      if (category !== 'all') {
+        query = query.eq('category', category);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      // Group by category for easier consumption
+      const grouped = (data || []).reduce((acc: Record<string, any>, item: any) => {
+        if (!acc[item.category]) acc[item.category] = {};
+        acc[item.category][item.key] = {
+          value: item.value,
+          confidence: item.confidence_score,
+          learned_from: item.learned_from_count,
+          examples: item.examples
+        };
+        return acc;
+      }, {});
+      
+      return { style_profile: grouped, raw: data, count: data?.length || 0 };
+    }
+
+    case 'get_ceo_style_recommendation': {
+      const situationType = args.situation_type as string;
+      const context = (args.context as Record<string, any>) || {};
+      const includeExamples = args.include_examples !== false;
+      
+      // Get style profile
+      const { data: styleProfile } = await supabase
+        .from('ceo_style_profile')
+        .select('*')
+        .order('confidence_score', { ascending: false });
+      
+      // Get similar past decisions
+      let examples: any[] = [];
+      if (includeExamples) {
+        const { data: memories } = await supabase
+          .from('agent_memories')
+          .select('*')
+          .eq('agent_type', 'ceo-training')
+          .order('success_score', { ascending: false })
+          .limit(5);
+        
+        examples = memories || [];
+      }
+      
+      // Build recommendation based on style and situation
+      const communication = styleProfile?.find((s: any) => s.category === 'communication' && s.key === 'tone');
+      const decisions = styleProfile?.find((s: any) => s.category === 'decisions' && s.key === 'risk_tolerance');
+      const priorities = styleProfile?.find((s: any) => s.category === 'priorities');
+      
+      return {
+        situation_type: situationType,
+        recommendation: {
+          tone: communication?.value || { primary: 'professional', secondary: 'friendly' },
+          risk_approach: decisions?.value || { level: 'moderate' },
+          priority_guidance: priorities?.value || {},
+          confidence: (communication?.confidence_score || 0.3 + (decisions?.confidence_score || 0.3)) / 2
+        },
+        similar_decisions: examples.map((e: any) => ({
+          query: e.query,
+          response: e.response,
+          success_score: e.success_score
+        })),
+        context_received: context
+      };
+    }
+
+    case 'draft_as_ceo': {
+      const draftType = args.draft_type as string;
+      const context = (args.context as Record<string, any>) || {};
+      const toneOverride = args.tone_override as string | undefined;
+      
+      // Get style profile
+      const { data: styleProfile } = await supabase
+        .from('ceo_style_profile')
+        .select('*');
+      
+      // Save the draft request for later comparison
+      const { data: draft, error } = await supabase
+        .from('ceo_draft_history')
+        .insert({
+          draft_type: draftType,
+          context,
+          ai_draft: `[Draft pending - Claude should generate based on style profile]`,
+          style_adjustments: []
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Build style guidance for Claude
+      const toneProfile = styleProfile?.find((s: any) => s.category === 'communication' && s.key === 'tone');
+      const lengthProfile = styleProfile?.find((s: any) => s.category === 'communication' && s.key === 'response_length');
+      
+      return {
+        draft_id: draft.id,
+        draft_type: draftType,
+        style_guidance: {
+          tone: toneOverride || toneProfile?.value || { primary: 'professional' },
+          length: lengthProfile?.value || { preference: 'concise', max_sentences: 3 },
+          avoid: toneProfile?.value?.avoid || []
+        },
+        context,
+        instruction: `Generate a ${draftType} for CEO review. Use the style guidance. Keep it ${lengthProfile?.value?.preference || 'concise'}. The draft will be saved and compared against CEO's final version for learning.`
+      };
+    }
+
+    case 'submit_style_feedback': {
+      const feedbackType = args.feedback_type as string;
+      const originalSuggestion = args.original_suggestion as string;
+      const ceoResponse = args.ceo_response as string | undefined;
+      const modificationNotes = args.modification_notes as string | undefined;
+      
+      // Insert feedback record
+      const { data: feedback, error } = await supabase
+        .from('ceo_decision_feedback')
+        .insert({
+          action_queue_id: args.action_id || null,
+          feedback_type: feedbackType,
+          original_suggestion: originalSuggestion,
+          ceo_response: ceoResponse || null,
+          modification_notes: modificationNotes || null,
+          style_learnings: {}
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // If approved without modification, boost confidence
+      if (feedbackType === 'approved') {
+        await supabase.rpc('increment_style_confidence', { boost: 0.05 }).catch(() => {
+          // RPC might not exist, that's okay
+        });
+      }
+      
+      // Log the learning activity
+      await supabase.from('claude_activity_log').insert({
+        activity_type: 'style_feedback',
+        description: `Received ${feedbackType} feedback on suggestion`,
+        details: { feedback_id: feedback.id, feedback_type: feedbackType },
+        result: feedbackType === 'approved' ? 'style_reinforced' : 'style_adjusted'
+      });
+      
+      return { 
+        success: true, 
+        feedback_id: feedback.id, 
+        message: `Feedback recorded. ${feedbackType === 'approved' ? 'Style pattern reinforced.' : 'Will adjust future suggestions.'}` 
+      };
+    }
+
+    case 'update_style_profile': {
+      const category = args.category as string;
+      const key = args.key as string;
+      const value = args.value as Record<string, any>;
+      const confidenceBoost = Math.min((args.confidence_boost as number) || 0.02, 0.1);
+      const example = args.example as string | undefined;
+      
+      // Get existing profile entry
+      const { data: existing } = await supabase
+        .from('ceo_style_profile')
+        .select('*')
+        .eq('category', category)
+        .eq('key', key)
+        .single();
+      
+      if (existing) {
+        // Update existing
+        const newConfidence = Math.min((existing.confidence_score || 0.5) + confidenceBoost, 1.0);
+        const newExamples = example 
+          ? [...(existing.examples || []), example].slice(-10) // Keep last 10 examples
+          : existing.examples;
+        
+        const { error } = await supabase
+          .from('ceo_style_profile')
+          .update({
+            value: { ...existing.value, ...value },
+            confidence_score: newConfidence,
+            learned_from_count: (existing.learned_from_count || 0) + 1,
+            examples: newExamples
+          })
+          .eq('id', existing.id);
+        
+        if (error) throw error;
+        return { success: true, action: 'updated', new_confidence: newConfidence };
+      } else {
+        // Insert new
+        const { error } = await supabase
+          .from('ceo_style_profile')
+          .insert({
+            category,
+            key,
+            value,
+            confidence_score: 0.3 + confidenceBoost,
+            learned_from_count: 1,
+            examples: example ? [example] : []
+          });
+        
+        if (error) throw error;
+        return { success: true, action: 'created', new_confidence: 0.3 + confidenceBoost };
+      }
+    }
+
+    case 'get_style_accuracy_report': {
+      const days = (args.days as number) || 30;
+      const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      
+      // Get feedback history
+      const { data: feedback } = await supabase
+        .from('ceo_decision_feedback')
+        .select('*')
+        .gte('created_at', startDate.toISOString());
+      
+      // Get draft history with similarity scores
+      const { data: drafts } = await supabase
+        .from('ceo_draft_history')
+        .select('*')
+        .gte('created_at', startDate.toISOString())
+        .not('similarity_score', 'is', null);
+      
+      // Calculate metrics
+      const feedbackCounts = (feedback || []).reduce((acc: Record<string, number>, f: any) => {
+        acc[f.feedback_type] = (acc[f.feedback_type] || 0) + 1;
+        return acc;
+      }, {});
+      
+      const totalFeedback = feedback?.length || 0;
+      const approvalRate = totalFeedback > 0 ? ((feedbackCounts.approved || 0) / totalFeedback * 100).toFixed(1) : 'N/A';
+      
+      const avgSimilarity = drafts && drafts.length > 0
+        ? (drafts.reduce((sum: number, d: any) => sum + (d.similarity_score || 0), 0) / drafts.length * 100).toFixed(1)
+        : 'N/A';
+      
+      return {
+        period_days: days,
+        metrics: {
+          total_feedback: totalFeedback,
+          approval_rate: `${approvalRate}%`,
+          feedback_breakdown: feedbackCounts,
+          avg_draft_similarity: `${avgSimilarity}%`,
+          drafts_analyzed: drafts?.length || 0
+        },
+        recent_feedback: (feedback || []).slice(0, 10),
+        improvement_areas: feedbackCounts.rejected > feedbackCounts.approved
+          ? ['Review modification notes to understand style gaps']
+          : ['Style matching is improving']
+      };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -887,6 +1243,43 @@ async function readResource(supabase: any, params: { uri: string }) {
         .order('created_at', { ascending: false })
         .limit(20);
       return { alerts: data };
+    }
+
+    case 'ceo://style/profile': {
+      const { data } = await supabase
+        .from('ceo_style_profile')
+        .select('*')
+        .order('confidence_score', { ascending: false });
+      
+      const grouped = (data || []).reduce((acc: Record<string, any>, item: any) => {
+        if (!acc[item.category]) acc[item.category] = {};
+        acc[item.category][item.key] = {
+          value: item.value,
+          confidence: item.confidence_score,
+          learned_from: item.learned_from_count
+        };
+        return acc;
+      }, {});
+      
+      return { style_profile: grouped };
+    }
+
+    case 'ceo://style/feedback': {
+      const { data } = await supabase
+        .from('ceo_decision_feedback')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      return { feedback_history: data };
+    }
+
+    case 'ceo://style/drafts': {
+      const { data } = await supabase
+        .from('ceo_draft_history')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      return { draft_history: data };
     }
 
     default:

@@ -1594,6 +1594,80 @@ export type Database = {
         }
         Relationships: []
       }
+      ceo_decision_feedback: {
+        Row: {
+          action_queue_id: string | null
+          ceo_response: string | null
+          created_at: string
+          feedback_type: string
+          id: string
+          modification_notes: string | null
+          original_suggestion: string
+          style_learnings: Json | null
+        }
+        Insert: {
+          action_queue_id?: string | null
+          ceo_response?: string | null
+          created_at?: string
+          feedback_type: string
+          id?: string
+          modification_notes?: string | null
+          original_suggestion: string
+          style_learnings?: Json | null
+        }
+        Update: {
+          action_queue_id?: string | null
+          ceo_response?: string | null
+          created_at?: string
+          feedback_type?: string
+          id?: string
+          modification_notes?: string | null
+          original_suggestion?: string
+          style_learnings?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ceo_decision_feedback_action_queue_id_fkey"
+            columns: ["action_queue_id"]
+            isOneToOne: false
+            referencedRelation: "ceo_action_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ceo_draft_history: {
+        Row: {
+          ai_draft: string
+          ceo_final: string | null
+          context: Json | null
+          created_at: string
+          draft_type: string
+          id: string
+          similarity_score: number | null
+          style_adjustments: Json | null
+        }
+        Insert: {
+          ai_draft: string
+          ceo_final?: string | null
+          context?: Json | null
+          created_at?: string
+          draft_type: string
+          id?: string
+          similarity_score?: number | null
+          style_adjustments?: Json | null
+        }
+        Update: {
+          ai_draft?: string
+          ceo_final?: string | null
+          context?: Json | null
+          created_at?: string
+          draft_type?: string
+          id?: string
+          similarity_score?: number | null
+          style_adjustments?: Json | null
+        }
+        Relationships: []
+      }
       ceo_score_history: {
         Row: {
           breakdown: Json | null
@@ -1675,6 +1749,42 @@ export type Database = {
           rule_name?: string
           rule_type?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      ceo_style_profile: {
+        Row: {
+          category: string
+          confidence_score: number | null
+          created_at: string
+          examples: Json | null
+          id: string
+          key: string
+          learned_from_count: number | null
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          category: string
+          confidence_score?: number | null
+          created_at?: string
+          examples?: Json | null
+          id?: string
+          key: string
+          learned_from_count?: number | null
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          category?: string
+          confidence_score?: number | null
+          created_at?: string
+          examples?: Json | null
+          id?: string
+          key?: string
+          learned_from_count?: number | null
+          updated_at?: string
+          value?: Json
         }
         Relationships: []
       }
