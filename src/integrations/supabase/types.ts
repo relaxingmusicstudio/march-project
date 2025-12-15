@@ -1594,6 +1594,104 @@ export type Database = {
         }
         Relationships: []
       }
+      ceo_auto_executions: {
+        Row: {
+          action_payload: Json | null
+          action_type: string
+          error_message: string | null
+          executed_at: string | null
+          id: string
+          notified_ceo: boolean | null
+          result: Json | null
+          standing_order_id: string | null
+          success: boolean | null
+          trigger_data: Json | null
+        }
+        Insert: {
+          action_payload?: Json | null
+          action_type: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          notified_ceo?: boolean | null
+          result?: Json | null
+          standing_order_id?: string | null
+          success?: boolean | null
+          trigger_data?: Json | null
+        }
+        Update: {
+          action_payload?: Json | null
+          action_type?: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          notified_ceo?: boolean | null
+          result?: Json | null
+          standing_order_id?: string | null
+          success?: boolean | null
+          trigger_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ceo_auto_executions_standing_order_id_fkey"
+            columns: ["standing_order_id"]
+            isOneToOne: false
+            referencedRelation: "ceo_standing_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ceo_autopilot_config: {
+        Row: {
+          absence_end: string | null
+          absence_start: string | null
+          auto_execute_followups: boolean | null
+          auto_manage_campaigns: boolean | null
+          auto_respond_clients: boolean | null
+          created_at: string | null
+          escalation_email: string | null
+          escalation_phone: string | null
+          id: string
+          is_active: boolean | null
+          max_auto_discount_percent: number | null
+          max_auto_refund_cents: number | null
+          notify_on_execution: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          absence_end?: string | null
+          absence_start?: string | null
+          auto_execute_followups?: boolean | null
+          auto_manage_campaigns?: boolean | null
+          auto_respond_clients?: boolean | null
+          created_at?: string | null
+          escalation_email?: string | null
+          escalation_phone?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_auto_discount_percent?: number | null
+          max_auto_refund_cents?: number | null
+          notify_on_execution?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          absence_end?: string | null
+          absence_start?: string | null
+          auto_execute_followups?: boolean | null
+          auto_manage_campaigns?: boolean | null
+          auto_respond_clients?: boolean | null
+          created_at?: string | null
+          escalation_email?: string | null
+          escalation_phone?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_auto_discount_percent?: number | null
+          max_auto_refund_cents?: number | null
+          notify_on_execution?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       ceo_decision_feedback: {
         Row: {
           action_queue_id: string | null
