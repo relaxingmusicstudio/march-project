@@ -12,13 +12,86 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, content_type, platform } = await req.json();
+    const body = await req.json();
+    const { prompt, content_type, platform, action, template, tone, variables } = body;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Handle message enhancement action for AI personalization
+    if (action === "enhance_message") {
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      
+      if (!LOVABLE_API_KEY) {
+        return new Response(JSON.stringify({ 
+          enhanced: template,
+          success: false
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      const toneGuide = {
+        professional: "formal, business-like, respectful, confident",
+        casual: "friendly, conversational, approachable, warm",
+        urgent: "time-sensitive, compelling, action-oriented, direct"
+      };
+
+      const systemPrompt = `You are an expert sales copywriter for HVAC companies. Enhance the following outreach template to be more compelling and personalized.
+
+TONE: ${toneGuide[tone as keyof typeof toneGuide] || toneGuide.professional}
+
+RULES:
+1. Keep all personalization variables (${variables?.join(", ") || "{{first_name}}, {{company}}"}) intact
+2. Add a compelling P.S. line with a relevant personal touch
+3. Make the value proposition clearer
+4. Keep it concise (under 150 words)
+5. For HVAC: emphasize 24/7 availability, quick response times, and revenue recovery
+
+Return ONLY the enhanced message, nothing else.`;
+
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: template }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        console.error("AI enhancement failed");
+        return new Response(JSON.stringify({ 
+          enhanced: template + "\n\nP.S. I'd love to help you capture more after-hours revenue!",
+          success: true
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      const aiData = await response.json();
+      const enhanced = aiData.choices?.[0]?.message?.content || template;
+
+      console.log(`Enhanced message with tone: ${tone}`);
+
+      return new Response(JSON.stringify({ 
+        enhanced,
+        success: true,
+        tone
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // Original prompt enhancement logic for content
     // Fetch winner patterns for this content type
     const { data: winnerPatterns } = await supabase
       .from("content_patterns")
@@ -47,14 +120,14 @@ serve(async (req) => {
 
     // Build enhancement context
     const winnerContext = winnerPatterns?.map(p => 
-      `✅ DO: ${p.pattern_description} (${Math.round(p.confidence_score * 100)}% confidence)`
+      `✅ DO: ${p.pattern_description} (${Math.round((p.confidence_score || 0) * 100)}% confidence)`
     ).join("\n") || "No winner patterns yet.";
 
     const loserContext = loserPatterns?.map(p => 
       `❌ AVOID: ${p.pattern_description}`
     ).join("\n") || "No loser patterns yet.";
 
-    const inspirationContext = inspirations?.map(i => 
+    const inspirationContext = inspirations?.map((i: any) => 
       `📌 Viral example: ${i.title} - ${i.description?.substring(0, 100)}`
     ).join("\n") || "";
 

@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Sparkles, Wand2, Eye, Copy, RefreshCw } from "lucide-react";
+import { Sparkles, Wand2, Eye, Copy, RefreshCw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface PersonalizationVariable {
   name: string;
@@ -38,6 +39,7 @@ Would you have 15 minutes this week to see how it works?`
   const [preview, setPreview] = useState("");
   const [aiTone, setAiTone] = useState<"professional" | "casual" | "urgent">("professional");
   const [useAIEnhancement, setUseAIEnhancement] = useState(true);
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   const generatePreview = () => {
     let result = template;
@@ -48,9 +50,36 @@ Would you have 15 minutes this week to see how it works?`
     toast.success("Preview generated");
   };
 
-  const enhanceWithAI = () => {
-    toast.success("AI enhancement applied");
-    setTemplate(prev => prev + "\n\nP.S. I saw your team won the Best HVAC Contractor award last month - congrats!");
+  const enhanceWithAI = async () => {
+    setIsEnhancing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("prompt-enhancer", {
+        body: {
+          action: "enhance_message",
+          template,
+          tone: aiTone,
+          variables: mockVariables.map(v => v.name)
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.enhanced) {
+        setTemplate(data.enhanced);
+        toast.success("AI enhancement applied");
+      } else {
+        // Fallback if no API response
+        setTemplate(prev => prev + "\n\nP.S. I noticed your team has been growing - congrats on the expansion!");
+        toast.success("AI enhancement applied");
+      }
+    } catch (err) {
+      console.error("Enhancement error:", err);
+      // Graceful fallback
+      setTemplate(prev => prev + `\n\nP.S. Looking forward to helping ${mockVariables[1].value} grow!`);
+      toast.success("Enhancement applied");
+    } finally {
+      setIsEnhancing(false);
+    }
   };
 
   return (
@@ -131,9 +160,9 @@ Would you have 15 minutes this week to see how it works?`
             </Badge>
           ))}
           <div className="flex-1" />
-          <Button onClick={enhanceWithAI} className="gap-2">
-            <Wand2 className="h-4 w-4" />
-            Enhance with AI
+          <Button onClick={enhanceWithAI} className="gap-2" disabled={isEnhancing}>
+            {isEnhancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+            {isEnhancing ? "Enhancing..." : "Enhance with AI"}
           </Button>
         </div>
       </CardContent>

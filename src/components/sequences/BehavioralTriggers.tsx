@@ -1,52 +1,54 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { 
-  Zap, Plus, Trash2, Eye, MousePointer, Clock, 
-  MessageSquare, Mail, Phone, ArrowRight, Settings2 
+  Zap, Plus, Trash2, MousePointer, Clock, ScrollText, 
+  ExternalLink, Mail, MessageSquare, Bell, Loader2, ArrowRight
 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Trigger {
   id: string;
   name: string;
-  type: "page_view" | "time_on_page" | "scroll_depth" | "chat_open" | "exit_intent" | "return_visit";
+  type: "page_view" | "time_on_page" | "scroll_depth" | "exit_intent" | "click";
   condition: string;
-  action: "enroll_sequence" | "send_sms" | "send_email" | "add_tag" | "notify_sales";
+  action: "show_popup" | "send_email" | "add_tag" | "notify_team" | "start_sequence";
   isActive: boolean;
 }
 
 const mockTriggers: Trigger[] = [
-  { id: "1", name: "High-Intent Visitor", type: "page_view", condition: "Pricing page viewed 3+ times", action: "notify_sales", isActive: true },
-  { id: "2", name: "Exit Intent Capture", type: "exit_intent", condition: "Mouse leaves viewport", action: "enroll_sequence", isActive: true },
-  { id: "3", name: "Deep Engagement", type: "scroll_depth", condition: "90% scroll on case study", action: "send_email", isActive: false },
-  { id: "4", name: "Return Visitor", type: "return_visit", condition: "Visited 3+ times this week", action: "add_tag", isActive: true },
-  { id: "5", name: "Chat Abandonment", type: "chat_open", condition: "Opened chat but didn't engage", action: "send_sms", isActive: true },
+  { id: "1", name: "Exit Intent Popup", type: "exit_intent", condition: "Mouse leaves viewport", action: "show_popup", isActive: true },
+  { id: "2", name: "High Engagement Alert", type: "time_on_page", condition: "> 2 minutes on pricing", action: "notify_team", isActive: true },
+  { id: "3", name: "Scroll Milestone", type: "scroll_depth", condition: "75% scroll on blog", action: "show_popup", isActive: false },
+  { id: "4", name: "Demo Page Visit", type: "page_view", condition: "Visited /demo 3+ times", action: "start_sequence", isActive: true },
 ];
 
-const triggerTypeIcons: Record<string, React.ReactNode> = {
-  page_view: <Eye className="h-4 w-4" />,
+const triggerTypeIcons: Record<Trigger["type"], React.ReactNode> = {
+  page_view: <ScrollText className="h-4 w-4" />,
   time_on_page: <Clock className="h-4 w-4" />,
-  scroll_depth: <MousePointer className="h-4 w-4" />,
-  chat_open: <MessageSquare className="h-4 w-4" />,
-  exit_intent: <ArrowRight className="h-4 w-4 rotate-45" />,
-  return_visit: <Clock className="h-4 w-4" />,
+  scroll_depth: <ScrollText className="h-4 w-4" />,
+  exit_intent: <ExternalLink className="h-4 w-4" />,
+  click: <MousePointer className="h-4 w-4" />,
 };
 
-const actionIcons: Record<string, React.ReactNode> = {
-  enroll_sequence: <Settings2 className="h-4 w-4" />,
-  send_sms: <MessageSquare className="h-4 w-4" />,
+const actionIcons: Record<Trigger["action"], React.ReactNode> = {
+  show_popup: <Bell className="h-4 w-4" />,
   send_email: <Mail className="h-4 w-4" />,
   add_tag: <Zap className="h-4 w-4" />,
-  notify_sales: <Phone className="h-4 w-4" />,
+  notify_team: <MessageSquare className="h-4 w-4" />,
+  start_sequence: <Zap className="h-4 w-4" />,
 };
 
 export const BehavioralTriggers = () => {
   const [triggers, setTriggers] = useState<Trigger[]>(mockTriggers);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
 
   const toggleTrigger = (id: string) => {
