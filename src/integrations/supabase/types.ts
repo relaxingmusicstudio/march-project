@@ -5058,18 +5058,25 @@ export type Database = {
       }
       orchestration_tasks: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           assigned_agent: string | null
           blocked_reason: string | null
+          brief: Json | null
           completed_at: string | null
           created_at: string
           deadline: string | null
           depends_on_tasks: Json | null
           description: string | null
+          discussion_thread: Json | null
           id: string
+          output: Json | null
+          output_type: string | null
           priority: number
           progress_notes: string | null
           quality_score: number | null
           required_skill_tags: Json | null
+          requires_approval: boolean | null
           source_agent: string
           source_request_id: string | null
           started_at: string | null
@@ -5079,18 +5086,25 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           assigned_agent?: string | null
           blocked_reason?: string | null
+          brief?: Json | null
           completed_at?: string | null
           created_at?: string
           deadline?: string | null
           depends_on_tasks?: Json | null
           description?: string | null
+          discussion_thread?: Json | null
           id?: string
+          output?: Json | null
+          output_type?: string | null
           priority?: number
           progress_notes?: string | null
           quality_score?: number | null
           required_skill_tags?: Json | null
+          requires_approval?: boolean | null
           source_agent: string
           source_request_id?: string | null
           started_at?: string | null
@@ -5100,18 +5114,25 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           assigned_agent?: string | null
           blocked_reason?: string | null
+          brief?: Json | null
           completed_at?: string | null
           created_at?: string
           deadline?: string | null
           depends_on_tasks?: Json | null
           description?: string | null
+          discussion_thread?: Json | null
           id?: string
+          output?: Json | null
+          output_type?: string | null
           priority?: number
           progress_notes?: string | null
           quality_score?: number | null
           required_skill_tags?: Json | null
+          requires_approval?: boolean | null
           source_agent?: string
           source_request_id?: string | null
           started_at?: string | null
