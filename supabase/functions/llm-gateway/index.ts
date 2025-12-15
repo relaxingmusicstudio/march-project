@@ -237,9 +237,109 @@ serve(async (req) => {
       });
     }
 
-    // Step 4: Make actual LLM call
-    const apiKey = Deno.env.get('LOVABLE_API_KEY');
-    if (!apiKey) {
+// Step 4: Make actual LLM call - Route Claude vs Gemini/OpenAI separately
+    const isClaudeModel = effectiveModel.startsWith('claude');
+    
+    if (isClaudeModel) {
+      // Route Claude models to Anthropic API directly
+      const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
+      if (!anthropicKey) {
+        // Fallback to Gemini if no Anthropic key
+        console.log('[LLM Gateway] No ANTHROPIC_API_KEY, falling back to Gemini for complex task');
+        effectiveModel = MODEL_TIERS.complex; // Use Gemini Pro instead
+      } else {
+        console.log(`[LLM Gateway] Routing to Anthropic API: ${effectiveModel}`);
+        
+        // Convert messages to Anthropic format
+        const systemMessage = messages.find(m => m.role === 'system');
+        const nonSystemMessages = messages.filter(m => m.role !== 'system');
+        
+        const anthropicBody: Record<string, unknown> = {
+          model: effectiveModel,
+          max_tokens: max_tokens || 4096,
+          messages: nonSystemMessages.map(m => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content
+          })),
+        };
+        
+        if (systemMessage) {
+          anthropicBody.system = systemMessage.content;
+        }
+        
+        const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(anthropicBody),
+        });
+        
+        if (!claudeResponse.ok) {
+          const errorText = await claudeResponse.text();
+          console.error(`[LLM Gateway] Claude API error (${claudeResponse.status}): ${errorText}`);
+          recordFailure();
+          
+          if (claudeResponse.status === 429) {
+            await logCost(supabase, agent_name, effectiveModel, 0, 0, 0, false, priority, Date.now() - startTime, false, 'Claude rate limited');
+            return new Response(JSON.stringify({ error: 'Claude rate limited' }), {
+              status: 429,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          
+          throw new Error(`Claude API error (${claudeResponse.status}): ${errorText}`);
+        }
+        
+        recordSuccess();
+        
+        // Convert Anthropic response to OpenAI format for consistency
+        const anthropicResult = await claudeResponse.json();
+        const openAIFormat = {
+          id: anthropicResult.id,
+          object: 'chat.completion',
+          created: Date.now(),
+          model: effectiveModel,
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: anthropicResult.content?.[0]?.text || ''
+            },
+            finish_reason: anthropicResult.stop_reason === 'end_turn' ? 'stop' : anthropicResult.stop_reason
+          }],
+          usage: {
+            prompt_tokens: anthropicResult.usage?.input_tokens || 0,
+            completion_tokens: anthropicResult.usage?.output_tokens || 0,
+            total_tokens: (anthropicResult.usage?.input_tokens || 0) + (anthropicResult.usage?.output_tokens || 0)
+          }
+        };
+        
+        const latencyMs = Date.now() - startTime;
+        const inputTokens = anthropicResult.usage?.input_tokens || estimateTokens(messages);
+        const outputTokens = anthropicResult.usage?.output_tokens || 0;
+        const costUsd = calculateCost(effectiveModel, inputTokens, outputTokens);
+        
+        if (!skip_cache) {
+          await cacheResponse(supabase, messages, effectiveModel, openAIFormat, inputTokens, outputTokens, costUsd, effectiveCacheTtl);
+        }
+        
+        await incrementUsage(supabase, agent_name);
+        await logCost(supabase, agent_name, effectiveModel, inputTokens, outputTokens, costUsd, false, priority, latencyMs, true);
+        
+        console.log(`[LLM Gateway] Claude success for ${agent_name}, cost: $${costUsd.toFixed(6)}, latency: ${latencyMs}ms`);
+        
+        return new Response(JSON.stringify(openAIFormat), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-Cache': 'MISS', 'X-Model': effectiveModel, 'X-Cost': costUsd.toFixed(6) },
+        });
+      }
+    }
+    
+    // Route Gemini/OpenAI models to Lovable AI Gateway
+    const lovableKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableKey) {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
@@ -252,10 +352,12 @@ serve(async (req) => {
     if (max_tokens) llmRequestBody.max_tokens = max_tokens;
     if (temperature !== undefined) llmRequestBody.temperature = temperature;
 
+    console.log(`[LLM Gateway] Routing to Lovable AI Gateway: ${effectiveModel}`);
+    
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${lovableKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(llmRequestBody),
