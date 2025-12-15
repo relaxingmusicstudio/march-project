@@ -138,6 +138,54 @@ export type Database = {
         }
         Relationships: []
       }
+      accounts: {
+        Row: {
+          account_score: number | null
+          annual_revenue: number | null
+          created_at: string
+          employee_count: number | null
+          engagement_score: number | null
+          health_score: number | null
+          id: string
+          industry: string | null
+          last_activity_at: string | null
+          name: string
+          tier: string | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          account_score?: number | null
+          annual_revenue?: number | null
+          created_at?: string
+          employee_count?: number | null
+          engagement_score?: number | null
+          health_score?: number | null
+          id?: string
+          industry?: string | null
+          last_activity_at?: string | null
+          name: string
+          tier?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          account_score?: number | null
+          annual_revenue?: number | null
+          created_at?: string
+          employee_count?: number | null
+          engagement_score?: number | null
+          health_score?: number | null
+          id?: string
+          industry?: string | null
+          last_activity_at?: string | null
+          name?: string
+          tier?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
       ad_campaigns: {
         Row: {
           budget_daily: number | null
@@ -419,6 +467,76 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      buying_committee: {
+        Row: {
+          account_id: string | null
+          contact_id: string | null
+          created_at: string
+          engagement_status: string | null
+          id: string
+          influence_level: number | null
+          last_contacted_at: string | null
+          lead_id: string | null
+          name: string
+          notes: string | null
+          role_type: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          engagement_status?: string | null
+          id?: string
+          influence_level?: number | null
+          last_contacted_at?: string | null
+          lead_id?: string | null
+          name: string
+          notes?: string | null
+          role_type?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          engagement_status?: string | null
+          id?: string
+          influence_level?: number | null
+          last_contacted_at?: string | null
+          lead_id?: string | null
+          name?: string
+          notes?: string | null
+          role_type?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buying_committee_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buying_committee_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_unified"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buying_committee_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       call_logs: {
         Row: {
@@ -2230,6 +2348,73 @@ export type Database = {
         }
         Relationships: []
       }
+      generated_documents: {
+        Row: {
+          account_id: string | null
+          client_id: string | null
+          created_at: string
+          data: Json | null
+          document_type: string
+          id: string
+          lead_id: string | null
+          pdf_url: string | null
+          status: string | null
+          template_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          data?: Json | null
+          document_type: string
+          id?: string
+          lead_id?: string | null
+          pdf_url?: string | null
+          status?: string | null
+          template_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          data?: Json | null
+          document_type?: string
+          id?: string
+          lead_id?: string | null
+          pdf_url?: string | null
+          status?: string | null
+          template_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_documents_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       keywords: {
         Row: {
           competition: string | null
@@ -3427,6 +3612,39 @@ export type Database = {
           phone_number?: string
           reason?: string | null
           source?: string | null
+        }
+        Relationships: []
+      }
+      system_health: {
+        Row: {
+          id: string
+          metric_name: string
+          metric_unit: string | null
+          metric_value: number
+          recorded_at: string
+          status: string | null
+          threshold_critical: number | null
+          threshold_warning: number | null
+        }
+        Insert: {
+          id?: string
+          metric_name: string
+          metric_unit?: string | null
+          metric_value: number
+          recorded_at?: string
+          status?: string | null
+          threshold_critical?: number | null
+          threshold_warning?: number | null
+        }
+        Update: {
+          id?: string
+          metric_name?: string
+          metric_unit?: string | null
+          metric_value?: number
+          recorded_at?: string
+          status?: string | null
+          threshold_critical?: number | null
+          threshold_warning?: number | null
         }
         Relationships: []
       }

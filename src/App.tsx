@@ -38,6 +38,7 @@ import AdminSMSBlast from "./pages/AdminSMSBlast";
 import AdminLearning from "./pages/AdminLearning";
 import AdminSolo from "./pages/AdminSolo";
 import AdminPipeline from "./pages/AdminPipeline";
+import AdminSystemHealth from "./pages/AdminSystemHealth";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -84,6 +85,7 @@ const App = () => (
               <Route path="/admin/learning" element={<ProtectedRoute requireAdmin><AdminLearning /></ProtectedRoute>} />
               <Route path="/admin/solo" element={<ProtectedRoute requireAdmin><AdminSolo /></ProtectedRoute>} />
               <Route path="/admin/pipeline" element={<ProtectedRoute requireAdmin><AdminPipeline /></ProtectedRoute>} />
+              <Route path="/admin/system-health" element={<ProtectedRoute requireAdmin><AdminSystemHealth /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

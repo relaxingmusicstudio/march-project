@@ -19,6 +19,9 @@ import {
   Phone,
   Mail,
   LayoutGrid,
+  Target,
+  Activity,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -30,6 +33,7 @@ interface AdminLayoutProps {
 
 const navItems = [
   { path: "/admin/ceo", label: "CEO Console", icon: Brain },
+  { path: "/admin/pipeline", label: "Pipeline", icon: Target },
   { path: "/admin/crm", label: "CRM", icon: LayoutGrid },
   { path: "/admin/dialer", label: "Dialer", icon: Phone },
   { path: "/admin/outreach", label: "Outreach", icon: Mail },
@@ -46,6 +50,7 @@ const navItems = [
   { path: "/admin/agent/ads", label: "Ads", icon: Megaphone },
   { path: "/admin/agent/sequences", label: "Sequences", icon: Zap },
   { path: "/admin/automation", label: "Automation", icon: Zap },
+  { path: "/admin/system-health", label: "System Health", icon: Activity },
   { path: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
