@@ -6,11 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bot, Send, Loader2, Sparkles, Wrench } from "lucide-react";
 import LovablePromptOutput from "./LovablePromptOutput";
+import FeedbackButtons from "./FeedbackButtons";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  query?: string; // Store the user query that led to this response
 }
 
 interface AgentChatPanelProps {
@@ -104,6 +106,7 @@ const AgentChatPanel = ({
         role: "assistant",
         content: "",
         timestamp: new Date(),
+        query, // Store the query that led to this response
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -250,6 +253,14 @@ const AgentChatPanel = ({
                     }`}
                   >
                     <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === "assistant" && msg.content && !isLoading && (
+                      <FeedbackButtons
+                        agentType={agentType}
+                        query={msg.query || ""}
+                        response={msg.content}
+                        className="mt-2 pt-2 border-t border-border/50"
+                      />
+                    )}
                   </div>
                 </div>
               );

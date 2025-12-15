@@ -180,6 +180,93 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_memories: {
+        Row: {
+          agent_type: string
+          created_at: string | null
+          id: string
+          last_used_at: string | null
+          metadata: Json | null
+          query: string
+          query_embedding: string | null
+          response: string
+          success_score: number | null
+          updated_at: string | null
+          usage_count: number | null
+        }
+        Insert: {
+          agent_type: string
+          created_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          metadata?: Json | null
+          query: string
+          query_embedding?: string | null
+          response: string
+          success_score?: number | null
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Update: {
+          agent_type?: string
+          created_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          metadata?: Json | null
+          query?: string
+          query_embedding?: string | null
+          response?: string
+          success_score?: number | null
+          updated_at?: string | null
+          usage_count?: number | null
+        }
+        Relationships: []
+      }
+      agent_performance: {
+        Row: {
+          accuracy_score: number | null
+          agent_type: string
+          avg_response_time_ms: number | null
+          cache_hits: number | null
+          created_at: string | null
+          date: string
+          id: string
+          memories_created: number | null
+          negative_feedback: number | null
+          positive_feedback: number | null
+          total_queries: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          accuracy_score?: number | null
+          agent_type: string
+          avg_response_time_ms?: number | null
+          cache_hits?: number | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          memories_created?: number | null
+          negative_feedback?: number | null
+          positive_feedback?: number | null
+          total_queries?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          accuracy_score?: number | null
+          agent_type?: string
+          avg_response_time_ms?: number | null
+          cache_hits?: number | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          memories_created?: number | null
+          negative_feedback?: number | null
+          positive_feedback?: number | null
+          total_queries?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       analytics_events: {
         Row: {
           created_at: string | null
@@ -2319,6 +2406,50 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "visitors"
             referencedColumns: ["visitor_id"]
+          },
+        ]
+      }
+      learning_events: {
+        Row: {
+          created_at: string | null
+          event_type: string
+          feedback_source: string | null
+          feedback_value: number | null
+          id: string
+          memory_id: string | null
+          metadata: Json | null
+          new_score: number | null
+          old_score: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_type: string
+          feedback_source?: string | null
+          feedback_value?: number | null
+          id?: string
+          memory_id?: string | null
+          metadata?: Json | null
+          new_score?: number | null
+          old_score?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          event_type?: string
+          feedback_source?: string | null
+          feedback_value?: number | null
+          id?: string
+          memory_id?: string | null
+          metadata?: Json | null
+          new_score?: number | null
+          old_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "learning_events_memory_id_fkey"
+            columns: ["memory_id"]
+            isOneToOne: false
+            referencedRelation: "agent_memories"
+            referencedColumns: ["id"]
           },
         ]
       }

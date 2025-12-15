@@ -152,3 +152,12 @@ verify_jwt = false
 
 [functions.sms-keyword-handler]
 verify_jwt = false
+
+[functions.embedding-service]
+verify_jwt = false
+
+[functions.agent-memory]
+verify_jwt = false
+
+[functions.learn-from-success]
+verify_jwt = false
