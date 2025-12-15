@@ -1231,6 +1231,45 @@ export type Database = {
           },
         ]
       }
+      ceo_score_history: {
+        Row: {
+          breakdown: Json | null
+          calculated_at: string
+          client_health_score: number | null
+          compliance_health_score: number | null
+          id: string
+          insights: string[] | null
+          revenue_health_score: number | null
+          score: number
+          system_health_score: number | null
+          task_health_score: number | null
+        }
+        Insert: {
+          breakdown?: Json | null
+          calculated_at?: string
+          client_health_score?: number | null
+          compliance_health_score?: number | null
+          id?: string
+          insights?: string[] | null
+          revenue_health_score?: number | null
+          score: number
+          system_health_score?: number | null
+          task_health_score?: number | null
+        }
+        Update: {
+          breakdown?: Json | null
+          calculated_at?: string
+          client_health_score?: number | null
+          compliance_health_score?: number | null
+          id?: string
+          insights?: string[] | null
+          revenue_health_score?: number | null
+          score?: number
+          system_health_score?: number | null
+          task_health_score?: number | null
+        }
+        Relationships: []
+      }
       channels: {
         Row: {
           channel_type: string
@@ -4120,6 +4159,105 @@ export type Database = {
           },
         ]
       }
+      llm_configuration: {
+        Row: {
+          api_endpoint: string | null
+          config: Json | null
+          created_at: string
+          failure_count: number | null
+          health_status: string | null
+          id: string
+          is_active: boolean | null
+          is_fallback: boolean | null
+          is_primary: boolean | null
+          last_health_check: string | null
+          model_name: string
+          priority: number | null
+          provider: string
+          secret_key_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          api_endpoint?: string | null
+          config?: Json | null
+          created_at?: string
+          failure_count?: number | null
+          health_status?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_fallback?: boolean | null
+          is_primary?: boolean | null
+          last_health_check?: string | null
+          model_name: string
+          priority?: number | null
+          provider: string
+          secret_key_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          api_endpoint?: string | null
+          config?: Json | null
+          created_at?: string
+          failure_count?: number | null
+          health_status?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_fallback?: boolean | null
+          is_primary?: boolean | null
+          last_health_check?: string | null
+          model_name?: string
+          priority?: number | null
+          provider?: string
+          secret_key_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      lockdown_rules: {
+        Row: {
+          action_type: string | null
+          agent_type: string | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          last_triggered_at: string | null
+          lockdown_action: string
+          rule_name: string
+          threshold_value: number
+          threshold_window_minutes: number
+          trigger_count: number | null
+          updated_at: string
+        }
+        Insert: {
+          action_type?: string | null
+          agent_type?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_triggered_at?: string | null
+          lockdown_action?: string
+          rule_name: string
+          threshold_value: number
+          threshold_window_minutes?: number
+          trigger_count?: number | null
+          updated_at?: string
+        }
+        Update: {
+          action_type?: string | null
+          agent_type?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_triggered_at?: string | null
+          lockdown_action?: string
+          rule_name?: string
+          threshold_value?: number
+          threshold_window_minutes?: number
+          trigger_count?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       marketing_spend: {
         Row: {
           campaign: string | null
@@ -4600,6 +4738,60 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_audit_log: {
+        Row: {
+          action_type: string
+          agent_name: string | null
+          description: string | null
+          duration_ms: number | null
+          entity_id: string | null
+          entity_type: string | null
+          error_message: string | null
+          id: string
+          ip_address: string | null
+          request_snapshot: Json | null
+          response_snapshot: Json | null
+          success: boolean | null
+          tenant_id: string | null
+          timestamp: string
+          user_id: string | null
+        }
+        Insert: {
+          action_type: string
+          agent_name?: string | null
+          description?: string | null
+          duration_ms?: number | null
+          entity_id?: string | null
+          entity_type?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          request_snapshot?: Json | null
+          response_snapshot?: Json | null
+          success?: boolean | null
+          tenant_id?: string | null
+          timestamp?: string
+          user_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          agent_name?: string | null
+          description?: string | null
+          duration_ms?: number | null
+          entity_id?: string | null
+          entity_type?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          request_snapshot?: Json | null
+          response_snapshot?: Json | null
+          success?: boolean | null
+          tenant_id?: string | null
+          timestamp?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       product_configurations: {
         Row: {
           client_id: string
@@ -4984,6 +5176,53 @@ export type Database = {
             columns: ["converted_to_lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      security_lockdowns: {
+        Row: {
+          agent_type: string
+          id: string
+          reason: string
+          resolution_notes: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_id: string | null
+          started_at: string
+          status: string
+          triggered_value: number | null
+        }
+        Insert: {
+          agent_type: string
+          id?: string
+          reason: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id?: string | null
+          started_at?: string
+          status?: string
+          triggered_value?: number | null
+        }
+        Update: {
+          agent_type?: string
+          id?: string
+          reason?: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id?: string | null
+          started_at?: string
+          status?: string
+          triggered_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_lockdowns_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "lockdown_rules"
             referencedColumns: ["id"]
           },
         ]
@@ -5561,6 +5800,42 @@ export type Database = {
           new_instances?: number | null
           previous_instances?: number | null
           trigger_reason?: string | null
+        }
+        Relationships: []
+      }
+      team_invites: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token?: string
         }
         Relationships: []
       }
