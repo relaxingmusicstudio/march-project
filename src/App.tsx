@@ -54,6 +54,7 @@ import AdminUserSettings from "./pages/AdminUserSettings";
 import AdminBilling from "./pages/AdminBilling";
 import AdminHelp from "./pages/AdminHelp";
 import AdminAudit from "./pages/AdminAudit";
+import AdminApprovalQueue from "./pages/AdminApprovalQueue";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -124,6 +125,7 @@ const App = () => (
                 <Route path="/admin/billing" element={<ProtectedRoute requireAdmin><AdminBilling /></ProtectedRoute>} />
                 <Route path="/admin/help" element={<ProtectedRoute requireAdmin><AdminHelp /></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute requireAdmin><AdminAudit /></ProtectedRoute>} />
+                <Route path="/admin/approval-queue" element={<ProtectedRoute requireAdmin><AdminApprovalQueue /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
