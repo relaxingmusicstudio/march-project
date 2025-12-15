@@ -188,3 +188,15 @@ verify_jwt = false
 
 [functions.forecast-engine]
 verify_jwt = false
+
+[functions.business-context]
+verify_jwt = false
+
+[functions.mobile-command]
+verify_jwt = false
+
+[functions.push-notifications]
+verify_jwt = false
+
+[functions.human-bypass]
+verify_jwt = false

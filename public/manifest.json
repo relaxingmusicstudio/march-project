@@ -1,0 +1,52 @@
+{
+  "name": "ApexLocal360 - HVAC Business Command Center",
+  "short_name": "ApexLocal360",
+  "description": "AI-powered HVAC business management platform with voice control and real-time analytics",
+  "start_url": "/admin/ceo",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#3b82f6",
+  "orientation": "any",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "CEO Dashboard",
+      "short_name": "Dashboard",
+      "description": "Open the CEO command center",
+      "url": "/admin/ceo",
+      "icons": [{ "src": "/favicon.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Control Panel",
+      "short_name": "Control",
+      "description": "Manage AI system modes",
+      "url": "/admin/control-panel",
+      "icons": [{ "src": "/favicon.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "CRM",
+      "short_name": "CRM",
+      "description": "View leads and customers",
+      "url": "/admin/crm",
+      "icons": [{ "src": "/favicon.png", "sizes": "96x96" }]
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": []
+}

@@ -468,6 +468,45 @@ export type Database = {
         }
         Relationships: []
       }
+      business_context: {
+        Row: {
+          auto_mode: string | null
+          context_type: string
+          created_at: string
+          end_time: string
+          external_id: string | null
+          id: string
+          metadata: Json | null
+          start_time: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          auto_mode?: string | null
+          context_type: string
+          created_at?: string
+          end_time: string
+          external_id?: string | null
+          id?: string
+          metadata?: Json | null
+          start_time: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          auto_mode?: string | null
+          context_type?: string
+          created_at?: string
+          end_time?: string
+          external_id?: string | null
+          id?: string
+          metadata?: Json | null
+          start_time?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       buying_committee: {
         Row: {
           account_id: string | null
@@ -2415,6 +2454,66 @@ export type Database = {
           },
         ]
       }
+      human_bypass_requests: {
+        Row: {
+          assigned_to: string | null
+          channel: string
+          contact_id: string | null
+          created_at: string
+          id: string
+          lead_id: string | null
+          original_message: string | null
+          resolution_notes: string | null
+          resolved_at: string | null
+          status: string
+          trigger_keyword: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          channel: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          original_message?: string | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          status?: string
+          trigger_keyword: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          channel?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          original_message?: string | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          status?: string
+          trigger_keyword?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "human_bypass_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_unified"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "human_bypass_requests_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       keywords: {
         Row: {
           competition: string | null
@@ -2847,6 +2946,84 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          channels: string[]
+          created_at: string
+          id: string
+          is_enabled: boolean
+          notification_type: string
+          priority: string
+          quiet_hours_end: string | null
+          quiet_hours_start: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          channels?: string[]
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          notification_type: string
+          priority: string
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          channels?: string[]
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          notification_type?: string
+          priority?: string
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      notification_queue: {
+        Row: {
+          body: string
+          channels: string[]
+          created_at: string
+          data: Json | null
+          id: string
+          priority: string
+          sent_at: string | null
+          status: string
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          body: string
+          channels?: string[]
+          created_at?: string
+          data?: Json | null
+          id?: string
+          priority: string
+          sent_at?: string | null
+          status?: string
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          body?: string
+          channels?: string[]
+          created_at?: string
+          data?: Json | null
+          id?: string
+          priority?: string
+          sent_at?: string | null
+          status?: string
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       nps_surveys: {
         Row: {
           client_id: string
@@ -3188,6 +3365,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rules_of_engagement: {
+        Row: {
+          actions: Json
+          conditions: Json
+          created_at: string
+          id: string
+          is_active: boolean
+          priority: number
+          rule_name: string
+          rule_type: string
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          conditions?: Json
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          priority?: number
+          rule_name: string
+          rule_type: string
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          conditions?: Json
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          priority?: number
+          rule_name?: string
+          rule_type?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       scraped_inspiration: {
         Row: {
@@ -3615,6 +3828,33 @@ export type Database = {
         }
         Relationships: []
       }
+      system_config: {
+        Row: {
+          config_key: string
+          config_value: Json
+          created_at: string
+          description: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          config_key: string
+          config_value?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          config_key?: string
+          config_value?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       system_health: {
         Row: {
           id: string
@@ -3645,6 +3885,42 @@ export type Database = {
           status?: string | null
           threshold_critical?: number | null
           threshold_warning?: number | null
+        }
+        Relationships: []
+      }
+      system_modes: {
+        Row: {
+          activated_at: string
+          activated_by: string | null
+          auto_revert_at: string | null
+          created_at: string
+          id: string
+          mode: string
+          previous_mode: string | null
+          reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          activated_at?: string
+          activated_by?: string | null
+          auto_revert_at?: string | null
+          created_at?: string
+          id?: string
+          mode?: string
+          previous_mode?: string | null
+          reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          activated_at?: string
+          activated_by?: string | null
+          auto_revert_at?: string | null
+          created_at?: string
+          id?: string
+          mode?: string
+          previous_mode?: string | null
+          reason?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
