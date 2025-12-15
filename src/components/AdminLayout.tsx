@@ -22,8 +22,11 @@ import {
   Target,
   Activity,
   Building2,
+  Shield,
+  UserCheck,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { usePWA } from "@/hooks/usePWA";
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -33,6 +36,7 @@ interface AdminLayoutProps {
 
 const navItems = [
   { path: "/admin/ceo", label: "CEO Console", icon: Brain },
+  { path: "/admin/control-panel", label: "Control", icon: Shield },
   { path: "/admin/pipeline", label: "Pipeline", icon: Target },
   { path: "/admin/accounts", label: "Accounts", icon: Building2 },
   { path: "/admin/crm", label: "CRM", icon: LayoutGrid },
@@ -51,6 +55,7 @@ const navItems = [
   { path: "/admin/agent/ads", label: "Ads", icon: Megaphone },
   { path: "/admin/agent/sequences", label: "Sequences", icon: Zap },
   { path: "/admin/automation", label: "Automation", icon: Zap },
+  { path: "/admin/bypass-queue", label: "Bypass Queue", icon: UserCheck },
   { path: "/admin/system-health", label: "System Health", icon: Activity },
   { path: "/admin/settings", label: "Settings", icon: Settings },
 ];
@@ -59,6 +64,7 @@ const AdminLayout = ({ children, title, subtitle }: AdminLayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut } = useAuth();
+  const { isOnline } = usePWA();
 
   const handleSignOut = async () => {
     await signOut();
@@ -67,8 +73,15 @@ const AdminLayout = ({ children, title, subtitle }: AdminLayoutProps) => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Offline Indicator */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-destructive text-destructive-foreground text-center py-2 text-sm font-medium">
+          You're offline. Some features may be unavailable.
+        </div>
+      )}
+      
       {/* Hero Header */}
-      <header className="hero-gradient text-primary-foreground">
+      <header className={`hero-gradient text-primary-foreground ${!isOnline ? 'mt-10' : ''}`}>
         <div className="container py-8">
           <div className="flex items-center justify-between mb-6">
             <Button

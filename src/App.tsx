@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { VisitorProvider } from "@/contexts/VisitorContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import Index from "./pages/Index";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
@@ -41,6 +42,8 @@ import AdminSolo from "./pages/AdminSolo";
 import AdminPipeline from "./pages/AdminPipeline";
 import AdminSystemHealth from "./pages/AdminSystemHealth";
 import AdminAccounts from "./pages/AdminAccounts";
+import AdminControlPanel from "./pages/AdminControlPanel";
+import AdminBypassQueue from "./pages/AdminBypassQueue";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -61,6 +64,7 @@ const App = () => (
           <VisitorProvider>
             <Toaster />
             <Sonner />
+            <PWAInstallPrompt />
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -98,6 +102,8 @@ const App = () => (
                 <Route path="/admin/solo" element={<ProtectedRoute requireAdmin><AdminSolo /></ProtectedRoute>} />
                 <Route path="/admin/pipeline" element={<ProtectedRoute requireAdmin><AdminPipeline /></ProtectedRoute>} />
                 <Route path="/admin/system-health" element={<ProtectedRoute requireAdmin><AdminSystemHealth /></ProtectedRoute>} />
+                <Route path="/admin/control-panel" element={<ProtectedRoute requireAdmin><AdminControlPanel /></ProtectedRoute>} />
+                <Route path="/admin/bypass-queue" element={<ProtectedRoute requireAdmin><AdminBypassQueue /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
