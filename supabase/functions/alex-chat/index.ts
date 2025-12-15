@@ -1,9 +1,38 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Methodology configurations for dynamic prompt enhancement
+const METHODOLOGY_CONFIGS = {
+  SPIN: {
+    name: 'SPIN Selling',
+    approach: 'Ask probing questions to uncover deep pain points. Use Situation→Problem→Implication→Need-payoff questioning. Let prospects sell themselves.',
+    techniques: 'Start with current state questions, then challenges, then consequences of inaction, then value articulation.',
+    closing: 'Let them conclude they need the solution based on their own answers.'
+  },
+  CHALLENGER: {
+    name: 'Challenger Sale',
+    approach: 'Lead with provocative insights. Challenge their assumptions with data. Reframe problems in cost terms.',
+    techniques: 'Teach something new, tailor to their situation, take control of the conversation.',
+    closing: 'Be assertive but collaborative - guide them firmly to the decision.'
+  },
+  CONSULTATIVE: {
+    name: 'Consultative Selling',
+    approach: 'Position as a trusted advisor. Listen more than talk. Focus on their goals, not just problems.',
+    techniques: 'Build rapport, offer value before commitment, show genuine curiosity.',
+    closing: 'Soft close - "Does this sound like it could help you reach those goals?"'
+  },
+  SOLUTION: {
+    name: 'Solution Selling',
+    approach: 'Identify specific pain points quickly. Present features as direct answers. Quantify value.',
+    techniques: 'Problem→Solution→Value→Proof framework. Use social proof from similar businesses.',
+    closing: 'Direct ask - "Ready to stop losing those calls?"'
+  }
 };
 
 const SYSTEM_PROMPT = `You are Alex, a friendly but PERSUASIVE AI sales closer for ApexLocal360. Your job is to help HVAC business owners understand their problem AND get them to take action TODAY.
@@ -191,10 +220,67 @@ const responseTool = {
   }
 };
 
+// Select methodology based on lead profile
+function selectMethodology(leadData: any): { methodology: string; promptEnhancement: string } {
+  const scores: Record<string, number> = { SPIN: 0, CHALLENGER: 0, CONSULTATIVE: 0, SOLUTION: 0 };
+  
+  // Team size factor
+  if (leadData?.teamSize === '10+ trucks' || leadData?.teamSize === '6-10') {
+    scores.SPIN += 30;
+    scores.CHALLENGER += 25;
+  } else if (leadData?.teamSize === 'Solo') {
+    scores.CONSULTATIVE += 35;
+    scores.SOLUTION += 20;
+  } else {
+    scores.SOLUTION += 25;
+    scores.CONSULTATIVE += 20;
+  }
+
+  // Timeline factor
+  if (leadData?.aiTimeline === 'Within 3 months') {
+    scores.SOLUTION += 30;
+    scores.CHALLENGER += 15;
+  } else if (leadData?.aiTimeline === 'Just exploring') {
+    scores.CONSULTATIVE += 30;
+    scores.SPIN += 25;
+  } else {
+    scores.SPIN += 20;
+    scores.CHALLENGER += 20;
+  }
+
+  // Call volume factor
+  if (leadData?.callVolume === '200+' || leadData?.callVolume === '100-200') {
+    scores.CHALLENGER += 25;
+    scores.SPIN += 20;
+  } else {
+    scores.CONSULTATIVE += 15;
+    scores.SOLUTION += 15;
+  }
+
+  // Find best methodology
+  const sorted = Object.entries(scores).sort(([,a], [,b]) => b - a);
+  const [bestMethod] = sorted[0] as [string, number];
+  const config = METHODOLOGY_CONFIGS[bestMethod as keyof typeof METHODOLOGY_CONFIGS];
+
+  return {
+    methodology: bestMethod,
+    promptEnhancement: `
+ACTIVE SALES METHODOLOGY: ${config.name}
+APPROACH: ${config.approach}
+TECHNIQUES: ${config.techniques}
+CLOSING STYLE: ${config.closing}
+Apply this methodology naturally in your responses.`
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
     const { messages, leadData } = await req.json();
@@ -204,8 +290,13 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Build context with lead data
-    let contextPrompt = SYSTEM_PROMPT;
+    // Select optimal sales methodology based on lead profile
+    const { methodology, promptEnhancement } = selectMethodology(leadData);
+    console.log(`Using ${methodology} methodology for this lead`);
+
+    // Build context with lead data and methodology
+    let contextPrompt = SYSTEM_PROMPT + promptEnhancement;
+    
     if (leadData && Object.keys(leadData).length > 0) {
       contextPrompt += `\n\nCURRENT LEAD DATA (already collected - don't ask for this info again): ${JSON.stringify(leadData)}`;
       
@@ -270,11 +361,26 @@ serve(async (req) => {
         const parsedResponse = JSON.parse(toolCall.function.arguments);
         console.log("Parsed response phase:", parsedResponse.conversationPhase, "actions:", parsedResponse.suggestedActions);
         
+        // Log methodology usage and outcome for learning
+        const isConversion = parsedResponse.conversationPhase === 'booked' || parsedResponse.conversationPhase === 'complete';
+        supabase.from('learning_events').insert({
+          event_type: isConversion ? 'methodology_conversion' : 'methodology_interaction',
+          agent_type: 'sales',
+          methodology,
+          outcome: parsedResponse.conversationPhase,
+          metrics: {
+            lead_data: leadData,
+            phase: parsedResponse.conversationPhase,
+            has_extracted_data: !!parsedResponse.extractedData
+          }
+        });
+        
         return new Response(JSON.stringify({
           text: parsedResponse.text || "Let me think...",
           suggestedActions: parsedResponse.suggestedActions || null,
           extractedData: parsedResponse.extractedData || null,
-          conversationPhase: parsedResponse.conversationPhase || "diagnostic"
+          conversationPhase: parsedResponse.conversationPhase || "diagnostic",
+          methodology // Include methodology in response for frontend tracking
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
