@@ -267,6 +267,73 @@ const analysisTools = [
         required: []
       }
     }
+  },
+  // Integration Management Tools
+  {
+    type: "function",
+    function: {
+      name: "check_integration_status",
+      description: "Check which services are connected and their health status",
+      parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_integration_suggestions",
+      description: "Get smart recommendations for which services to connect next based on current setup and business type",
+      parameters: {
+        type: "object",
+        properties: {
+          business_type: { type: "string", enum: ["hvac_basic", "hvac_advanced", "ecommerce_starter", "agency_growth", "consulting_pro"], description: "Business type for tailored suggestions" }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "initiate_connection",
+      description: "Get setup instructions for connecting a specific service",
+      parameters: {
+        type: "object",
+        properties: {
+          service_key: { type: "string", description: "Service to connect (e.g., 'stripe', 'google_analytics', 'twilio')" }
+        },
+        required: ["service_key"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_credential",
+      description: "Store an API key or credential that the user provides",
+      parameters: {
+        type: "object",
+        properties: {
+          service_key: { type: "string", description: "Service this credential is for" },
+          api_key: { type: "string", description: "The API key or token" },
+          additional_fields: { type: "object", description: "Any additional credential fields (e.g., account_sid for Twilio)" }
+        },
+        required: ["service_key", "api_key"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "test_connection",
+      description: "Test if a service connection is working properly",
+      parameters: {
+        type: "object",
+        properties: {
+          service_key: { type: "string", description: "Service to test" }
+        },
+        required: ["service_key"]
+      }
+    }
   }
 ];
 
@@ -766,6 +833,135 @@ async function executeToolCall(supabase: any, toolName: string, args: any, allLe
       filtered.sort((a: any, b: any) => (b.lead_score || 0) - (a.lead_score || 0));
       
       return { success: true, leads: filtered.slice(0, count) };
+    }
+    
+    // Integration Management Tools
+    case "check_integration_status": {
+      try {
+        const vaultResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/credential-vault`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}` },
+          body: JSON.stringify({ action: 'list' }),
+        });
+        const vaultData = await vaultResponse.json();
+        const credentials = vaultData.credentials || [];
+        
+        if (credentials.length === 0) {
+          return { success: true, message: "📊 **Integration Status**\n\nNo integrations connected yet. Ask me 'What should I connect?' for recommendations!" };
+        }
+        
+        let statusMsg = `📊 **Integration Status** (${credentials.length} connected)\n\n`;
+        const byStatus: Record<string, any[]> = { healthy: [], degraded: [], expired: [], unknown: [] };
+        credentials.forEach((c: any) => byStatus[c.connection_status || 'unknown'].push(c));
+        
+        if (byStatus.healthy.length > 0) statusMsg += `✅ **Healthy:** ${byStatus.healthy.map((c: any) => `${c.icon_emoji} ${c.display_name}`).join(', ')}\n`;
+        if (byStatus.degraded.length > 0) statusMsg += `⚠️ **Degraded:** ${byStatus.degraded.map((c: any) => `${c.icon_emoji} ${c.display_name}`).join(', ')}\n`;
+        if (byStatus.expired.length > 0) statusMsg += `❌ **Expired:** ${byStatus.expired.map((c: any) => `${c.icon_emoji} ${c.display_name}`).join(', ')}\n`;
+        if (byStatus.unknown.length > 0) statusMsg += `❓ **Unknown:** ${byStatus.unknown.map((c: any) => `${c.icon_emoji} ${c.display_name}`).join(', ')}\n`;
+        
+        return { success: true, message: statusMsg };
+      } catch (err) {
+        return { success: false, message: `Failed to check integrations: ${err}` };
+      }
+    }
+    
+    case "get_integration_suggestions": {
+      const { business_type } = args;
+      try {
+        const regResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/service-registry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}` },
+          body: JSON.stringify({ action: 'suggest', business_type }),
+        });
+        const regData = await regResponse.json();
+        const suggestions = regData.suggestions || [];
+        
+        if (suggestions.length === 0) {
+          return { success: true, message: "🎉 You have all recommended integrations connected! Your setup is complete." };
+        }
+        
+        let msg = `💡 **Recommended Integrations**\n\n`;
+        suggestions.slice(0, 5).forEach((s: any, i: number) => {
+          msg += `${i + 1}. ${s.icon_emoji} **${s.display_name}** (${s.category})\n   _${s.reason}_\n\n`;
+        });
+        msg += `\nSay "Connect [service name]" to get started!`;
+        
+        return { success: true, message: msg };
+      } catch (err) {
+        return { success: false, message: `Failed to get suggestions: ${err}` };
+      }
+    }
+    
+    case "initiate_connection": {
+      const { service_key } = args;
+      try {
+        const regResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/service-registry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}` },
+          body: JSON.stringify({ action: 'get', service_key }),
+        });
+        const regData = await regResponse.json();
+        const service = regData.service;
+        
+        if (!service) return { success: false, message: `Service "${service_key}" not found. Try: stripe, twilio, google_analytics, etc.` };
+        
+        let msg = `${service.icon_emoji} **Connect ${service.display_name}**\n\n`;
+        msg += `${service.description}\n\n`;
+        msg += `**Setup Steps:**\n`;
+        (service.setup_instructions || []).forEach((step: any) => {
+          msg += `${step.step}. **${step.title}**: ${step.description}\n`;
+        });
+        
+        if (service.credential_fields?.length > 0) {
+          msg += `\n**What I need from you:**\n`;
+          service.credential_fields.forEach((f: any) => msg += `- ${f.label}${f.placeholder ? ` (e.g., ${f.placeholder})` : ''}\n`);
+          msg += `\nOnce you have these, just paste them here and I'll securely store them!`;
+        } else if (service.auth_method === 'oauth2') {
+          msg += `\n_This service uses OAuth. I'll guide you through the connection process._`;
+        }
+        
+        if (service.documentation_url) msg += `\n\n📚 [Documentation](${service.documentation_url})`;
+        
+        return { success: true, message: msg };
+      } catch (err) {
+        return { success: false, message: `Failed to get service info: ${err}` };
+      }
+    }
+    
+    case "save_credential": {
+      const { service_key, api_key, additional_fields } = args;
+      try {
+        const credentialData = { api_key, type: 'api_key', ...additional_fields };
+        const vaultResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/credential-vault`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}` },
+          body: JSON.stringify({ action: 'store', service_key, agent_name: 'ceo-agent', credential_data: credentialData }),
+        });
+        const vaultData = await vaultResponse.json();
+        
+        if (!vaultData.success) return { success: false, message: `Failed to save: ${vaultData.error}` };
+        
+        return { success: true, message: `✅ **${service_key} credential saved!**\n\nI've securely encrypted and stored your API key. Would you like me to test the connection?` };
+      } catch (err) {
+        return { success: false, message: `Failed to save credential: ${err}` };
+      }
+    }
+    
+    case "test_connection": {
+      const { service_key } = args;
+      try {
+        const vaultResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/credential-vault`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}` },
+          body: JSON.stringify({ action: 'test', service_key, agent_name: 'ceo-agent' }),
+        });
+        const vaultData = await vaultResponse.json();
+        
+        const statusEmoji = vaultData.status === 'healthy' ? '✅' : vaultData.status === 'degraded' ? '⚠️' : '❌';
+        return { success: true, message: `${statusEmoji} **${service_key} Connection Test**\n\nStatus: **${vaultData.status}**\n${vaultData.message}` };
+      } catch (err) {
+        return { success: false, message: `Failed to test connection: ${err}` };
+      }
     }
     
     default:

@@ -284,3 +284,15 @@ verify_jwt = false
 
 [functions.vision-analyzer]
 verify_jwt = false
+
+[functions.credential-vault]
+verify_jwt = false
+
+[functions.integration-gateway]
+verify_jwt = false
+
+[functions.credential-health-monitor]
+verify_jwt = false
+
+[functions.service-registry]
+verify_jwt = false

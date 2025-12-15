@@ -387,6 +387,51 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_integration_permissions: {
+        Row: {
+          agent_name: string
+          allowed_actions: Json | null
+          allowed_services: string[] | null
+          created_at: string | null
+          description: string | null
+          display_name: string
+          id: string
+          is_active: boolean | null
+          max_cost_per_day_cents: number | null
+          max_daily_api_calls: number | null
+          required_services: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          agent_name: string
+          allowed_actions?: Json | null
+          allowed_services?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean | null
+          max_cost_per_day_cents?: number | null
+          max_daily_api_calls?: number | null
+          required_services?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          agent_name?: string
+          allowed_actions?: Json | null
+          allowed_services?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean | null
+          max_cost_per_day_cents?: number | null
+          max_daily_api_calls?: number | null
+          required_services?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       agent_memories: {
         Row: {
           agent_type: string
@@ -3062,6 +3107,53 @@ export type Database = {
           },
         ]
       }
+      credential_usage_log: {
+        Row: {
+          action: string
+          agent_name: string
+          created_at: string | null
+          credential_id: string | null
+          error_message: string | null
+          id: string
+          ip_address: string | null
+          purpose: string | null
+          service_key: string
+          success: boolean | null
+        }
+        Insert: {
+          action: string
+          agent_name: string
+          created_at?: string | null
+          credential_id?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          purpose?: string | null
+          service_key: string
+          success?: boolean | null
+        }
+        Update: {
+          action?: string
+          agent_name?: string
+          created_at?: string | null
+          credential_id?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          purpose?: string | null
+          service_key?: string
+          success?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credential_usage_log_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "service_credentials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deal_pipeline: {
         Row: {
           buying_signals: Json | null
@@ -3885,6 +3977,75 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      integration_permission_violations: {
+        Row: {
+          agent_name: string
+          attempted_action: string | null
+          attempted_service: string
+          created_at: string | null
+          details: Json | null
+          id: string
+          violation_type: string | null
+        }
+        Insert: {
+          agent_name: string
+          attempted_action?: string | null
+          attempted_service: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          violation_type?: string | null
+        }
+        Update: {
+          agent_name?: string
+          attempted_action?: string | null
+          attempted_service?: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          violation_type?: string | null
+        }
+        Relationships: []
+      }
+      integration_templates: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_name: string
+          icon_emoji: string | null
+          id: string
+          is_active: boolean | null
+          recommended_services: string[] | null
+          required_services: string[] | null
+          setup_order: string[] | null
+          template_key: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_name: string
+          icon_emoji?: string | null
+          id?: string
+          is_active?: boolean | null
+          recommended_services?: string[] | null
+          required_services?: string[] | null
+          setup_order?: string[] | null
+          template_key: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_name?: string
+          icon_emoji?: string | null
+          id?: string
+          is_active?: boolean | null
+          recommended_services?: string[] | null
+          required_services?: string[] | null
+          setup_order?: string[] | null
+          template_key?: string
+        }
+        Relationships: []
       }
       keywords: {
         Row: {
@@ -5509,6 +5670,168 @@ export type Database = {
           steps?: Json | null
           trigger_type?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      service_credentials: {
+        Row: {
+          connection_status: string | null
+          consecutive_failures: number | null
+          created_at: string | null
+          credential_type: string
+          encrypted_value: string
+          encryption_key_version: number | null
+          id: string
+          last_health_check: string | null
+          last_used_at: string | null
+          last_used_by_agent: string | null
+          oauth_access_token: string | null
+          oauth_expires_at: string | null
+          oauth_refresh_token: string | null
+          oauth_scopes: string[] | null
+          service_key: string
+          total_usage_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          connection_status?: string | null
+          consecutive_failures?: number | null
+          created_at?: string | null
+          credential_type: string
+          encrypted_value: string
+          encryption_key_version?: number | null
+          id?: string
+          last_health_check?: string | null
+          last_used_at?: string | null
+          last_used_by_agent?: string | null
+          oauth_access_token?: string | null
+          oauth_expires_at?: string | null
+          oauth_refresh_token?: string | null
+          oauth_scopes?: string[] | null
+          service_key: string
+          total_usage_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          connection_status?: string | null
+          consecutive_failures?: number | null
+          created_at?: string | null
+          credential_type?: string
+          encrypted_value?: string
+          encryption_key_version?: number | null
+          id?: string
+          last_health_check?: string | null
+          last_used_at?: string | null
+          last_used_by_agent?: string | null
+          oauth_access_token?: string | null
+          oauth_expires_at?: string | null
+          oauth_refresh_token?: string | null
+          oauth_scopes?: string[] | null
+          service_key?: string
+          total_usage_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      service_registry: {
+        Row: {
+          auth_method: string
+          category: string
+          created_at: string | null
+          credential_fields: Json | null
+          description: string | null
+          display_name: string
+          documentation_url: string | null
+          icon_emoji: string | null
+          id: string
+          is_active: boolean | null
+          is_premium: boolean | null
+          oauth_authorize_url: string | null
+          oauth_scopes_available: string[] | null
+          oauth_scopes_required: string[] | null
+          oauth_token_url: string | null
+          priority_order: number | null
+          service_key: string
+          setup_instructions: Json | null
+          test_endpoint: string | null
+          test_method: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          auth_method: string
+          category: string
+          created_at?: string | null
+          credential_fields?: Json | null
+          description?: string | null
+          display_name: string
+          documentation_url?: string | null
+          icon_emoji?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_premium?: boolean | null
+          oauth_authorize_url?: string | null
+          oauth_scopes_available?: string[] | null
+          oauth_scopes_required?: string[] | null
+          oauth_token_url?: string | null
+          priority_order?: number | null
+          service_key: string
+          setup_instructions?: Json | null
+          test_endpoint?: string | null
+          test_method?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          auth_method?: string
+          category?: string
+          created_at?: string | null
+          credential_fields?: Json | null
+          description?: string | null
+          display_name?: string
+          documentation_url?: string | null
+          icon_emoji?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_premium?: boolean | null
+          oauth_authorize_url?: string | null
+          oauth_scopes_available?: string[] | null
+          oauth_scopes_required?: string[] | null
+          oauth_token_url?: string | null
+          priority_order?: number | null
+          service_key?: string
+          setup_instructions?: Json | null
+          test_endpoint?: string | null
+          test_method?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      service_relationships: {
+        Row: {
+          created_at: string | null
+          id: string
+          priority: number | null
+          reason: string | null
+          relationship_type: string
+          source_service: string
+          target_service: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          priority?: number | null
+          reason?: string | null
+          relationship_type: string
+          source_service: string
+          target_service: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          priority?: number | null
+          reason?: string | null
+          relationship_type?: string
+          source_service?: string
+          target_service?: string
         }
         Relationships: []
       }

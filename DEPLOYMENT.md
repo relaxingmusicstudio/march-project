@@ -53,6 +53,13 @@ Configure these in Lovable Cloud → Secrets before deployment:
 | `DID_API_KEY` | D-ID video generation | Optional |
 | `GHL_WEBHOOK_URL` | GoHighLevel webhook endpoint | Optional |
 | `LOVABLE_API_KEY` | Lovable AI gateway key | Auto-configured |
+| `VAULT_ENCRYPTION_KEY` | 32-byte AES key for credential vault | Production Only |
+
+### Generating VAULT_ENCRYPTION_KEY (Production)
+```bash
+openssl rand -base64 32
+```
+**Note:** Development uses auto-generated key derived from service role. For production, set an external key for security.
 
 ---
 
@@ -149,6 +156,7 @@ These functions may need cron triggers for automation:
 | `client-health-score` | Every 6 hours | Update client health metrics |
 | `lead-score-refresher` | Every hour | Refresh lead scores |
 | `pattern-detector` | Every 15 minutes | Detect system anomalies |
+| `credential-health-monitor` | Every 15 minutes | Check integration credentials |
 | `auto-dunning` (billing-agent) | Daily 9:00 AM | Payment reminders |
 
 To configure cron jobs, use the SQL editor in Supabase:
