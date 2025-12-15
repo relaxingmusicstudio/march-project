@@ -81,6 +81,21 @@ verify_jwt = false
 [functions.elevenlabs-sfx]
 verify_jwt = false
 
+[functions.elevenlabs-conversation-token]
+verify_jwt = false
+
+[functions.elevenlabs-tts]
+verify_jwt = false
+
+[functions.elevenlabs-transcribe]
+verify_jwt = false
+
+[functions.elevenlabs-scribe-token]
+verify_jwt = false
+
+[functions.test-integrations]
+verify_jwt = false
+
 [functions.prompt-enhancer]
 verify_jwt = false
 
@@ -295,4 +310,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.service-registry]
+verify_jwt = false
+
+[functions.llm-gateway]
 verify_jwt = false
