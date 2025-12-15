@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
@@ -98,64 +97,60 @@ const ComplianceEnrichmentWidget = () => {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="animate-pulse space-y-3">
-            <div className="h-4 bg-muted rounded w-1/2" />
-            <div className="h-8 bg-muted rounded" />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="p-4">
+        <div className="animate-pulse space-y-3">
+          <div className="h-4 bg-muted rounded w-1/2" />
+          <div className="h-8 bg-muted rounded" />
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardContent className="pt-6 space-y-4">
-        {/* Compliance Health */}
-        <div className="flex items-center gap-3">
-          {health && getHealthIcon(health.health_score)}
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                Compliance Health
-              </span>
-              <span className={`text-sm font-bold ${getHealthColor(health?.health_score || 100)}`}>
-                {health?.health_score || 100}%
-              </span>
-            </div>
-            <Progress value={health?.health_score || 100} className="h-1.5" />
+    <div className="p-4 space-y-4">
+      {/* Compliance Health */}
+      <div className="flex items-center gap-3">
+        {health && getHealthIcon(health.health_score)}
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-muted-foreground">
+              Compliance Health
+            </span>
+            <span className={`text-sm font-bold ${getHealthColor(health?.health_score || 100)}`}>
+              {health?.health_score || 100}%
+            </span>
           </div>
+          <Progress value={health?.health_score || 100} className="h-1.5" />
         </div>
+      </div>
 
-        {/* Segment Distribution */}
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2">Lead Segments</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex items-center gap-2 p-2 bg-orange-500/10 rounded">
-              <Zap className="h-3 w-3 text-orange-500" />
-              <span className="text-xs">Hot</span>
-              <Badge variant="secondary" className="ml-auto text-xs">{segments.hot_lead}</Badge>
-            </div>
-            <div className="flex items-center gap-2 p-2 bg-blue-500/10 rounded">
-              <Mail className="h-3 w-3 text-blue-500" />
-              <span className="text-xs">Nurture</span>
-              <Badge variant="secondary" className="ml-auto text-xs">{segments.marketing_nurture}</Badge>
-            </div>
-            <div className="flex items-center gap-2 p-2 bg-purple-500/10 rounded">
-              <Target className="h-3 w-3 text-purple-500" />
-              <span className="text-xs">Cold</span>
-              <Badge variant="secondary" className="ml-auto text-xs">{segments.cold_outreach}</Badge>
-            </div>
-            <div className="flex items-center gap-2 p-2 bg-red-500/10 rounded">
-              <Shield className="h-3 w-3 text-red-500" />
-              <span className="text-xs">Hold</span>
-              <Badge variant="secondary" className="ml-auto text-xs">{segments.compliance_hold}</Badge>
-            </div>
+      {/* Segment Distribution */}
+      <div>
+        <p className="text-xs font-medium text-muted-foreground mb-2">Lead Segments</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center gap-2 p-2 bg-orange-500/10 rounded">
+            <Zap className="h-3 w-3 text-orange-500" />
+            <span className="text-xs">Hot</span>
+            <Badge variant="secondary" className="ml-auto text-xs">{segments.hot_lead}</Badge>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-blue-500/10 rounded">
+            <Mail className="h-3 w-3 text-blue-500" />
+            <span className="text-xs">Nurture</span>
+            <Badge variant="secondary" className="ml-auto text-xs">{segments.marketing_nurture}</Badge>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-purple-500/10 rounded">
+            <Target className="h-3 w-3 text-purple-500" />
+            <span className="text-xs">Cold</span>
+            <Badge variant="secondary" className="ml-auto text-xs">{segments.cold_outreach}</Badge>
+          </div>
+          <div className="flex items-center gap-2 p-2 bg-red-500/10 rounded">
+            <Shield className="h-3 w-3 text-red-500" />
+            <span className="text-xs">Hold</span>
+            <Badge variant="secondary" className="ml-auto text-xs">{segments.compliance_hold}</Badge>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 
