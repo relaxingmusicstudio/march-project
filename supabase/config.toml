@@ -176,3 +176,9 @@ verify_jwt = false
 
 [functions.api-gateway]
 verify_jwt = false
+
+[functions.pdf-generator]
+verify_jwt = false
+
+[functions.system-health]
+verify_jwt = false
