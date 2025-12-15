@@ -56,6 +56,7 @@ import AdminHelp from "./pages/AdminHelp";
 import AdminAudit from "./pages/AdminAudit";
 import AdminApprovalQueue from "./pages/AdminApprovalQueue";
 import AdminPreLaunch from "./pages/AdminPreLaunch";
+import AdminTrainingMode from "./pages/AdminTrainingMode";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -128,6 +129,7 @@ const App = () => (
                 <Route path="/admin/audit" element={<ProtectedRoute requireAdmin><AdminAudit /></ProtectedRoute>} />
                 <Route path="/admin/approval-queue" element={<ProtectedRoute requireAdmin><AdminApprovalQueue /></ProtectedRoute>} />
                 <Route path="/admin/pre-launch" element={<ProtectedRoute requireAdmin><AdminPreLaunch /></ProtectedRoute>} />
+                <Route path="/admin/training" element={<ProtectedRoute requireAdmin><AdminTrainingMode /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

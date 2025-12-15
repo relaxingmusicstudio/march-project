@@ -314,3 +314,9 @@ verify_jwt = false
 
 [functions.llm-gateway]
 verify_jwt = false
+
+[functions.mcp-server]
+verify_jwt = false
+
+[functions.ceo-training]
+verify_jwt = false

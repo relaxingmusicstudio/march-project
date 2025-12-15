@@ -1,0 +1,428 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// CEO Training Mode - Capture and learn from CEO decisions
+// Uses Claude for deep analysis and pattern extraction
+
+interface TrainingSession {
+  session_id: string;
+  started_at: string;
+  transcripts: TranscriptEntry[];
+}
+
+interface TranscriptEntry {
+  timestamp: string;
+  type: 'voice' | 'action' | 'decision';
+  content: string;
+  context?: Record<string, unknown>;
+}
+
+interface DecisionRecord {
+  decision_type: string;
+  situation: string;
+  reasoning: string;
+  action_taken: string;
+  expected_outcome: string;
+  confidence: number;
+  tags: string[];
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  try {
+    const { action, ...params } = await req.json();
+    console.log(`[CEO Training] Action: ${action}`);
+
+    switch (action) {
+      case 'start_session':
+        return await startSession(supabase);
+
+      case 'add_transcript':
+        return await addTranscript(supabase, params);
+
+      case 'process_decision':
+        return await processDecision(supabase, params);
+
+      case 'end_session':
+        return await endSession(supabase, params);
+
+      case 'get_training_stats':
+        return await getTrainingStats(supabase);
+
+      case 'get_learned_patterns':
+        return await getLearnedPatterns(supabase, params);
+
+      default:
+        return jsonResponse({ error: `Unknown action: ${action}` }, 400);
+    }
+  } catch (error) {
+    console.error('[CEO Training] Error:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return jsonResponse({ error: message }, 500);
+  }
+});
+
+function jsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
+}
+
+async function startSession(supabase: any) {
+  const sessionId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+
+  // Store session start in agent shared state
+  await supabase.from('agent_shared_state').upsert({
+    key: `ceo_training_session_${sessionId}`,
+    value: { session_id: sessionId, started_at: startedAt, transcripts: [] },
+    category: 'ceo_training',
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hour expiry
+  });
+
+  console.log(`[CEO Training] Started session: ${sessionId}`);
+  return jsonResponse({ session_id: sessionId, started_at: startedAt });
+}
+
+async function addTranscript(supabase: any, params: { session_id: string; transcript: string; type?: string; context?: Record<string, unknown> }) {
+  const { session_id, transcript, type = 'voice', context } = params;
+
+  // Get current session
+  const { data: sessionState } = await supabase
+    .from('agent_shared_state')
+    .select('value')
+    .eq('key', `ceo_training_session_${session_id}`)
+    .single();
+
+  if (!sessionState) {
+    return jsonResponse({ error: 'Session not found' }, 404);
+  }
+
+  const session = sessionState.value as TrainingSession;
+  
+  // Add new transcript entry
+  const entry: TranscriptEntry = {
+    timestamp: new Date().toISOString(),
+    type: type as 'voice' | 'action' | 'decision',
+    content: transcript,
+    context
+  };
+
+  session.transcripts.push(entry);
+
+  // Update session
+  await supabase.from('agent_shared_state').update({
+    value: session
+  }).eq('key', `ceo_training_session_${session_id}`);
+
+  console.log(`[CEO Training] Added transcript to session ${session_id}: ${transcript.substring(0, 50)}...`);
+  return jsonResponse({ success: true, transcript_count: session.transcripts.length });
+}
+
+async function processDecision(supabase: any, params: { 
+  session_id?: string; 
+  transcript: string; 
+  context?: Record<string, unknown>;
+  decision_type?: string;
+}) {
+  const { transcript, context, decision_type } = params;
+  const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+
+  // Use Claude for deep decision analysis if available, otherwise use Lovable AI
+  let analysisResult: DecisionRecord;
+
+  const analysisPrompt = `You are analyzing a CEO's decision-making process to help an AI learn to mimic their style.
+
+The CEO just made this decision or statement:
+"${transcript}"
+
+Context: ${JSON.stringify(context || {})}
+
+Extract and structure the decision in this exact JSON format:
+{
+  "decision_type": "${decision_type || 'general'}", 
+  "situation": "Brief description of the situation that required a decision",
+  "reasoning": "The CEO's reasoning process - why they made this choice",
+  "action_taken": "What specific action was decided on",
+  "expected_outcome": "What the CEO expects to happen as a result",
+  "confidence": 0.85, // How confident the CEO seemed (0-1)
+  "tags": ["relevant", "tags", "for", "categorization"],
+  "style_notes": "Notes about the CEO's communication style, tone, and approach"
+}
+
+Focus on capturing:
+1. The decision-making framework they use
+2. What factors they prioritize
+3. Their risk tolerance
+4. Their communication style
+5. How they balance speed vs. thoroughness
+
+Return ONLY the JSON, no other text.`;
+
+  if (ANTHROPIC_API_KEY) {
+    // Use Claude for deep analysis
+    console.log('[CEO Training] Using Claude for decision analysis');
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: analysisPrompt }]
+      })
+    });
+
+    if (!claudeResponse.ok) {
+      console.error('[CEO Training] Claude API error:', await claudeResponse.text());
+      throw new Error('Claude analysis failed');
+    }
+
+    const claudeData = await claudeResponse.json();
+    const responseText = claudeData.content?.[0]?.text || '';
+    
+    try {
+      analysisResult = JSON.parse(responseText);
+    } catch {
+      console.error('[CEO Training] Failed to parse Claude response:', responseText);
+      throw new Error('Failed to parse decision analysis');
+    }
+  } else if (LOVABLE_API_KEY) {
+    // Fallback to Lovable AI
+    console.log('[CEO Training] Using Lovable AI for decision analysis');
+    const lovableResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: analysisPrompt }]
+      })
+    });
+
+    if (!lovableResponse.ok) {
+      throw new Error('Lovable AI analysis failed');
+    }
+
+    const lovableData = await lovableResponse.json();
+    const responseText = lovableData.choices?.[0]?.message?.content || '';
+    
+    try {
+      analysisResult = JSON.parse(responseText);
+    } catch {
+      console.error('[CEO Training] Failed to parse Lovable response:', responseText);
+      throw new Error('Failed to parse decision analysis');
+    }
+  } else {
+    throw new Error('No AI API key configured');
+  }
+
+  // Generate embedding for the decision
+  let embedding: number[] | null = null;
+  try {
+    const embeddingResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/embedding-service`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
+      },
+      body: JSON.stringify({ text: `${analysisResult.situation} ${analysisResult.reasoning} ${analysisResult.action_taken}` })
+    });
+    
+    if (embeddingResponse.ok) {
+      const embeddingData = await embeddingResponse.json();
+      embedding = embeddingData.embeddings?.[0];
+    }
+  } catch (e) {
+    console.error('[CEO Training] Embedding generation failed (non-fatal):', e);
+  }
+
+  // Store the decision as an agent memory
+  const { data: memory, error } = await supabase.from('agent_memories').insert({
+    agent_type: 'ceo-training',
+    query: transcript,
+    response: JSON.stringify(analysisResult),
+    query_embedding: embedding ? `[${embedding.join(',')}]` : null,
+    success_score: analysisResult.confidence || 0.8,
+    usage_count: 1,
+    metadata: {
+      decision_type: analysisResult.decision_type,
+      tags: analysisResult.tags,
+      context,
+      style_notes: (analysisResult as any).style_notes
+    }
+  }).select().single();
+
+  if (error) {
+    console.error('[CEO Training] Failed to store decision:', error);
+    throw error;
+  }
+
+  console.log(`[CEO Training] Processed and stored decision: ${analysisResult.decision_type}`);
+  return jsonResponse({ 
+    success: true, 
+    decision: analysisResult,
+    memory_id: memory?.id 
+  });
+}
+
+async function endSession(supabase: any, params: { session_id: string }) {
+  const { session_id } = params;
+
+  // Get session data
+  const { data: sessionState } = await supabase
+    .from('agent_shared_state')
+    .select('value')
+    .eq('key', `ceo_training_session_${session_id}`)
+    .single();
+
+  if (!sessionState) {
+    return jsonResponse({ error: 'Session not found' }, 404);
+  }
+
+  const session = sessionState.value as TrainingSession;
+  const duration = new Date().getTime() - new Date(session.started_at).getTime();
+
+  // Process all transcripts that haven't been processed
+  const decisions: DecisionRecord[] = [];
+  for (const entry of session.transcripts.filter(t => t.type === 'decision')) {
+    try {
+      const result = await processDecisionInternal(supabase, entry.content, entry.context);
+      if (result) decisions.push(result);
+    } catch (e) {
+      console.error('[CEO Training] Failed to process entry:', e);
+    }
+  }
+
+  // Delete session state
+  await supabase.from('agent_shared_state').delete().eq('key', `ceo_training_session_${session_id}`);
+
+  // Log session completion
+  await supabase.from('platform_audit_log').insert({
+    timestamp: new Date().toISOString(),
+    agent_name: 'ceo-training',
+    action_type: 'training_session_completed',
+    description: `Training session completed: ${session.transcripts.length} entries, ${decisions.length} decisions processed`,
+    success: true,
+    response_snapshot: JSON.stringify({
+      session_id,
+      duration_ms: duration,
+      transcript_count: session.transcripts.length,
+      decisions_processed: decisions.length
+    })
+  });
+
+  console.log(`[CEO Training] Ended session ${session_id}: ${decisions.length} decisions processed`);
+  return jsonResponse({
+    success: true,
+    session_id,
+    duration_ms: duration,
+    transcripts_count: session.transcripts.length,
+    decisions_processed: decisions.length
+  });
+}
+
+async function processDecisionInternal(supabase: any, transcript: string, context?: Record<string, unknown>): Promise<DecisionRecord | null> {
+  // Simplified internal processing
+  try {
+    const result = await processDecision(supabase, { transcript, context });
+    const body = await result.json();
+    return body.decision;
+  } catch {
+    return null;
+  }
+}
+
+async function getTrainingStats(supabase: any) {
+  // Get training statistics
+  const [memoriesResult, patternsResult, sessionsResult] = await Promise.all([
+    supabase
+      .from('agent_memories')
+      .select('*', { count: 'exact' })
+      .eq('agent_type', 'ceo-training'),
+    supabase
+      .from('user_patterns')
+      .select('*', { count: 'exact' })
+      .eq('pattern_type', 'ceo_decision'),
+    supabase
+      .from('platform_audit_log')
+      .select('*', { count: 'exact' })
+      .eq('action_type', 'training_session_completed')
+  ]);
+
+  // Get recent decisions
+  const { data: recentDecisions } = await supabase
+    .from('agent_memories')
+    .select('*')
+    .eq('agent_type', 'ceo-training')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  // Calculate average confidence
+  const avgConfidence = recentDecisions?.reduce((sum: number, d: any) => sum + (d.success_score || 0), 0) / (recentDecisions?.length || 1);
+
+  return jsonResponse({
+    total_decisions: memoriesResult.count || 0,
+    patterns_detected: patternsResult.count || 0,
+    sessions_completed: sessionsResult.count || 0,
+    average_confidence: avgConfidence,
+    recent_decisions: recentDecisions?.map((d: any) => ({
+      id: d.id,
+      created_at: d.created_at,
+      decision_type: d.metadata?.decision_type,
+      confidence: d.success_score
+    }))
+  });
+}
+
+async function getLearnedPatterns(supabase: any, params: { limit?: number }) {
+  const limit = params.limit || 20;
+
+  // Get high-confidence decisions grouped by type
+  const { data: decisions } = await supabase
+    .from('agent_memories')
+    .select('*')
+    .eq('agent_type', 'ceo-training')
+    .gte('success_score', 0.7)
+    .order('usage_count', { ascending: false })
+    .limit(limit);
+
+  // Group by decision type
+  const patternsByType = (decisions || []).reduce((acc: Record<string, any[]>, d: any) => {
+    const type = d.metadata?.decision_type || 'general';
+    if (!acc[type]) acc[type] = [];
+    acc[type].push({
+      id: d.id,
+      situation: d.query,
+      reasoning: d.response,
+      confidence: d.success_score,
+      usage_count: d.usage_count,
+      tags: d.metadata?.tags
+    });
+    return acc;
+  }, {});
+
+  return jsonResponse({
+    patterns_by_type: patternsByType,
+    total_patterns: decisions?.length || 0
+  });
+}

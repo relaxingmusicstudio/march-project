@@ -8,7 +8,6 @@ const corsHeaders = {
 
 // Task types for automatic model selection
 type TaskType = 'classification' | 'yes_no' | 'extraction' | 'summarization' | 'qa' | 'generation' | 'analysis' | 'reasoning' | 'multi_step';
-type TaskComplexity = 'simple' | 'standard' | 'complex';
 
 interface LLMRequest {
   messages: Array<{ role: string; content: string }>;
@@ -40,9 +39,11 @@ const MODEL_TIERS = {
   simple: 'google/gemini-2.5-flash-lite',    // Cheapest - 75% cost reduction
   standard: 'google/gemini-2.5-flash',       // Default - balanced
   complex: 'google/gemini-2.5-pro',          // Most capable - rare use
+  claude: 'claude-sonnet-4-20250514',        // Claude for deep reasoning
 } as const;
 
 // Map task types to complexity levels
+type TaskComplexity = 'simple' | 'standard' | 'complex' | 'claude';
 const TASK_COMPLEXITY_MAP: Record<TaskType, TaskComplexity> = {
   classification: 'simple',
   yes_no: 'simple',
@@ -51,8 +52,8 @@ const TASK_COMPLEXITY_MAP: Record<TaskType, TaskComplexity> = {
   qa: 'standard',
   generation: 'standard',
   analysis: 'complex',
-  reasoning: 'complex',
-  multi_step: 'complex',
+  reasoning: 'claude',  // Route to Claude for deep reasoning
+  multi_step: 'claude', // Route to Claude for multi-step tasks
 };
 
 // Cost estimates per 1M tokens (in USD)
@@ -63,6 +64,7 @@ const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'openai/gpt-5': { input: 5.00, output: 15.00 },
   'openai/gpt-5-mini': { input: 0.15, output: 0.60 },
   'openai/gpt-5-nano': { input: 0.05, output: 0.20 },
+  'claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
 };
 
 // Extended cache TTL for common queries
