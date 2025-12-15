@@ -9,10 +9,14 @@ import { VisitorProvider } from "@/contexts/VisitorContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
+import CookieConsentBanner from "@/components/CookieConsentBanner";
 import Index from "./pages/Index";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import Auth from "./pages/Auth";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import CookiePolicy from "./pages/CookiePolicy";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import AdminInbox from "./pages/AdminInbox";
 import AdminContacts from "./pages/AdminContacts";
@@ -66,11 +70,15 @@ const App = () => (
             <Toaster />
             <Sonner />
             <PWAInstallPrompt />
+            <CookieConsentBanner />
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/blog" element={<Blog />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/cookies" element={<CookiePolicy />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/admin/analytics" element={<ProtectedRoute requireAdmin><AdminAnalytics /></ProtectedRoute>} />
                 <Route path="/admin/hub" element={<ProtectedRoute requireAdmin><CEOHub /></ProtectedRoute>} />

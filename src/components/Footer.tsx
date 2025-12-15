@@ -16,9 +16,10 @@ const Footer = () => {
             Done-for-you AI voice agents that answer, book, and upsell 24/7. Built in 48 hours. No contracts.
           </p>
           <div className="flex flex-wrap justify-center gap-6 text-primary-foreground/60 text-sm">
-            <a href="#" className="hover:text-accent transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-accent transition-colors">Terms of Service</a>
-            <a href="#" className="hover:text-accent transition-colors">Contact Us</a>
+            <Link to="/privacy" className="hover:text-accent transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="hover:text-accent transition-colors">Terms of Service</Link>
+            <Link to="/cookies" className="hover:text-accent transition-colors">Cookie Policy</Link>
+            <a href="#contact" className="hover:text-accent transition-colors">Contact Us</a>
             <Link 
               to="/auth" 
               className="hover:text-accent transition-colors flex items-center gap-1"
