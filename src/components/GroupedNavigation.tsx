@@ -37,6 +37,8 @@ import {
   Cog,
   CreditCard,
   HelpCircle,
+  Search,
+  ShieldAlert,
 } from "lucide-react";
 
 interface NavItem {
@@ -73,6 +75,7 @@ const navGroups: NavGroup[] = [
     label: "Sales",
     icon: DollarSign,
     items: [
+      { path: "/admin/prospecting", label: "Prospecting", icon: Search },
       { path: "/admin/pipeline", label: "Pipeline", icon: Target },
       { path: "/admin/leads", label: "Leads", icon: Users },
       { path: "/admin/dialer", label: "Dialer", icon: Phone },
@@ -100,6 +103,7 @@ const navGroups: NavGroup[] = [
     icon: Users,
     items: [
       { path: "/admin/clients", label: "Clients", icon: Users },
+      { path: "/admin/retention", label: "Retention", icon: ShieldAlert },
       { path: "/admin/billing", label: "Billing", icon: CreditCard },
       { path: "/admin/accounts", label: "Accounts", icon: Building2 },
       { path: "/admin/onboarding", label: "Onboarding", icon: Calendar },
