@@ -59,6 +59,7 @@ import AdminPreLaunch from "./pages/AdminPreLaunch";
 import AdminTrainingMode from "./pages/AdminTrainingMode";
 import AdminProspecting from "./pages/AdminProspecting";
 import AdminRetention from "./pages/AdminRetention";
+import AdminMockMode from "./pages/AdminMockMode";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -134,6 +135,7 @@ const App = () => (
                 <Route path="/admin/training" element={<ProtectedRoute requireAdmin><AdminTrainingMode /></ProtectedRoute>} />
                 <Route path="/admin/prospecting" element={<ProtectedRoute requireAdmin><AdminProspecting /></ProtectedRoute>} />
                 <Route path="/admin/retention" element={<ProtectedRoute requireAdmin><AdminRetention /></ProtectedRoute>} />
+                <Route path="/admin/mock-mode" element={<ProtectedRoute requireAdmin><AdminMockMode /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

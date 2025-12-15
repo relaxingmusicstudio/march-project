@@ -64,6 +64,59 @@ export type Database = {
           },
         ]
       }
+      ab_test_results_mock: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          id: string
+          message_type: string | null
+          simulation_id: string | null
+          tenant_id: string | null
+          test_name: string
+          variant_a: Json
+          variant_a_metrics: Json | null
+          variant_b: Json
+          variant_b_metrics: Json | null
+          winner: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          message_type?: string | null
+          simulation_id?: string | null
+          tenant_id?: string | null
+          test_name: string
+          variant_a: Json
+          variant_a_metrics?: Json | null
+          variant_b: Json
+          variant_b_metrics?: Json | null
+          winner?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          message_type?: string | null
+          simulation_id?: string | null
+          tenant_id?: string | null
+          test_name?: string
+          variant_a?: Json
+          variant_a_metrics?: Json | null
+          variant_b?: Json
+          variant_b_metrics?: Json | null
+          winner?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ab_test_results_mock_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ab_test_variants: {
         Row: {
           conversion_rate: number | null
@@ -1189,6 +1242,74 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      business_dna: {
+        Row: {
+          average_deal_value: number | null
+          brand_voice: Json | null
+          business_model: string | null
+          business_name: string
+          churn_rate: number | null
+          competitors: Json | null
+          created_at: string | null
+          id: string
+          industry: string
+          pricing_strategy: Json | null
+          products_services: Json | null
+          sales_cycle_days: number | null
+          scenario_key: string | null
+          target_customer: Json | null
+          tenant_id: string | null
+          unique_value_proposition: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          average_deal_value?: number | null
+          brand_voice?: Json | null
+          business_model?: string | null
+          business_name: string
+          churn_rate?: number | null
+          competitors?: Json | null
+          created_at?: string | null
+          id?: string
+          industry: string
+          pricing_strategy?: Json | null
+          products_services?: Json | null
+          sales_cycle_days?: number | null
+          scenario_key?: string | null
+          target_customer?: Json | null
+          tenant_id?: string | null
+          unique_value_proposition?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          average_deal_value?: number | null
+          brand_voice?: Json | null
+          business_model?: string | null
+          business_name?: string
+          churn_rate?: number | null
+          competitors?: Json | null
+          created_at?: string | null
+          id?: string
+          industry?: string
+          pricing_strategy?: Json | null
+          products_services?: Json | null
+          sales_cycle_days?: number | null
+          scenario_key?: string | null
+          target_customer?: Json | null
+          tenant_id?: string | null
+          unique_value_proposition?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_dna_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       business_knowledge: {
         Row: {
@@ -5146,6 +5267,92 @@ export type Database = {
           },
         ]
       }
+      mock_activity_log: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          event_day: number | null
+          id: string
+          latency_ms: number | null
+          mock_response: Json | null
+          original_payload: Json | null
+          service_key: string
+          simulated_result: Json
+          simulation_id: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          event_day?: number | null
+          id?: string
+          latency_ms?: number | null
+          mock_response?: Json | null
+          original_payload?: Json | null
+          service_key: string
+          simulated_result?: Json
+          simulation_id?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          event_day?: number | null
+          id?: string
+          latency_ms?: number | null
+          mock_response?: Json | null
+          original_payload?: Json | null
+          service_key?: string
+          simulated_result?: Json
+          simulation_id?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mock_activity_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mock_service_credentials: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          sandbox_credentials: Json
+          service_key: string
+          service_name: string
+          test_endpoint: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          sandbox_credentials?: Json
+          service_key: string
+          service_name: string
+          test_endpoint?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          sandbox_credentials?: Json
+          service_key?: string
+          service_name?: string
+          test_endpoint?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           channels: string[]
@@ -6395,6 +6602,124 @@ export type Database = {
         }
         Relationships: []
       }
+      simulation_runs: {
+        Row: {
+          agent_responses_count: number | null
+          completed_at: string | null
+          created_at: string | null
+          current_day: number | null
+          errors: Json | null
+          id: string
+          metrics_summary: Json | null
+          scenario_key: string
+          scenario_name: string | null
+          speed_multiplier: number | null
+          started_at: string | null
+          status: string | null
+          tenant_id: string | null
+          total_days_simulated: number | null
+        }
+        Insert: {
+          agent_responses_count?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          current_day?: number | null
+          errors?: Json | null
+          id?: string
+          metrics_summary?: Json | null
+          scenario_key: string
+          scenario_name?: string | null
+          speed_multiplier?: number | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          total_days_simulated?: number | null
+        }
+        Update: {
+          agent_responses_count?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          current_day?: number | null
+          errors?: Json | null
+          id?: string
+          metrics_summary?: Json | null
+          scenario_key?: string
+          scenario_name?: string | null
+          speed_multiplier?: number | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          total_days_simulated?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulation_runs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      simulation_timeline: {
+        Row: {
+          agent_response: Json | null
+          created_at: string | null
+          event_day: number
+          event_description: string | null
+          event_time: string | null
+          event_type: string
+          executed_at: string | null
+          id: string
+          simulation_id: string | null
+          status: string | null
+          target_entity_id: string | null
+          target_entity_type: string | null
+          tenant_id: string | null
+          trigger_data: Json | null
+        }
+        Insert: {
+          agent_response?: Json | null
+          created_at?: string | null
+          event_day: number
+          event_description?: string | null
+          event_time?: string | null
+          event_type: string
+          executed_at?: string | null
+          id?: string
+          simulation_id?: string | null
+          status?: string | null
+          target_entity_id?: string | null
+          target_entity_type?: string | null
+          tenant_id?: string | null
+          trigger_data?: Json | null
+        }
+        Update: {
+          agent_response?: Json | null
+          created_at?: string | null
+          event_day?: number
+          event_description?: string | null
+          event_time?: string | null
+          event_type?: string
+          executed_at?: string | null
+          id?: string
+          simulation_id?: string | null
+          status?: string | null
+          target_entity_id?: string | null
+          target_entity_type?: string | null
+          tenant_id?: string | null
+          trigger_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulation_timeline_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_campaign_recipients: {
         Row: {
           campaign_id: string | null
@@ -6956,6 +7281,7 @@ export type Database = {
       tenants: {
         Row: {
           created_at: string | null
+          environment: string | null
           features_enabled: Json | null
           id: string
           is_active: boolean | null
@@ -6969,6 +7295,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          environment?: string | null
           features_enabled?: Json | null
           id?: string
           is_active?: boolean | null
@@ -6982,6 +7309,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          environment?: string | null
           features_enabled?: Json | null
           id?: string
           is_active?: boolean | null

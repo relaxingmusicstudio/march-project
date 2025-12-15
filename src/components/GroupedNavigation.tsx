@@ -117,6 +117,7 @@ const navGroups: NavGroup[] = [
     icon: Zap,
     items: [
       { path: "/admin/automation", label: "Workflows", icon: Zap },
+      { path: "/admin/mock-mode", label: "Mock Test Mode", icon: Activity },
     ],
   },
   {
