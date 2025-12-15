@@ -242,3 +242,6 @@ verify_jwt = false
 
 [functions.billing-agent]
 verify_jwt = false
+
+[functions.voice-agent-handler]
+verify_jwt = false
