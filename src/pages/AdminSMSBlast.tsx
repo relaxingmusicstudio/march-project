@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { MessageSquare, Send, Users, CheckCircle, XCircle, Clock, Plus, AlertTriangle, Smartphone } from "lucide-react";
+import { PageChatHeader } from "@/components/PageChatHeader";
+import { StatCardWithTooltip } from "@/components/StatCardWithTooltip";
 
 const AdminSMSBlast = () => {
   const queryClient = useQueryClient();
@@ -155,10 +157,20 @@ const AdminSMSBlast = () => {
   return (
     <AdminLayout title="SMS Campaigns">
       <div className="p-6 space-y-6">
+        <PageChatHeader
+          pageContext="SMS Campaigns page - managing text message campaigns and quick sends"
+          placeholder="Ask about your SMS campaigns, delivery rates, or how to improve engagement..."
+          quickActions={[
+            { label: "How can I improve delivery?", prompt: "How can I improve my SMS delivery rate?" },
+            { label: "Best time to send?", prompt: "What's the best time to send SMS campaigns?" },
+            { label: "Campaign ideas", prompt: "Give me ideas for effective SMS campaigns" },
+          ]}
+        />
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">SMS Campaigns</h1>
-            <p className="text-muted-foreground">Mass SMS blasts and drip campaigns</p>
+            <p className="text-muted-foreground">Send text messages to your customers</p>
           </div>
           
           <div className="flex items-center gap-4">
@@ -230,55 +242,49 @@ const AdminSMSBlast = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Campaigns</p>
-                  <p className="text-2xl font-bold">{campaigns?.length || 0}</p>
-                </div>
-                <MessageSquare className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
+          <StatCardWithTooltip
+            title="Total Campaigns"
+            simpleTitle="Message Campaigns"
+            value={campaigns?.length || 0}
+            icon={<MessageSquare className="h-8 w-8" />}
+            tooltip="Number of text message campaigns you've created"
+            action="View all campaigns"
+            onClick={() => {}}
+            variant="primary"
+          />
           
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">SMS Sent</p>
-                  <p className="text-2xl font-bold">{totalSent}</p>
-                </div>
-                <Send className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
+          <StatCardWithTooltip
+            title="SMS Sent"
+            simpleTitle="Texts Sent"
+            value={totalSent}
+            icon={<Send className="h-8 w-8" />}
+            tooltip="Total number of text messages you've sent across all campaigns"
+            action="View message history"
+            onClick={() => {}}
+            variant="primary"
+          />
           
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Delivery Rate</p>
-                  <p className="text-2xl font-bold">
-                    {totalSent > 0 ? ((totalDelivered / totalSent) * 100).toFixed(1) + '%' : '0%'}
-                  </p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
+          <StatCardWithTooltip
+            title="Delivery Rate"
+            simpleTitle="Messages Delivered"
+            value={totalSent > 0 ? ((totalDelivered / totalSent) * 100).toFixed(1) + '%' : '0%'}
+            icon={<CheckCircle className="h-8 w-8" />}
+            tooltip="Percentage of messages that successfully reached recipients"
+            action="View delivery stats"
+            onClick={() => {}}
+            variant="success"
+          />
           
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Opt-Outs</p>
-                  <p className="text-2xl font-bold">{optOutCount}</p>
-                </div>
-                <XCircle className="h-8 w-8 text-red-500" />
-              </div>
-            </CardContent>
-          </Card>
+          <StatCardWithTooltip
+            title="Opt-Outs"
+            simpleTitle="Unsubscribed"
+            value={optOutCount}
+            icon={<XCircle className="h-8 w-8" />}
+            tooltip="People who asked to stop receiving your text messages"
+            action="View unsubscribes"
+            onClick={() => {}}
+            variant="danger"
+          />
         </div>
 
         <Tabs defaultValue="campaigns" className="space-y-4">

@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { RevenueForecast } from "@/components/pipeline/RevenueForecast";
 import { RevenueIntelligence } from "@/components/pipeline/RevenueIntelligence";
+import { PageChatHeader } from "@/components/PageChatHeader";
+import { StatCardWithTooltip } from "@/components/StatCardWithTooltip";
 
 interface Deal {
   id: string;
@@ -182,6 +184,16 @@ export default function AdminPipeline() {
   return (
     <AdminLayout title="Deal Pipeline" subtitle="Drag deals between stages to update status">
       <div className="space-y-6">
+        <PageChatHeader
+          pageContext="Deal Pipeline page - managing sales opportunities and forecasting revenue"
+          placeholder="Ask about your deals, sales tips, or forecasting..."
+          quickActions={[
+            { label: "Deals to focus on", prompt: "Which deals should I focus on today?" },
+            { label: "Close more deals", prompt: "How can I close more deals this month?" },
+            { label: "Pipeline health", prompt: "How healthy is my pipeline?" },
+          ]}
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <Dialog open={showAddDeal} onOpenChange={setShowAddDeal}>
@@ -250,58 +262,46 @@ export default function AdminPipeline() {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <DollarSign className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Pipeline</p>
-                  <p className="text-2xl font-bold">${totalPipelineValue.toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <TrendingUp className="h-5 w-5 text-green-500" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Weighted Value</p>
-                  <p className="text-2xl font-bold">${weightedPipelineValue.toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
-                  <Target className="h-5 w-5 text-blue-500" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Deal Size</p>
-                  <p className="text-2xl font-bold">${avgDealSize.toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-500/10">
-                  <Brain className="h-5 w-5 text-purple-500" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Active Deals</p>
-                  <p className="text-2xl font-bold">{deals.filter(d => !d.stage.startsWith('closed')).length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <StatCardWithTooltip
+            title="Total Pipeline"
+            simpleTitle="Potential Deals"
+            value={`$${totalPipelineValue.toLocaleString()}`}
+            icon={<DollarSign className="h-5 w-5" />}
+            tooltip="Total value of all deals you're currently working on"
+            action="View all deals"
+            onClick={() => {}}
+            variant="primary"
+          />
+          <StatCardWithTooltip
+            title="Weighted Value"
+            simpleTitle="Likely Revenue"
+            value={`$${weightedPipelineValue.toLocaleString()}`}
+            icon={<TrendingUp className="h-5 w-5" />}
+            tooltip="Total value multiplied by the chance of closing each deal - your realistic forecast"
+            action="View high-probability deals"
+            onClick={() => {}}
+            variant="success"
+          />
+          <StatCardWithTooltip
+            title="Avg Deal Size"
+            simpleTitle="Average Job Value"
+            value={`$${avgDealSize.toLocaleString()}`}
+            icon={<Target className="h-5 w-5" />}
+            tooltip="The typical amount you earn per deal - helps with planning"
+            action="View deal sizes"
+            onClick={() => {}}
+            variant="primary"
+          />
+          <StatCardWithTooltip
+            title="Active Deals"
+            simpleTitle="Deals in Progress"
+            value={deals.filter(d => !d.stage.startsWith('closed')).length}
+            icon={<Brain className="h-5 w-5" />}
+            tooltip="Number of deals you're actively working on right now"
+            action="View active deals"
+            onClick={() => {}}
+            variant="primary"
+          />
         </div>
 
         {/* AI Forecasting */}

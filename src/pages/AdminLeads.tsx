@@ -37,6 +37,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { PageChatHeader } from "@/components/PageChatHeader";
+import { StatCardWithTooltip } from "@/components/StatCardWithTooltip";
 
 interface Lead {
   id: string;
@@ -174,52 +176,58 @@ const AdminLeads = () => {
 
   return (
     <AdminLayout title="Leads" subtitle="Manage and convert your leads">
+      <PageChatHeader
+        pageContext="Leads management page - viewing and converting potential customers"
+        placeholder="Ask about your leads, conversion tips, or follow-up strategies..."
+        quickActions={[
+          { label: "Best leads to call", prompt: "Which leads should I call first today?" },
+          { label: "Improve conversion", prompt: "How can I convert more leads to customers?" },
+          { label: "Follow-up tips", prompt: "What's the best way to follow up with warm leads?" },
+        ]}
+      />
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Leads</p>
-                <p className="text-2xl font-bold">{leads.length}</p>
-              </div>
-              <User className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Hot Leads</p>
-                <p className="text-2xl font-bold">{hotLeads}</p>
-              </div>
-              <Flame className="h-8 w-8 text-red-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Warm Leads</p>
-                <p className="text-2xl font-bold">{warmLeads}</p>
-              </div>
-              <ThermometerSun className="h-8 w-8 text-orange-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Avg Score</p>
-                <p className="text-2xl font-bold">{avgScore}</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCardWithTooltip
+          title="Total Leads"
+          simpleTitle="All Leads"
+          value={leads.length}
+          icon={<User className="h-8 w-8" />}
+          tooltip="Everyone who has shown interest in your business"
+          action="View all leads"
+          onClick={() => setTemperatureFilter("all")}
+          variant="primary"
+        />
+        <StatCardWithTooltip
+          title="Hot Leads"
+          simpleTitle="Ready to Buy"
+          value={hotLeads}
+          icon={<Flame className="h-8 w-8" />}
+          tooltip="Leads that are very interested and ready to make a decision - contact these first!"
+          action="View hot leads"
+          onClick={() => setTemperatureFilter("hot")}
+          variant="danger"
+        />
+        <StatCardWithTooltip
+          title="Warm Leads"
+          simpleTitle="Interested"
+          value={warmLeads}
+          icon={<ThermometerSun className="h-8 w-8" />}
+          tooltip="Leads showing interest but not ready to buy yet - nurture these"
+          action="View warm leads"
+          onClick={() => setTemperatureFilter("warm")}
+          variant="warning"
+        />
+        <StatCardWithTooltip
+          title="Avg Score"
+          simpleTitle="Average Interest"
+          value={avgScore}
+          icon={<TrendingUp className="h-8 w-8" />}
+          tooltip="Average interest level across all your leads (0-100) - higher is better"
+          action="See scoring breakdown"
+          onClick={() => {}}
+          variant="success"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
