@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import CEOVoiceAssistant from "@/components/CEOVoiceAssistant";
 import ComplianceEnrichmentWidget from "@/components/ceo/ComplianceEnrichmentWidget";
 import UserDirectivesWidget from "@/components/ceo/UserDirectivesWidget";
+import { FollowUpTasksWidget } from "@/components/ceo/FollowUpTasksWidget";
 
 interface Message {
   role: "user" | "assistant";
@@ -569,6 +570,9 @@ const CEOHub = () => {
                 )}
               </CardContent>
             </Card>
+
+            {/* Follow-up Tasks (Human Request Handling) */}
+            <FollowUpTasksWidget />
 
             {/* User Commands Widget */}
             <UserDirectivesWidget />

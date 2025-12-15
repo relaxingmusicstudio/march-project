@@ -6,6 +6,54 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// TCPA Call Time Restrictions - 8am to 9pm in lead's timezone
+const CALL_START_HOUR = 8;
+const CALL_END_HOUR = 21;
+
+// US Timezone mapping by area code (simplified)
+const TIMEZONE_BY_AREA_CODE: Record<string, string> = {
+  // Eastern
+  '201': 'America/New_York', '202': 'America/New_York', '203': 'America/New_York',
+  '212': 'America/New_York', '215': 'America/New_York', '216': 'America/New_York',
+  '305': 'America/New_York', '404': 'America/New_York', '407': 'America/New_York',
+  // Central
+  '214': 'America/Chicago', '312': 'America/Chicago', '314': 'America/Chicago',
+  '469': 'America/Chicago', '512': 'America/Chicago', '713': 'America/Chicago',
+  // Mountain
+  '303': 'America/Denver', '480': 'America/Phoenix', '602': 'America/Phoenix',
+  // Pacific
+  '206': 'America/Los_Angeles', '213': 'America/Los_Angeles', '310': 'America/Los_Angeles',
+  '415': 'America/Los_Angeles', '503': 'America/Los_Angeles', '619': 'America/Los_Angeles',
+};
+
+function getTimezoneFromPhone(phone: string): string {
+  const cleaned = phone.replace(/\D/g, '');
+  const areaCode = cleaned.length >= 10 ? cleaned.slice(-10, -7) : cleaned.slice(0, 3);
+  return TIMEZONE_BY_AREA_CODE[areaCode] || 'America/New_York';
+}
+
+function isWithinCallHours(timezone: string): { allowed: boolean; reason?: string } {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      hour12: false,
+    });
+    const hour = parseInt(formatter.format(now), 10);
+    
+    if (hour < CALL_START_HOUR || hour >= CALL_END_HOUR) {
+      return {
+        allowed: false,
+        reason: `Cannot call - outside permitted hours (8am-9pm in ${timezone}). Current hour: ${hour}`,
+      };
+    }
+    return { allowed: true };
+  } catch {
+    return { allowed: true }; // Default to allowed if timezone detection fails
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -26,7 +74,37 @@ serve(async (req) => {
 
     const twilioConfigured = twilioAccountSid && twilioAuthToken && twilioPhoneNumber;
 
+    if (action === 'check_call_time') {
+      // Check if call is within permitted TCPA hours
+      const timezone = getTimezoneFromPhone(phone_number);
+      const result = isWithinCallHours(timezone);
+      
+      return new Response(JSON.stringify({
+        ...result,
+        timezone,
+        phone_number,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     if (action === 'initiate_call') {
+      // TCPA COMPLIANCE: Check call time restrictions
+      const timezone = getTimezoneFromPhone(phone_number);
+      const callTimeCheck = isWithinCallHours(timezone);
+      
+      if (!callTimeCheck.allowed) {
+        console.log('[BLOCKED] Call time restriction:', callTimeCheck.reason);
+        return new Response(JSON.stringify({
+          success: false,
+          error: callTimeCheck.reason,
+          reason: 'call_time_restriction',
+          timezone,
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       // TCPA COMPLIANCE: Verify consent before any call
       let hasConsent = false;
       let consentSource = null;

@@ -937,9 +937,12 @@ export type Database = {
           duration_seconds: number | null
           ended_at: string | null
           external_call_id: string | null
+          follow_up_task_id: string | null
           from_number: string | null
+          human_requested: boolean | null
           id: string
           lead_id: string | null
+          message_collected: Json | null
           phone_number_id: string | null
           recording_url: string | null
           started_at: string | null
@@ -960,9 +963,12 @@ export type Database = {
           duration_seconds?: number | null
           ended_at?: string | null
           external_call_id?: string | null
+          follow_up_task_id?: string | null
           from_number?: string | null
+          human_requested?: boolean | null
           id?: string
           lead_id?: string | null
+          message_collected?: Json | null
           phone_number_id?: string | null
           recording_url?: string | null
           started_at?: string | null
@@ -983,9 +989,12 @@ export type Database = {
           duration_seconds?: number | null
           ended_at?: string | null
           external_call_id?: string | null
+          follow_up_task_id?: string | null
           from_number?: string | null
+          human_requested?: boolean | null
           id?: string
           lead_id?: string | null
+          message_collected?: Json | null
           phone_number_id?: string | null
           recording_url?: string | null
           started_at?: string | null
@@ -1000,6 +1009,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts_unified"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_follow_up_task_id_fkey"
+            columns: ["follow_up_task_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_tasks"
             referencedColumns: ["id"]
           },
           {
@@ -3045,6 +3061,106 @@ export type Database = {
           variance_percentage?: number | null
         }
         Relationships: []
+      }
+      follow_up_tasks: {
+        Row: {
+          ai_draft_email: Json | null
+          ai_draft_script: string | null
+          ai_draft_sms: string | null
+          assigned_to: string | null
+          call_log_id: string | null
+          caller_email: string | null
+          caller_phone: string | null
+          contact_id: string | null
+          contact_preference: string
+          created_at: string
+          crm_activity_id: string | null
+          crm_logged_at: string | null
+          id: string
+          lead_id: string | null
+          priority: string
+          reply_content: string | null
+          reply_method: string | null
+          reply_sent_at: string | null
+          reviewed_at: string | null
+          status: string
+          timeline_expectation: string | null
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          ai_draft_email?: Json | null
+          ai_draft_script?: string | null
+          ai_draft_sms?: string | null
+          assigned_to?: string | null
+          call_log_id?: string | null
+          caller_email?: string | null
+          caller_phone?: string | null
+          contact_id?: string | null
+          contact_preference?: string
+          created_at?: string
+          crm_activity_id?: string | null
+          crm_logged_at?: string | null
+          id?: string
+          lead_id?: string | null
+          priority?: string
+          reply_content?: string | null
+          reply_method?: string | null
+          reply_sent_at?: string | null
+          reviewed_at?: string | null
+          status?: string
+          timeline_expectation?: string | null
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          ai_draft_email?: Json | null
+          ai_draft_script?: string | null
+          ai_draft_sms?: string | null
+          assigned_to?: string | null
+          call_log_id?: string | null
+          caller_email?: string | null
+          caller_phone?: string | null
+          contact_id?: string | null
+          contact_preference?: string
+          created_at?: string
+          crm_activity_id?: string | null
+          crm_logged_at?: string | null
+          id?: string
+          lead_id?: string | null
+          priority?: string
+          reply_content?: string | null
+          reply_method?: string | null
+          reply_sent_at?: string | null
+          reviewed_at?: string | null
+          status?: string
+          timeline_expectation?: string | null
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_tasks_call_log_id_fkey"
+            columns: ["call_log_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_tasks_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_unified"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_tasks_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       funnel_enrollments: {
         Row: {
