@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMessaging, Contact } from "@/hooks/useMessaging";
+import { PageChatHeader } from "@/components/PageChatHeader";
+import { StatCardWithTooltip } from "@/components/StatCardWithTooltip";
 
 export default function AdminContacts() {
   const navigate = useNavigate();
@@ -136,6 +138,18 @@ export default function AdminContacts() {
           </DialogContent>
         </Dialog>
       </header>
+
+      <div className="p-4">
+        <PageChatHeader
+          pageContext="Contacts page - managing customer contact information"
+          placeholder="Ask about your contacts, segmentation, or outreach strategies..."
+          quickActions={[
+            { label: "Find duplicates", prompt: "Help me find duplicate contacts" },
+            { label: "Segment contacts", prompt: "How should I segment my contacts for better outreach?" },
+            { label: "Clean up data", prompt: "What contact data should I clean up?" },
+          ]}
+        />
+      </div>
 
       <div className="flex h-[calc(100vh-57px)]">
         {/* Contact List */}

@@ -45,6 +45,8 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import AdminLayout from "@/components/AdminLayout";
+import { PageChatHeader } from "@/components/PageChatHeader";
+import { StatCardWithTooltip } from "@/components/StatCardWithTooltip";
 
 interface Client {
   id: string;
@@ -300,61 +302,61 @@ const AdminClients = () => {
 
   return (
     <AdminLayout title="Clients" subtitle="Manage your current customers">
+      <PageChatHeader
+        pageContext="Client management page - viewing and managing paying customers"
+        placeholder="Ask about your clients, retention tips, or how to improve client health..."
+        quickActions={[
+          { label: "At-risk clients", prompt: "Which clients are at risk of leaving?" },
+          { label: "Upsell opportunities", prompt: "Which clients are good candidates for upselling?" },
+          { label: "Retention tips", prompt: "How can I improve client retention?" },
+        ]}
+      />
+
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Active Clients</p>
-                <p className="text-2xl font-bold">{activeClients.length}</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Monthly Revenue</p>
-                <p className="text-2xl font-bold">
-                  ${totalMRR.toLocaleString()}
-                </p>
-              </div>
-              <DollarSign className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Avg Health Score</p>
-                <p className="text-2xl font-bold">{avgHealthScore}%</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">At Risk</p>
-                <p className="text-2xl font-bold">
-                  {
-                    clients.filter(
-                      (c) =>
-                        (c.health_score || 0) < 50 && c.status === "active"
-                    ).length
-                  }
-                </p>
-              </div>
-              <AlertCircle className="h-8 w-8 text-yellow-500" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCardWithTooltip
+          title="Active Clients"
+          simpleTitle="Paying Customers"
+          value={activeClients.length}
+          icon={<CheckCircle className="h-8 w-8" />}
+          tooltip="Customers who are currently paying for your service"
+          action="View all clients"
+          onClick={() => setStatusFilter("active")}
+          variant="success"
+        />
+        <StatCardWithTooltip
+          title="Monthly Revenue"
+          simpleTitle="Monthly Income"
+          value={`$${totalMRR.toLocaleString()}`}
+          icon={<DollarSign className="h-8 w-8" />}
+          tooltip="Total money you make each month from all active clients"
+          action="View revenue breakdown"
+          onClick={() => {}}
+          variant="primary"
+        />
+        <StatCardWithTooltip
+          title="Avg Health Score"
+          simpleTitle="Average Happiness"
+          value={`${avgHealthScore}%`}
+          icon={<TrendingUp className="h-8 w-8" />}
+          tooltip="How well your clients are doing on average - based on usage, tickets, and engagement"
+          action="See health factors"
+          onClick={() => {}}
+          variant="primary"
+        />
+        <StatCardWithTooltip
+          title="At Risk"
+          simpleTitle="Needs Attention"
+          value={clients.filter((c) => (c.health_score || 0) < 50 && c.status === "active").length}
+          icon={<AlertCircle className="h-8 w-8" />}
+          tooltip="Clients who might leave if we don't help them soon - reach out to these!"
+          action="View at-risk clients"
+          onClick={() => {
+            setStatusFilter("active");
+            setSearchQuery("");
+          }}
+          variant="warning"
+        />
       </div>
 
       {/* Actions Bar */}
