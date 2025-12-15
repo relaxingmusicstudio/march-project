@@ -175,6 +175,25 @@ const ContactForm = () => {
       // Get visitor intelligence data
       const visitorData = getGHLData();
       
+      // Log form submission as user directive
+      await supabase.functions.invoke('user-input-logger', {
+        body: {
+          action: 'log_input',
+          source: 'contact_form',
+          input_type: 'form',
+          content: `Contact form submitted: ${formData.firstName} ${formData.lastName} (${formData.email}) - ${formData.businessType} - ${formData.aiTimeline}`,
+          classify: true,
+          metadata: {
+            email: formData.email,
+            phone: formData.phone,
+            businessType: formData.businessType,
+            teamSize: formData.teamSize,
+            callVolume: formData.callVolume,
+            aiTimeline: formData.aiTimeline,
+          },
+        },
+      });
+      
       const { data, error } = await supabase.functions.invoke('contact-form', {
         body: {
           name: `${result.data.firstName} ${result.data.lastName}`,

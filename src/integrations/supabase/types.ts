@@ -5048,6 +5048,60 @@ export type Database = {
         }
         Relationships: []
       }
+      user_directives: {
+        Row: {
+          action_required: boolean | null
+          action_taken: boolean | null
+          content: string
+          created_at: string | null
+          handled_by: string | null
+          id: string
+          input_type: string | null
+          intent: string | null
+          metadata: Json | null
+          priority: string | null
+          processed_at: string | null
+          related_entity_id: string | null
+          related_entity_type: string | null
+          source: string
+          updated_at: string | null
+        }
+        Insert: {
+          action_required?: boolean | null
+          action_taken?: boolean | null
+          content: string
+          created_at?: string | null
+          handled_by?: string | null
+          id?: string
+          input_type?: string | null
+          intent?: string | null
+          metadata?: Json | null
+          priority?: string | null
+          processed_at?: string | null
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          source: string
+          updated_at?: string | null
+        }
+        Update: {
+          action_required?: boolean | null
+          action_taken?: boolean | null
+          content?: string
+          created_at?: string | null
+          handled_by?: string | null
+          id?: string
+          input_type?: string | null
+          intent?: string | null
+          metadata?: Json | null
+          priority?: string | null
+          processed_at?: string | null
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          source?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       user_patterns: {
         Row: {
           action_payload: Json | null

@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 import CEOVoiceAssistant from "@/components/CEOVoiceAssistant";
 import ComplianceEnrichmentWidget from "@/components/ceo/ComplianceEnrichmentWidget";
+import UserDirectivesWidget from "@/components/ceo/UserDirectivesWidget";
 
 interface Message {
   role: "user" | "assistant";
@@ -168,8 +169,27 @@ const CEOHub = () => {
     return "🌙 Good evening, CEO!";
   };
 
+  const logUserInput = async (content: string, source: string, inputType: string = 'text') => {
+    try {
+      await supabase.functions.invoke('user-input-logger', {
+        body: {
+          action: 'log_input',
+          source,
+          input_type: inputType,
+          content,
+          classify: true,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to log user input:', error);
+    }
+  };
+
   const sendMessage = async (query: string) => {
     if (!query.trim() || isLoading) return;
+    
+    // Log user input to directives system
+    await logUserInput(query, 'ceo_hub', 'text');
     
     const userMessage: Message = { role: "user", content: query, timestamp: new Date() };
     setMessages(prev => [...prev, userMessage]);
@@ -550,6 +570,9 @@ const CEOHub = () => {
               </CardContent>
             </Card>
 
+            {/* User Commands Widget */}
+            <UserDirectivesWidget />
+
             {/* AI Activity Log */}
             <Card>
               <CardHeader className="pb-2">
@@ -559,12 +582,12 @@ const CEOHub = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-48">
+                <ScrollArea className="h-32">
                   <div className="space-y-2">
                     {activityLog.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
                     ) : (
-                      activityLog.map((log) => (
+                      activityLog.slice(0, 5).map((log) => (
                         <div key={log.id} className="flex items-start gap-2 p-2 bg-muted/30 rounded text-xs">
                           <Zap className="h-3 w-3 text-accent mt-0.5" />
                           <div className="flex-1 min-w-0">

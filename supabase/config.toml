@@ -236,3 +236,6 @@ verify_jwt = false
 
 [functions.knowledge-base]
 verify_jwt = false
+
+[functions.user-input-logger]
+verify_jwt = false

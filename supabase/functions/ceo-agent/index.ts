@@ -312,6 +312,33 @@ serve(async (req) => {
       console.error('Memory recall error (non-fatal):', memErr);
     }
     
+    // ═══ CHECK USER DIRECTIVES: Get pending user commands ═══
+    let userDirectives: any[] = [];
+    let directivesContext = '';
+    try {
+      const { data: directives } = await supabase
+        .from('user_directives')
+        .select('*')
+        .eq('action_required', true)
+        .eq('action_taken', false)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      userDirectives = directives || [];
+      
+      if (userDirectives.length > 0) {
+        directivesContext = `\n\n## PENDING USER DIRECTIVES (Human-in-the-Loop):\n`;
+        directivesContext += `The user has ${userDirectives.length} pending command(s) that may affect your response:\n`;
+        userDirectives.forEach((d, i) => {
+          directivesContext += `${i + 1}. [${d.intent?.toUpperCase() || 'DIRECTIVE'}] (${d.source}): "${d.content}" - Priority: ${d.priority}\n`;
+        });
+        directivesContext += `\nConsider these directives when providing recommendations. If a user said "pause outreach", acknowledge that outreach is paused.\n`;
+        console.log(`CEO Agent: Found ${userDirectives.length} pending user directives`);
+      }
+    } catch (dirErr) {
+      console.error('Directive check error (non-fatal):', dirErr);
+    }
+    
     // Calculate date range
     const now = new Date();
     const daysAgo = parseInt(timeRange) || 7;
@@ -431,7 +458,7 @@ INSTRUCTIONS:
         role: msg.role === "ceo" ? "assistant" : msg.role,
         content: msg.content
       })),
-      { role: "user", content: `${selfImprovementPrompt}${dataContext}\n\nUSER QUERY: ${query}` }
+      { role: "user", content: `${selfImprovementPrompt}${dataContext}${directivesContext}\n\nUSER QUERY: ${query}` }
     ];
 
     if (stream) {

@@ -277,9 +277,32 @@ Phase: ${leadData.conversationPhase}`;
     }
   };
 
+  const logUserInput = async (content: string) => {
+    try {
+      await supabase.functions.invoke('user-input-logger', {
+        body: {
+          action: 'log_input',
+          source: 'chatbot',
+          input_type: 'text',
+          content,
+          classify: true,
+          metadata: { session_id: sessionId, conversation_id: conversationId },
+        },
+      });
+    } catch (error) {
+      console.error('Failed to log chatbot input:', error);
+    }
+  };
+
   const sendToAlex = async (newMessages: Array<{ role: string; content: string }>): Promise<AIResponse | null> => {
     try {
       const allMessages = [...conversationHistory, ...newMessages];
+      
+      // Log the user message
+      const userMessage = newMessages.find(m => m.role === 'user');
+      if (userMessage && userMessage.content !== 'START_CONVERSATION') {
+        await logUserInput(userMessage.content);
+      }
       
       const { data, error } = await supabase.functions.invoke('alex-chat', {
         body: {

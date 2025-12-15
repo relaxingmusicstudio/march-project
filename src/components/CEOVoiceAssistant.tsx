@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Vapi from "@vapi-ai/web";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface CEOVoiceAssistantProps {
   isOpen: boolean;
@@ -71,12 +72,29 @@ const CEOVoiceAssistant = ({ isOpen, onClose, onTranscript }: CEOVoiceAssistantP
         setVolumeLevel(level);
       });
 
-      vapiInstance.on("message", (message: any) => {
+      vapiInstance.on("message", async (message: any) => {
         console.log("Vapi message:", message);
         if (message.type === "transcript" && message.transcript) {
           const newEntry = { role: message.role || "user", text: message.transcript };
           setTranscript((prev) => [...prev, newEntry]);
           onTranscript?.(message.transcript, message.role as "user" | "assistant");
+          
+          // Log user voice input to directives system
+          if (message.role === "user") {
+            try {
+              await supabase.functions.invoke('user-input-logger', {
+                body: {
+                  action: 'log_input',
+                  source: 'ceo_voice',
+                  input_type: 'voice',
+                  content: message.transcript,
+                  classify: true,
+                },
+              });
+            } catch (error) {
+              console.error('Failed to log voice input:', error);
+            }
+          }
         }
         if (message.type === "function-call") {
           console.log("Function call:", message.functionCall);

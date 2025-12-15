@@ -40,6 +40,45 @@ serve(async (req) => {
 
     // Check system mode before executing outreach
     if (action === 'execute_campaign') {
+      // Check for user directives that might pause outreach
+      try {
+        const { data: pauseDirectives } = await supabase
+          .from('user_directives')
+          .select('*')
+          .eq('action_required', true)
+          .eq('action_taken', false)
+          .in('intent', ['pause', 'cancel'])
+          .or('content.ilike.%pause outreach%,content.ilike.%stop outreach%,content.ilike.%halt outreach%')
+          .limit(1);
+        
+        if (pauseDirectives && pauseDirectives.length > 0) {
+          const directive = pauseDirectives[0];
+          console.log('[cold-outreach] Found pause directive from user:', directive.content);
+          
+          // Mark directive as handled
+          await supabase
+            .from('user_directives')
+            .update({
+              action_taken: true,
+              handled_by: 'cold-outreach-send',
+              processed_at: new Date().toISOString(),
+            })
+            .eq('id', directive.id);
+          
+          return new Response(JSON.stringify({ 
+            success: false, 
+            error: `Cold outreach paused by user directive: "${directive.content}"`,
+            directive_id: directive.id,
+            handled: true
+          }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      } catch (e) {
+        console.log('[cold-outreach] Could not check user directives, proceeding:', e);
+      }
+
       try {
         const { data: modeConfig } = await supabase
           .from('system_config')
