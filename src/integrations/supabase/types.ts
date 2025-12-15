@@ -138,6 +138,42 @@ export type Database = {
         }
         Relationships: []
       }
+      accounting_sync_log: {
+        Row: {
+          created_at: string | null
+          entity_type: string
+          error_message: string | null
+          external_id: string | null
+          id: string
+          internal_id: string
+          provider: string | null
+          sync_direction: string | null
+          sync_status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          entity_type: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          internal_id: string
+          provider?: string | null
+          sync_direction?: string | null
+          sync_status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          entity_type?: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          internal_id?: string
+          provider?: string | null
+          sync_direction?: string | null
+          sync_status?: string | null
+        }
+        Relationships: []
+      }
       accounts: {
         Row: {
           account_score: number | null
@@ -659,6 +695,119 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      bank_connections: {
+        Row: {
+          access_token: string | null
+          company_id: string | null
+          created_at: string | null
+          id: string
+          institution_name: string | null
+          is_active: boolean | null
+          item_id: string | null
+          last_sync_at: string | null
+          metadata: Json | null
+          provider: string
+          refresh_token: string | null
+          sync_cursor: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: string
+          institution_name?: string | null
+          is_active?: boolean | null
+          item_id?: string | null
+          last_sync_at?: string | null
+          metadata?: Json | null
+          provider: string
+          refresh_token?: string | null
+          sync_cursor?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          id?: string
+          institution_name?: string | null
+          is_active?: boolean | null
+          item_id?: string | null
+          last_sync_at?: string | null
+          metadata?: Json | null
+          provider?: string
+          refresh_token?: string | null
+          sync_cursor?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      bank_transactions: {
+        Row: {
+          ai_category: string | null
+          ai_confidence: number | null
+          amount: number
+          category: string[] | null
+          connection_id: string | null
+          created_at: string | null
+          date: string
+          id: string
+          merchant_name: string | null
+          metadata: Json | null
+          name: string
+          needs_review: boolean | null
+          plaid_transaction_id: string | null
+          quickbooks_id: string | null
+          reviewed_at: string | null
+          transaction_type: string | null
+        }
+        Insert: {
+          ai_category?: string | null
+          ai_confidence?: number | null
+          amount: number
+          category?: string[] | null
+          connection_id?: string | null
+          created_at?: string | null
+          date: string
+          id?: string
+          merchant_name?: string | null
+          metadata?: Json | null
+          name: string
+          needs_review?: boolean | null
+          plaid_transaction_id?: string | null
+          quickbooks_id?: string | null
+          reviewed_at?: string | null
+          transaction_type?: string | null
+        }
+        Update: {
+          ai_category?: string | null
+          ai_confidence?: number | null
+          amount?: number
+          category?: string[] | null
+          connection_id?: string | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          merchant_name?: string | null
+          metadata?: Json | null
+          name?: string
+          needs_review?: boolean | null
+          plaid_transaction_id?: string | null
+          quickbooks_id?: string | null
+          reviewed_at?: string | null
+          transaction_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "bank_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       billing_agent_actions: {
         Row: {
