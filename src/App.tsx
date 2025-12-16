@@ -112,9 +112,11 @@ const App = () => (
                   <Route path="command-center/vault" element={<KnowledgeVault />} />
                   <Route path="command-center/system-health" element={<AdminSystemHealth />} />
                   <Route path="command-center/settings" element={<AdminSettings />} />
+                  <Route path="command-center/analytics" element={<AdminAnalytics />} />
                 </Route>
                 
                 {/* Legacy Admin Routes */}
+                <Route path="/admin/analytics" element={<ProtectedRoute requireAdmin><AdminAnalytics /></ProtectedRoute>} />
                 <Route path="/admin/hub" element={<ProtectedRoute requireAdmin><CEOHub /></ProtectedRoute>} />
                 <Route path="/admin/ceo" element={<ProtectedRoute requireAdmin><CEOConsole /></ProtectedRoute>} />
                 <Route path="/admin/inbox" element={<ProtectedRoute requireAdmin><AdminInbox /></ProtectedRoute>} />
