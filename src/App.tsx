@@ -61,6 +61,11 @@ import AdminProspecting from "./pages/AdminProspecting";
 import AdminRetention from "./pages/AdminRetention";
 import AdminMockMode from "./pages/AdminMockMode";
 import NotFound from "./pages/NotFound";
+// Dual Workspace Architecture
+import DualWorkspaceLayout from "./layouts/DualWorkspaceLayout";
+import AICEODashboard from "./pages/AICEODashboard";
+import CommandCenterHome from "./pages/CommandCenterHome";
+import KnowledgeVault from "./pages/KnowledgeVault";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -92,7 +97,24 @@ const App = () => (
                 <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/cookies" element={<CookiePolicy />} />
                 <Route path="/auth" element={<Auth />} />
-                <Route path="/admin/analytics" element={<ProtectedRoute requireAdmin><AdminAnalytics /></ProtectedRoute>} />
+                
+                {/* Dual Workspace Architecture - New Routes */}
+                <Route path="/app" element={<ProtectedRoute requireAdmin><DualWorkspaceLayout /></ProtectedRoute>}>
+                  <Route index element={<AICEODashboard />} />
+                  <Route path="ceo" element={<AICEODashboard />} />
+                  <Route path="command-center" element={<CommandCenterHome />} />
+                  <Route path="command-center/crm" element={<AdminCRM />} />
+                  <Route path="command-center/pipeline" element={<AdminPipeline />} />
+                  <Route path="command-center/content" element={<AdminContent />} />
+                  <Route path="command-center/sequences" element={<AdminSequences />} />
+                  <Route path="command-center/clients" element={<AdminClients />} />
+                  <Route path="command-center/approvals" element={<AdminApprovalQueue />} />
+                  <Route path="command-center/vault" element={<KnowledgeVault />} />
+                  <Route path="command-center/system-health" element={<AdminSystemHealth />} />
+                  <Route path="command-center/settings" element={<AdminSettings />} />
+                </Route>
+                
+                {/* Legacy Admin Routes */}
                 <Route path="/admin/hub" element={<ProtectedRoute requireAdmin><CEOHub /></ProtectedRoute>} />
                 <Route path="/admin/ceo" element={<ProtectedRoute requireAdmin><CEOConsole /></ProtectedRoute>} />
                 <Route path="/admin/inbox" element={<ProtectedRoute requireAdmin><AdminInbox /></ProtectedRoute>} />
