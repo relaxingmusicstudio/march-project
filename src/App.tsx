@@ -67,6 +67,7 @@ import AICEODashboard from "./pages/AICEODashboard";
 import CommandCenterHome from "./pages/CommandCenterHome";
 import KnowledgeVault from "./pages/KnowledgeVault";
 import UnifiedDashboard from "./pages/UnifiedDashboard";
+import AdminBusinessSetup from "./pages/AdminBusinessSetup";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -130,6 +131,7 @@ const App = () => (
                 <Route path="/app/command-center/contacts" element={<ProtectedRoute requireAdmin><AdminContacts /></ProtectedRoute>} />
                 <Route path="/app/command-center/leads" element={<ProtectedRoute requireAdmin><AdminLeads /></ProtectedRoute>} />
                 <Route path="/app/command-center/help" element={<ProtectedRoute requireAdmin><AdminHelp /></ProtectedRoute>} />
+                <Route path="/app/business-setup" element={<ProtectedRoute requireAdmin><AdminBusinessSetup /></ProtectedRoute>} />
                 
                 {/* Legacy Admin Routes */}
                 <Route path="/admin/analytics" element={<ProtectedRoute requireAdmin><AdminAnalytics /></ProtectedRoute>} />

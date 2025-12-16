@@ -1442,6 +1442,54 @@ export type Database = {
           },
         ]
       }
+      business_templates: {
+        Row: {
+          ai_system_prompt: string | null
+          base_config: Json
+          category: string | null
+          created_at: string | null
+          default_services: Json | null
+          default_statistics: Json | null
+          display_name: string
+          features_included: string[] | null
+          id: string
+          industry: string
+          is_active: boolean | null
+          template_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_system_prompt?: string | null
+          base_config?: Json
+          category?: string | null
+          created_at?: string | null
+          default_services?: Json | null
+          default_statistics?: Json | null
+          display_name: string
+          features_included?: string[] | null
+          id?: string
+          industry: string
+          is_active?: boolean | null
+          template_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_system_prompt?: string | null
+          base_config?: Json
+          category?: string | null
+          created_at?: string | null
+          default_services?: Json | null
+          default_statistics?: Json | null
+          display_name?: string
+          features_included?: string[] | null
+          id?: string
+          industry?: string
+          is_active?: boolean | null
+          template_key?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       buying_committee: {
         Row: {
           account_id: string | null
@@ -4023,6 +4071,60 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deployments: {
+        Row: {
+          config_overrides: Json | null
+          created_at: string | null
+          deployed_at: string | null
+          deployed_by: string | null
+          environment: string
+          id: string
+          status: string | null
+          template_id: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          config_overrides?: Json | null
+          created_at?: string | null
+          deployed_at?: string | null
+          deployed_by?: string | null
+          environment: string
+          id?: string
+          status?: string | null
+          template_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          config_overrides?: Json | null
+          created_at?: string | null
+          deployed_at?: string | null
+          deployed_by?: string | null
+          environment?: string
+          id?: string
+          status?: string | null
+          template_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deployments_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "business_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deployments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]

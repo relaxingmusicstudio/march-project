@@ -335,3 +335,9 @@ verify_jwt = false
 
 [functions.ceo-autopilot]
 verify_jwt = false
+
+[functions.business-discovery]
+verify_jwt = false
+
+[functions.provision-new-business]
+verify_jwt = false
