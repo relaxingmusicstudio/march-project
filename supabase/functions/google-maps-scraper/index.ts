@@ -181,7 +181,6 @@ serve(async (req) => {
         categories: biz.categories,
         scraped_at: new Date().toISOString(),
         status: "new",
-        priority_score: calculatePriorityScore(biz),
       }));
 
       const { data: inserted, error } = await supabase
@@ -212,7 +211,7 @@ serve(async (req) => {
       let query = supabase
         .from("scraped_prospects")
         .select("*")
-        .order("priority_score", { ascending: false });
+        .order("created_at", { ascending: false });
 
       if (body.limit) {
         query = query.limit(body.limit);
