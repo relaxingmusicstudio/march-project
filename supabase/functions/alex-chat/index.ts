@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat, selectProvider } from "../_shared/ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -290,15 +291,11 @@ serve(async (req) => {
 
   try {
     const { messages, leadData } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     // Select optimal sales methodology based on lead profile
     const { methodology, promptEnhancement } = selectMethodology(leadData);
-    console.log(`Using ${methodology} methodology for this lead`);
+    const provider = selectProvider();
+    console.log(`[alex-chat] Using ${methodology} methodology, provider: ${provider}`);
 
     // Build context with lead data and methodology
     let contextPrompt = SYSTEM_PROMPT + promptEnhancement;
@@ -315,49 +312,20 @@ serve(async (req) => {
       }
     }
 
-    console.log("Sending to AI, last user message:", messages[messages.length - 1]?.content);
+    console.log("[alex-chat] Sending to AI, last user message:", messages[messages.length - 1]?.content);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: contextPrompt },
-          ...messages,
-        ],
-        tools: [responseTool],
-        tool_choice: { type: "function", function: { name: "send_response" } },
-      }),
+    // Use the shared aiChat helper with provider abstraction
+    const aiResponse = await aiChat({
+      messages: [
+        { role: "system", content: contextPrompt },
+        ...messages,
+      ],
+      tools: [responseTool],
+      tool_choice: { type: "function", function: { name: "send_response" } },
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ 
-          error: "Rate limit exceeded. Please try again in a moment." 
-        }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ 
-          error: "Service temporarily unavailable. Please try again later." 
-        }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log("AI raw response:", JSON.stringify(data).substring(0, 500));
+    const data = aiResponse.raw;
+    console.log(`[alex-chat] AI response from ${aiResponse.provider}:`, JSON.stringify(data).substring(0, 500));
 
     // Extract tool call response
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
