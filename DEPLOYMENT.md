@@ -240,15 +240,17 @@ The `supabase/migrations/` folder contains historical seed data that references 
 
 ### Verifying Runtime Status
 
-To confirm no runtime code uses the legacy gateway, run these searches excluding migrations:
+To confirm no runtime code uses the legacy gateway, run these searches excluding migrations and this doc file (to avoid self-matching):
 
 ```bash
 # Should return 0 matches
-rg -n "ai\.gateway\.lovable\.dev" --glob "!supabase/migrations/**" .
+rg -n "ai\.gateway\.lovable\.dev" --glob "!supabase/migrations/**" --glob "!DEPLOYMENT.md" .
 
 # Should return 0 matches  
-rg -n "LOVABLE_API_KEY" --glob "!supabase/migrations/**" .
+rg -n "LOVABLE_API_KEY" --glob "!supabase/migrations/**" --glob "!DEPLOYMENT.md" .
 ```
+
+> **Note:** If auditing runtime usage, exclude this documentation file to avoid self-matching on the explanatory text above.
 
 ### AI Provider Configuration
 
