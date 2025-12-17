@@ -52,7 +52,13 @@ Configure these in Lovable Cloud → Secrets before deployment:
 | `ELEVENLABS_API_KEY` | ElevenLabs voice synthesis | Optional |
 | `DID_API_KEY` | D-ID video generation | Optional |
 | `GHL_WEBHOOK_URL` | GoHighLevel webhook endpoint | Optional |
-| `LOVABLE_API_KEY` | Lovable AI gateway key | Auto-configured |
+| `GEMINI_API_KEY` | Google Gemini AI key | ✅ |
+| `OPENAI_API_KEY` | OpenAI API key (premium tier) | Optional |
+| `AI_PROVIDER` | Default AI provider (`gemini`) | Optional |
+| `AI_MODEL_DEFAULT` | Default model (`gemini-2.0-flash`) | Optional |
+| `AI_PROVIDER_PREMIUM` | Premium provider (`openai`) | Optional |
+| `AI_MODEL_PREMIUM` | Premium model (`gpt-4o-mini`) | Optional |
+| `AI_PREMIUM_ACTIONS` | CSV of premium purposes | Optional |
 | `VAULT_ENCRYPTION_KEY` | 32-byte AES key for credential vault | Production Only |
 
 ### Generating VAULT_ENCRYPTION_KEY (Production)

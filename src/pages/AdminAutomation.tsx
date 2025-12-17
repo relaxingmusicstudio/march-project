@@ -621,8 +621,8 @@ function AudioEffectsPanel() {
           
           <div className="mt-4 p-4 rounded-lg bg-primary/10">
             <p className="text-sm">
-              <strong>Already Available:</strong> The content-image function uses Nano Banana (google/gemini-2.5-flash-image-preview) 
-              which is configured with LOVABLE_API_KEY. You can generate and edit images for overlays without any additional API keys!
+              <strong>Already Available:</strong> The content-image function uses the AI provider configured via GEMINI_API_KEY.
+              Image generation requires premium tier - contact support to enable.
             </p>
           </div>
         </CardContent>
