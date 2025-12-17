@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat, parseAIError } from "../_shared/ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +15,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { action, intervention_id, client_id, outcome, notes } = await req.json();
@@ -97,23 +97,9 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(10);
 
-      if (!LOVABLE_API_KEY) {
-        return new Response(JSON.stringify({
-          strategy: generateFallbackStrategy(client, usage || [], tickets || [])
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Use AI to generate personalized retention strategy
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      try {
+        // Use AI to generate personalized retention strategy
+        const result = await aiChat({
           messages: [
             {
               role: "system",
@@ -156,31 +142,28 @@ ${tickets?.slice(0, 5).map(t => `- ${t.subject} (${t.status}, ${t.priority})`).j
 INTERVENTION HISTORY:
 ${interventions?.slice(0, 5).map(i => `- ${i.intervention_type}: ${i.outcome || i.status}`).join("\n") || "No prior interventions"}`
             }
-          ]
-        }),
-      });
+          ],
+          purpose: "churn_strategy",
+        });
 
-      if (!response.ok) {
+        let strategy;
+        try {
+          strategy = JSON.parse(result.text);
+        } catch {
+          strategy = { raw: result.text };
+        }
+
+        return new Response(JSON.stringify({ strategy, client }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (aiError) {
+        // Fallback strategy if AI fails
         return new Response(JSON.stringify({
           strategy: generateFallbackStrategy(client, usage || [], tickets || [])
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
-      const aiData = await response.json();
-      const content = aiData.choices?.[0]?.message?.content || "";
-
-      let strategy;
-      try {
-        strategy = JSON.parse(content);
-      } catch {
-        strategy = { raw: content };
-      }
-
-      return new Response(JSON.stringify({ strategy, client }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     // Action: Get pending interventions
@@ -265,9 +248,9 @@ ${interventions?.slice(0, 5).map(i => `- ${i.intervention_type}: ${i.outcome || 
     throw new Error(`Unknown action: ${action}`);
 
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const parsed = parseAIError(error);
     console.error("Churn Intervention error:", error);
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    return new Response(JSON.stringify({ error: parsed.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

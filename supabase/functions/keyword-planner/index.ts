@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat, parseAIError } from "../_shared/ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,57 +20,37 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
     // Use AI to generate keyword suggestions
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { 
-            role: "system", 
-            content: `You are an SEO and keyword research expert. Generate keyword suggestions in JSON format.
-            For each keyword, estimate:
-            - search_volume: monthly searches (number between 100-50000)
-            - competition: "low", "medium", or "high"
-            - cpc_estimate: cost per click in dollars (number between 0.50-15.00)
-            
-            Return ONLY a valid JSON array, no markdown or explanation.` 
-          },
-          { 
-            role: "user", 
-            content: `Generate 15 related keyword suggestions for: "${seed_keyword}"
-            
-            Include:
-            - Long-tail variations
-            - Question-based keywords
-            - Local variations (e.g., "near me")
-            - Commercial intent keywords
-            
-            Return as JSON array with format:
-            [{"keyword": "...", "search_volume": 1000, "competition": "low", "cpc_estimate": 2.50}]` 
-          }
-        ]
-      })
+    const result = await aiChat({
+      messages: [
+        { 
+          role: "system", 
+          content: `You are an SEO and keyword research expert. Generate keyword suggestions in JSON format.
+For each keyword, estimate:
+- search_volume: monthly searches (number between 100-50000)
+- competition: "low", "medium", or "high"
+- cpc_estimate: cost per click in dollars (number between 0.50-15.00)
+
+Return ONLY a valid JSON array, no markdown or explanation.` 
+        },
+        { 
+          role: "user", 
+          content: `Generate 15 related keyword suggestions for: "${seed_keyword}"
+
+Include:
+- Long-tail variations
+- Question-based keywords
+- Local variations (e.g., "near me")
+- Commercial intent keywords
+
+Return as JSON array with format:
+[{"keyword": "...", "search_volume": 1000, "competition": "low", "cpc_estimate": 2.50}]` 
+        }
+      ],
+      purpose: "keyword_planning",
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI API error:", response.status, errorText);
-      throw new Error(`AI API error: ${response.status}`);
-    }
-
-    const aiData = await response.json();
-    let content = aiData.choices?.[0]?.message?.content || "[]";
+    let content = result.text;
 
     // Clean up response (remove markdown code blocks if present)
     content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
@@ -111,7 +92,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("Keyword planner error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+    const parsed = parseAIError(error);
+    return new Response(JSON.stringify({ error: parsed.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

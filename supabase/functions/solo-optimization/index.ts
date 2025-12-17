@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { aiChat, parseAIError } from "../_shared/ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,21 +13,20 @@ serve(async (req) => {
 
   try {
     const { action, ...params } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     switch (action) {
       case 'get_daily_priorities':
-        return await getDailyPriorities(params, LOVABLE_API_KEY);
+        return await getDailyPriorities(params);
       case 'simplify_decision':
-        return await simplifyDecision(params, LOVABLE_API_KEY);
+        return await simplifyDecision(params);
       case 'check_wellness':
-        return await checkWellness(params, LOVABLE_API_KEY);
+        return await checkWellness(params);
       case 'optimize_schedule':
-        return await optimizeSchedule(params, LOVABLE_API_KEY);
+        return await optimizeSchedule(params);
       case 'nurture_relationships':
-        return await getNurtureActions(params, LOVABLE_API_KEY);
+        return await getNurtureActions(params);
       case 'financial_check':
-        return await financialCheck(params, LOVABLE_API_KEY);
+        return await financialCheck(params);
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid action' }),
@@ -36,32 +35,20 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error('Solo optimization error:', error);
+    const parsed = parseAIError(error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      JSON.stringify({ error: parsed.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
 
 // Get AI-prioritized daily tasks (max 3)
-async function getDailyPriorities(params: any, apiKey: string | undefined) {
+async function getDailyPriorities(params: any) {
   const { tasks, energy_level, time_available } = params;
 
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ priorities: tasks?.slice(0, 3) || [] }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+  try {
+    const result = await aiChat({
       messages: [
         {
           role: 'system',
@@ -80,18 +67,21 @@ Energy level: ${energy_level}/100. Time available: ${time_available} hours.
 What are my top 3 priorities for today?`
         }
       ],
-    }),
-  });
+      purpose: "daily_priorities",
+    });
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '{}';
-  
-  try {
-    const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, ''));
-    return new Response(
-      JSON.stringify(parsed),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    try {
+      const parsed = JSON.parse(result.text.replace(/```json\n?|\n?```/g, ''));
+      return new Response(
+        JSON.stringify(parsed),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch {
+      return new Response(
+        JSON.stringify({ priorities: tasks?.slice(0, 3) || [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
   } catch {
     return new Response(
       JSON.stringify({ priorities: tasks?.slice(0, 3) || [] }),
@@ -101,31 +91,11 @@ What are my top 3 priorities for today?`
 }
 
 // Simplify complex decisions to 3 options max
-async function simplifyDecision(params: any, apiKey: string | undefined) {
+async function simplifyDecision(params: any) {
   const { decision, context, constraints } = params;
 
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ 
-        options: [
-          { label: "Option A", pros: ["Quick"], cons: ["Unknown risk"] },
-          { label: "Option B", pros: ["Safe"], cons: ["Slower"] },
-          { label: "Postpone", pros: ["More info"], cons: ["Delay"] }
-        ],
-        recommendation: 0
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+  try {
+    const result = await aiChat({
       messages: [
         {
           role: 'system',
@@ -146,28 +116,38 @@ Output JSON: {
           content: `Decision: ${decision}\nContext: ${context}\nConstraints: ${constraints}`
         }
       ],
-    }),
-  });
+      purpose: "decision_simplification",
+    });
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '{}';
-  
-  try {
-    const parsed = JSON.parse(content.replace(/```json\n?|\n?```/g, ''));
-    return new Response(
-      JSON.stringify(parsed),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    try {
+      const parsed = JSON.parse(result.text.replace(/```json\n?|\n?```/g, ''));
+      return new Response(
+        JSON.stringify(parsed),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Could not parse decision' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
   } catch {
     return new Response(
-      JSON.stringify({ error: 'Could not parse decision' }),
+      JSON.stringify({ 
+        options: [
+          { label: "Option A", pros: ["Quick"], cons: ["Unknown risk"] },
+          { label: "Option B", pros: ["Safe"], cons: ["Slower"] },
+          { label: "Postpone", pros: ["More info"], cons: ["Delay"] }
+        ],
+        recommendation: 0
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 }
 
 // Check wellness and suggest interventions
-async function checkWellness(params: any, apiKey: string | undefined) {
+async function checkWellness(params: any) {
   const { work_hours_today, decisions_made, last_break, energy_trend } = params;
 
   const wellness = {
@@ -209,7 +189,7 @@ async function checkWellness(params: any, apiKey: string | undefined) {
 }
 
 // Optimize daily schedule based on energy patterns
-async function optimizeSchedule(params: any, apiKey: string | undefined) {
+async function optimizeSchedule(params: any) {
   const { tasks, peak_hours = [9, 10, 11], energy_level } = params;
 
   // Simple scheduling: high-impact tasks during peak hours
@@ -231,7 +211,7 @@ async function optimizeSchedule(params: any, apiKey: string | undefined) {
 }
 
 // Get relationship nurturing actions
-async function getNurtureActions(params: any, apiKey: string | undefined) {
+async function getNurtureActions(params: any) {
   const { relationships } = params;
 
   const actions = relationships?.map((rel: any) => {
@@ -266,7 +246,7 @@ async function getNurtureActions(params: any, apiKey: string | undefined) {
 }
 
 // Financial health check
-async function financialCheck(params: any, apiKey: string | undefined) {
+async function financialCheck(params: any) {
   const { cash_balance, monthly_expenses, outstanding_invoices, upcoming_payments } = params;
 
   const runway = cash_balance / (monthly_expenses || 1);

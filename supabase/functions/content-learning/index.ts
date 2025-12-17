@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat, parseAIError } from "../_shared/ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,7 +58,6 @@ serve(async (req) => {
         const winRate = stats.wins / stats.total;
         const lossRate = stats.losses / stats.total;
         
-        // Determine pattern type based on performance
         let newPatternType = "neutral";
         if (winRate > 0.6) {
           newPatternType = "winner";
@@ -65,8 +65,7 @@ serve(async (req) => {
           newPatternType = "loser";
         }
         
-        // Update confidence score (weighted by sample size)
-        const sampleWeight = Math.min(stats.total / 10, 1); // Max confidence at 10 samples
+        const sampleWeight = Math.min(stats.total / 10, 1);
         const newConfidence = (winRate - lossRate + 1) / 2 * sampleWeight;
         
         await supabase
@@ -84,24 +83,26 @@ serve(async (req) => {
     }
 
     // Generate learning report using AI
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     let report = null;
 
-    if (LOVABLE_API_KEY) {
-      const winners = performances?.filter(p => p.classification === "winner") || [];
-      const losers = performances?.filter(p => p.classification === "loser") || [];
-      
-      const topWinnerPatterns = patterns
-        ?.filter(p => p.pattern_type === "winner")
-        .sort((a, b) => b.confidence_score - a.confidence_score)
-        .slice(0, 5) || [];
-      
-      const topLoserPatterns = patterns
-        ?.filter(p => p.pattern_type === "loser")
-        .sort((a, b) => b.confidence_score - a.confidence_score)
-        .slice(0, 5) || [];
+    const winners = performances?.filter(p => p.classification === "winner") || [];
+    const losers = performances?.filter(p => p.classification === "loser") || [];
+    
+    const topWinnerPatterns = patterns
+      ?.filter(p => p.pattern_type === "winner")
+      .sort((a, b) => b.confidence_score - a.confidence_score)
+      .slice(0, 5) || [];
+    
+    const topLoserPatterns = patterns
+      ?.filter(p => p.pattern_type === "loser")
+      .sort((a, b) => b.confidence_score - a.confidence_score)
+      .slice(0, 5) || [];
 
-      const reportPrompt = `Generate a weekly content strategy report for an HVAC marketing team.
+    try {
+      const result = await aiChat({
+        messages: [
+          { role: "system", content: "You are a content strategy advisor for HVAC marketing. Be concise and actionable." },
+          { role: "user", content: `Generate a weekly content strategy report for an HVAC marketing team.
 
 DATA:
 - Total content analyzed: ${performances?.length || 0}
@@ -118,31 +119,13 @@ Generate a brief, actionable report with:
 1. Key insights
 2. This week's winning formula
 3. What to avoid
-4. Specific recommendations for HVAC content`;
-
-      try {
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: "You are a content strategy advisor for HVAC marketing. Be concise and actionable." },
-              { role: "user", content: reportPrompt }
-            ]
-          })
-        });
-
-        if (response.ok) {
-          const aiData = await response.json();
-          report = aiData.choices?.[0]?.message?.content;
-        }
-      } catch (aiError) {
-        console.error("AI report generation failed:", aiError);
-      }
+4. Specific recommendations for HVAC content` }
+        ],
+        purpose: "content_learning",
+      });
+      report = result.text;
+    } catch (aiError) {
+      console.error("AI report generation failed:", aiError);
     }
 
     console.log(`Learning complete: updated ${updatedPatterns} patterns`);
@@ -158,8 +141,8 @@ Generate a brief, actionable report with:
 
   } catch (error: unknown) {
     console.error("Content learning error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    const parsed = parseAIError(error);
+    return new Response(JSON.stringify({ error: parsed.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

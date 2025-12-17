@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat, parseAIError } from "../_shared/ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,13 +14,8 @@ serve(async (req) => {
 
   try {
     const { type, funnelData, metrics, visitorId, leadScore } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -92,15 +88,12 @@ serve(async (req) => {
         .eq("visitor_id", visitorId)
         .maybeSingle();
 
-      // Use AI to determine best funnel
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+      let selectedFunnelId: string;
+      let aiReason: string;
+
+      try {
+        // Use AI to determine best funnel
+        const result = await aiChat({
           messages: [
             { 
               role: "system", 
@@ -121,17 +114,11 @@ Lead data: ${JSON.stringify(leadData || {})}
 Pick the best funnel for this visitor.`
             }
           ],
-        }),
-      });
+          purpose: "funnel_assignment",
+        });
 
-      let selectedFunnelId: string;
-      let aiReason: string;
-
-      if (aiResponse.ok) {
-        const aiData = await aiResponse.json();
-        const content = aiData.choices?.[0]?.message?.content || "";
         try {
-          const parsed = JSON.parse(content);
+          const parsed = JSON.parse(result.text);
           selectedFunnelId = parsed.funnel_id;
           aiReason = parsed.reason;
         } catch {
@@ -139,7 +126,7 @@ Pick the best funnel for this visitor.`
           selectedFunnelId = allFunnels?.[0]?.id;
           aiReason = "AI response parsing failed, using default";
         }
-      } else {
+      } catch {
         selectedFunnelId = allFunnels?.[0]?.id;
         aiReason = "AI unavailable, using default funnel";
       }
@@ -262,53 +249,32 @@ Create a detailed funnel flow with stages, triggers, and automation.`;
 
     console.log(`Funnel AI: Processing ${type} request`);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        stream: false,
-      }),
+    const result = await aiChat({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      purpose: "funnel_analysis",
     });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI gateway error");
-    }
-
-    const data = await response.json();
-    const result = data.choices?.[0]?.message?.content;
 
     console.log(`Funnel AI: Successfully generated ${type} response`);
 
-    return new Response(JSON.stringify({ result, type }), {
+    return new Response(JSON.stringify({ result: result.text, type }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error) {
     console.error("Funnel AI error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    const parsed = parseAIError(error);
+    
+    if (parsed.code === "QUOTA_EXCEEDED") {
+      return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    return new Response(JSON.stringify({ error: parsed.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
