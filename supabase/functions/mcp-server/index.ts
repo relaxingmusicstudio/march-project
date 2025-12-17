@@ -930,7 +930,7 @@ async function executeTool(supabase: any, params: { name: string; arguments?: Re
       const [activities, alerts, queuedActions, newLeads, conversations] = await Promise.all([
         supabase.from('claude_activity_log').select('*').gte('created_at', startTime.toISOString()).order('created_at', { ascending: false }),
         supabase.from('ceo_alerts').select('*').gte('created_at', startTime.toISOString()).order('created_at', { ascending: false }),
-        supabase.from('ceo_action_queue').select('*').eq('status', 'pending').gte('created_at', startTime.toISOString()),
+        supabase.from('ceo_action_queue').select('*').eq('status', 'pending_approval').gte('created_at', startTime.toISOString()),
         supabase.from('leads').select('*', { count: 'exact' }).gte('created_at', startTime.toISOString()),
         supabase.from('conversations').select('*', { count: 'exact' }).gte('created_at', startTime.toISOString())
       ]);
@@ -1269,7 +1269,7 @@ async function readResource(supabase: any, params: { uri: string }) {
       const { data } = await supabase
         .from('ceo_action_queue')
         .select('*')
-        .eq('status', 'pending')
+        .eq('status', 'pending_approval')
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false });
       return { pending_actions: data };
