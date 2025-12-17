@@ -403,28 +403,29 @@ export default function QATests() {
   };
 
   const getStatusIcon = (status: TestResult["status"]) => {
+    const cls = "h-4 w-4";
     switch (status) {
       case "pass":
-        return <CheckCircle2 className="h-5 w-5 text-green-500" />;
+        return <CheckCircle2 className={`${cls} text-green-500`} />;
       case "fail":
-        return <XCircle className="h-5 w-5 text-destructive" />;
+        return <XCircle className={`${cls} text-destructive`} />;
       case "error":
-        return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
+        return <AlertTriangle className={`${cls} text-yellow-500`} />;
       default:
-        return <Clock className="h-5 w-5 text-muted-foreground" />;
+        return <Clock className={`${cls} text-muted-foreground`} />;
     }
   };
 
   const getStatusBadge = (status: TestResult["status"]) => {
     switch (status) {
       case "pass":
-        return <Badge className="bg-green-500/20 text-green-600 border-green-500/30">PASS</Badge>;
+        return <Badge variant="default">PASS</Badge>;
       case "fail":
         return <Badge variant="destructive">FAIL</Badge>;
       case "error":
-        return <Badge className="bg-yellow-500/20 text-yellow-600 border-yellow-500/30">ERROR</Badge>;
+        return <Badge variant="secondary">ERROR</Badge>;
       default:
-        return <Badge variant="secondary">PENDING</Badge>;
+        return <Badge variant="outline">PENDING</Badge>;
     }
   };
 
