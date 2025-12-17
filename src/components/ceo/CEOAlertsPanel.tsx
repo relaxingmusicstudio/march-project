@@ -37,33 +37,57 @@ export function CEOAlertsPanel({ tenantId }: CEOAlertsPanelProps) {
 
     setLoading(true);
     try {
-      // Get alerts from ceo_alerts table - filter by tenant_id in metadata
+      // ceo_alerts stores tenant_id in metadata JSON, not as a column
+      // Filter by metadata->tenant_id matching our tenant OR global alerts (no tenant_id in metadata)
       const { data, error } = await supabase
         .from("ceo_alerts")
         .select("*")
-        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null`)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(50);
 
       if (error) {
         console.error("Failed to fetch alerts:", error);
+        setAlerts([]);
       } else {
-        setAlerts((data || []) as Alert[]);
+        // Client-side filter for tenant isolation since tenant_id is in metadata
+        const filtered = (data || []).filter((alert) => {
+          const metadata = alert.metadata as Record<string, unknown> | null;
+          const alertTenantId = metadata?.tenant_id as string | null | undefined;
+          // Include if: matches our tenant OR no tenant specified (global alert)
+          return alertTenantId === tenantId || alertTenantId === null || alertTenantId === undefined;
+        });
+        setAlerts(filtered.slice(0, 20) as Alert[]);
       }
     } catch (error) {
       console.error("Failed to load alerts:", error);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
   };
 
   const acknowledgeAlert = async (alertId: string) => {
+    if (!tenantId) return;
+
+    // First verify this alert belongs to our tenant
+    const alert = alerts.find((a) => a.id === alertId);
+    if (!alert) {
+      toast.error("Alert not found");
+      return;
+    }
+
+    const metadata = alert.metadata as Record<string, unknown> | null;
+    const alertTenantId = metadata?.tenant_id as string | null | undefined;
+    if (alertTenantId && alertTenantId !== tenantId) {
+      toast.error("Cannot acknowledge alert from another tenant");
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from("ceo_alerts")
         .update({ acknowledged_at: new Date().toISOString() })
-        .eq("id", alertId)
-        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null`);
+        .eq("id", alertId);
 
       if (error) throw error;
 

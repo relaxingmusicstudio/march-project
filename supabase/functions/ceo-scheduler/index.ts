@@ -924,25 +924,50 @@ async function runOutreachQueue(supabase: SupabaseClient, specificTenantIds?: st
     const tenantStart = Date.now();
 
     try {
-      // Get due leads for this tenant
+      // Get due leads for this tenant using two separate queries to avoid .or() issues
       const now = new Date().toISOString();
-      const { data: dueLeads, error: leadsError } = await supabase
+      
+      // Query 1: Leads with next_attempt_at IS NULL
+      const { data: leadsNullAttempt, error: err1 } = await supabase
         .from("leads")
         .select("id, tenant_id, name, phone, status, total_call_attempts, max_attempts, next_attempt_at")
         .eq("tenant_id", tenant.id)
         .in("status", ["new", "attempted", "contacted"])
-        .or(`next_attempt_at.is.null,next_attempt_at.lte.${now}`)
+        .is("next_attempt_at", null)
         .not("phone", "is", null)
         .eq("do_not_call", false)
-        .order("next_attempt_at", { ascending: true, nullsFirst: true })
         .limit(100);
 
-      if (leadsError) {
-        throw new Error(`Failed to fetch leads: ${leadsError.message}`);
+      if (err1) {
+        throw new Error(`Failed to fetch leads (null attempt): ${err1.message}`);
+      }
+
+      // Query 2: Leads with next_attempt_at <= now
+      const { data: leadsDueAttempt, error: err2 } = await supabase
+        .from("leads")
+        .select("id, tenant_id, name, phone, status, total_call_attempts, max_attempts, next_attempt_at")
+        .eq("tenant_id", tenant.id)
+        .in("status", ["new", "attempted", "contacted"])
+        .lte("next_attempt_at", now)
+        .not("phone", "is", null)
+        .eq("do_not_call", false)
+        .limit(100);
+
+      if (err2) {
+        throw new Error(`Failed to fetch leads (due attempt): ${err2.message}`);
+      }
+
+      // Merge and deduplicate by ID
+      const allLeads = [...(leadsNullAttempt || []), ...(leadsDueAttempt || [])];
+      const uniqueLeadsMap = new Map<string, typeof allLeads[0]>();
+      for (const lead of allLeads) {
+        if (!uniqueLeadsMap.has(lead.id)) {
+          uniqueLeadsMap.set(lead.id, lead);
+        }
       }
 
       // Filter leads under max attempts (client-side for max_attempts flexibility)
-      const eligibleLeads = (dueLeads || []).filter((lead) => {
+      const eligibleLeads = Array.from(uniqueLeadsMap.values()).filter((lead) => {
         const maxAttempts = (lead.max_attempts as number | null) || 6;
         return (lead.total_call_attempts || 0) < maxAttempts;
       });
