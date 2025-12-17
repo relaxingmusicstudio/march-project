@@ -56,7 +56,7 @@ const ProtectedRoute = ({
   // Redirect to auth if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      navigate("/auth", { replace: true });
+      navigate("/login", { replace: true });
     }
   }, [isAuthenticated, isLoading, navigate]);
 

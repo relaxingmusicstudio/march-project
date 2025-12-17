@@ -62,8 +62,8 @@ export function AuthRouter({ children }: AuthRouterProps) {
     // Public routes - no redirect needed
     if (matchesAnyRoute(currentPath, PUBLIC_ROUTES)) return null;
 
-    // Rule 1: Not authenticated -> /auth
-    if (!isAuthenticated) return "/auth";
+    // Rule 1: Not authenticated -> /login
+    if (!isAuthenticated) return "/login";
 
     // Rule 2: Onboarding not complete -> /app/onboarding
     if (isOnboardingComplete === false) {

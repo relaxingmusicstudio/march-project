@@ -8,7 +8,6 @@
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
-import { CEOStatusBar } from "@/components/ceo/CEOStatusBar";
 import { CEOChatFixed } from "@/components/ceo/CEOChatFixed";
 import { IntelligenceCard, CardState } from "@/components/ceo/IntelligenceCard";
 import { 
@@ -32,7 +31,6 @@ interface GridMetrics {
 export default function CEOHome() {
   const [metrics, setMetrics] = useState<GridMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingDecisions, setPendingDecisions] = useState(0);
 
   useEffect(() => {
     fetchMetrics();
@@ -104,8 +102,6 @@ export default function CEOHome() {
       const urgentCount = allDecisions.filter(d => typeof d.priority === 'number' && d.priority >= 8).length;
       const decisionsState: CardState = urgentCount > 0 ? "urgent" : pendingCount > 0 ? "attention" : "healthy";
 
-      setPendingDecisions(pendingCount);
-
       setMetrics({
         pipeline: {
           leads: hotLeads,
@@ -152,12 +148,9 @@ export default function CEOHome() {
         <meta name="description" content="Your AI-powered business command center" />
       </Helmet>
 
-      <div className="h-screen flex flex-col bg-background overflow-hidden">
-        {/* Status Bar - Fixed Top 48px */}
-        <CEOStatusBar pendingDecisions={pendingDecisions} />
-
-        {/* Intelligence Grid - Scrollable Middle */}
-        <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-[calc(100vh-3.5rem)] overflow-hidden">
+        {/* Intelligence Grid - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-4 pb-64 md:pb-4">
           <div className="max-w-5xl mx-auto">
             <div className="mb-4">
               <h1 className="text-lg font-semibold text-foreground">Good {getTimeOfDay()}</h1>

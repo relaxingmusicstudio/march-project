@@ -3,10 +3,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { VisitorProvider } from "@/contexts/VisitorContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AuthRouter from "@/components/AuthRouter";
+import AppLayout from "@/components/AppLayout";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import CookieConsentBanner from "@/components/CookieConsentBanner";
@@ -45,6 +46,7 @@ import AdminSystemHealth from "./pages/AdminSystemHealth";
 import AdminAudit from "./pages/AdminAudit";
 import AdminHelp from "./pages/AdminHelp";
 import AdminBusinessSetup from "./pages/AdminBusinessSetup";
+import AdminAutomation from "./pages/AdminAutomation";
 
 // Platform Admin (hidden from regular users)
 import AdminTenants from "./pages/AdminTenants";
@@ -63,7 +65,7 @@ const queryClient = new QueryClient({
  * App routing structure:
  * 
  * AuthRouter - SINGLE routing brain that handles:
- *   - !authenticated -> /auth
+ *   - !authenticated -> /login
  *   - authenticated + !onboarding_complete -> /app/onboarding
  *   - authenticated + onboarding_complete + client -> /app/portal
  *   - authenticated + onboarding_complete + owner -> /app
@@ -72,6 +74,9 @@ const queryClient = new QueryClient({
  *   - requireOwner -> redirects clients to /app/portal
  *   - requireClient -> redirects owners to /app
  *   - requireAdmin -> shows Access Denied
+ * 
+ * /admin/* routes redirect to /app/* (legacy support)
+ * /platform/* routes are for platform admins only
  */
 const App = () => (
   <ErrorBoundary>
@@ -98,40 +103,65 @@ const App = () => (
                   <Route path="/auth" element={<Auth />} />
                   <Route path="/login" element={<Auth />} />
                   
-                  {/* CEO COMMAND CENTER - Primary Landing for Owners */}
-                  <Route path="/app" element={<ProtectedRoute requireOwner><CEOHome /></ProtectedRoute>} />
-                  
-                  {/* Client Portal - Restricted view for client role */}
-                  <Route path="/app/portal" element={<ProtectedRoute requireClient><ClientPortal /></ProtectedRoute>} />
-                  
                   {/* Onboarding - New user flow (AuthRouter handles routing) */}
                   <Route path="/app/onboarding" element={<ProtectedRoute><OnboardingConversation /></ProtectedRoute>} />
                   
-                  {/* Decisions - Human approval surface */}
-                  <Route path="/app/decisions" element={<ProtectedRoute requireOwner><DecisionsDashboard /></ProtectedRoute>} />
+                  {/* App Routes with AppLayout */}
+                  <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                    {/* CEO Command Center - Primary Landing for Owners */}
+                    <Route index element={<ProtectedRoute requireOwner><CEOHome /></ProtectedRoute>} />
+                    
+                    {/* Client Portal - Restricted view for client role */}
+                    <Route path="portal" element={<ProtectedRoute requireClient><ClientPortal /></ProtectedRoute>} />
+                    <Route path="portal/*" element={<ProtectedRoute requireClient><ClientPortal /></ProtectedRoute>} />
+                    
+                    {/* Decisions - Human approval surface */}
+                    <Route path="decisions" element={<ProtectedRoute requireOwner><DecisionsDashboard /></ProtectedRoute>} />
+                    
+                    {/* Capability Pages - Owner only (accessed from Intelligence Grid) */}
+                    <Route path="pipeline" element={<ProtectedRoute requireOwner><AdminPipeline /></ProtectedRoute>} />
+                    <Route path="inbox" element={<ProtectedRoute requireOwner><AdminInbox /></ProtectedRoute>} />
+                    <Route path="analytics" element={<ProtectedRoute requireOwner><AdminAnalytics /></ProtectedRoute>} />
+                    <Route path="billing" element={<ProtectedRoute requireOwner><AdminBilling /></ProtectedRoute>} />
+                    <Route path="content" element={<ProtectedRoute requireOwner><AdminContent /></ProtectedRoute>} />
+                    <Route path="clients" element={<ProtectedRoute requireOwner><AdminClients /></ProtectedRoute>} />
+                    <Route path="leads" element={<ProtectedRoute requireOwner><AdminLeads /></ProtectedRoute>} />
+                    <Route path="sequences" element={<ProtectedRoute requireOwner><AdminSequences /></ProtectedRoute>} />
+                    <Route path="crm" element={<ProtectedRoute requireOwner><AdminCRM /></ProtectedRoute>} />
+                    <Route path="contacts" element={<ProtectedRoute requireOwner><AdminContacts /></ProtectedRoute>} />
+                    <Route path="vault" element={<ProtectedRoute requireOwner><KnowledgeVault /></ProtectedRoute>} />
+                    <Route path="automation" element={<ProtectedRoute requireOwner><AdminAutomation /></ProtectedRoute>} />
+                    
+                    {/* Settings & System - Owner only */}
+                    <Route path="settings" element={<ProtectedRoute requireOwner><AdminSettings /></ProtectedRoute>} />
+                    <Route path="health" element={<ProtectedRoute requireOwner><AdminSystemHealth /></ProtectedRoute>} />
+                    <Route path="audit" element={<ProtectedRoute requireOwner><AdminAudit /></ProtectedRoute>} />
+                    <Route path="help" element={<ProtectedRoute requireOwner><AdminHelp /></ProtectedRoute>} />
+                    <Route path="business-setup" element={<ProtectedRoute requireOwner><AdminBusinessSetup /></ProtectedRoute>} />
+                  </Route>
                   
-                  {/* Capability Pages - Owner only (accessed from Intelligence Grid) */}
-                  <Route path="/app/pipeline" element={<ProtectedRoute requireOwner><AdminPipeline /></ProtectedRoute>} />
-                  <Route path="/app/inbox" element={<ProtectedRoute requireOwner><AdminInbox /></ProtectedRoute>} />
-                  <Route path="/app/analytics" element={<ProtectedRoute requireOwner><AdminAnalytics /></ProtectedRoute>} />
-                  <Route path="/app/billing" element={<ProtectedRoute requireOwner><AdminBilling /></ProtectedRoute>} />
-                  <Route path="/app/content" element={<ProtectedRoute requireOwner><AdminContent /></ProtectedRoute>} />
-                  <Route path="/app/clients" element={<ProtectedRoute requireOwner><AdminClients /></ProtectedRoute>} />
-                  <Route path="/app/leads" element={<ProtectedRoute requireOwner><AdminLeads /></ProtectedRoute>} />
-                  <Route path="/app/sequences" element={<ProtectedRoute requireOwner><AdminSequences /></ProtectedRoute>} />
-                  <Route path="/app/crm" element={<ProtectedRoute requireOwner><AdminCRM /></ProtectedRoute>} />
-                  <Route path="/app/contacts" element={<ProtectedRoute requireOwner><AdminContacts /></ProtectedRoute>} />
-                  <Route path="/app/vault" element={<ProtectedRoute requireOwner><KnowledgeVault /></ProtectedRoute>} />
+                  {/* Platform Admin - Under /platform, requires admin role */}
+                  <Route path="/platform/tenants" element={<ProtectedRoute requireAdmin><AdminTenants /></ProtectedRoute>} />
                   
-                  {/* Settings & System - Owner only */}
-                  <Route path="/app/settings" element={<ProtectedRoute requireOwner><AdminSettings /></ProtectedRoute>} />
-                  <Route path="/app/health" element={<ProtectedRoute requireOwner><AdminSystemHealth /></ProtectedRoute>} />
-                  <Route path="/app/audit" element={<ProtectedRoute requireOwner><AdminAudit /></ProtectedRoute>} />
-                  <Route path="/app/help" element={<ProtectedRoute requireOwner><AdminHelp /></ProtectedRoute>} />
-                  <Route path="/app/business-setup" element={<ProtectedRoute requireOwner><AdminBusinessSetup /></ProtectedRoute>} />
-                  
-                  {/* Platform Admin - Hidden */}
-                  <Route path="/app/admin/tenants" element={<ProtectedRoute requireAdmin><AdminTenants /></ProtectedRoute>} />
+                  {/* Legacy /admin/* redirects to /app/* */}
+                  <Route path="/admin" element={<Navigate to="/app" replace />} />
+                  <Route path="/admin/clients" element={<Navigate to="/app/clients" replace />} />
+                  <Route path="/admin/analytics" element={<Navigate to="/app/analytics" replace />} />
+                  <Route path="/admin/settings" element={<Navigate to="/app/settings" replace />} />
+                  <Route path="/admin/automation" element={<Navigate to="/app/automation" replace />} />
+                  <Route path="/admin/crm" element={<Navigate to="/app/crm" replace />} />
+                  <Route path="/admin/leads" element={<Navigate to="/app/leads" replace />} />
+                  <Route path="/admin/inbox" element={<Navigate to="/app/inbox" replace />} />
+                  <Route path="/admin/pipeline" element={<Navigate to="/app/pipeline" replace />} />
+                  <Route path="/admin/billing" element={<Navigate to="/app/billing" replace />} />
+                  <Route path="/admin/content" element={<Navigate to="/app/content" replace />} />
+                  <Route path="/admin/sequences" element={<Navigate to="/app/sequences" replace />} />
+                  <Route path="/admin/contacts" element={<Navigate to="/app/contacts" replace />} />
+                  <Route path="/admin/vault" element={<Navigate to="/app/vault" replace />} />
+                  <Route path="/admin/health" element={<Navigate to="/app/health" replace />} />
+                  <Route path="/admin/audit" element={<Navigate to="/app/audit" replace />} />
+                  <Route path="/admin/help" element={<Navigate to="/app/help" replace />} />
+                  <Route path="/admin/*" element={<Navigate to="/app" replace />} />
                   
                   {/* Catch all - 404 */}
                   <Route path="*" element={<NotFound />} />

@@ -69,7 +69,14 @@ const Header = () => {
         </nav>
 
         {/* Desktop CTA */}
-        <div className="hidden md:block">
+        <div className="hidden md:flex items-center gap-4">
+          <Link
+            to="/login"
+            onClick={() => trackCtaClick("nav-signin")}
+            className="text-primary-foreground/80 hover:text-accent transition-colors font-medium"
+          >
+            Sign in
+          </Link>
           <Button 
             variant="accent" 
             size="default"
@@ -125,6 +132,16 @@ const Header = () => {
               className="text-primary-foreground/80 hover:text-accent transition-colors font-medium text-left py-2"
             >
               Blog
+            </Link>
+            <Link
+              to="/login"
+              onClick={() => {
+                trackCtaClick("nav-signin-mobile");
+                setIsMobileMenuOpen(false);
+              }}
+              className="text-primary-foreground/80 hover:text-accent transition-colors font-medium text-left py-2"
+            >
+              Sign in
             </Link>
             <Button 
               variant="accent" 
