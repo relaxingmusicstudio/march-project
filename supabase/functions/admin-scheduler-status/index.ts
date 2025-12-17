@@ -5,8 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * Admin Scheduler Status - Returns scheduler configuration + job status
  * 
  * Uses SERVICE_ROLE_KEY to query:
- * - DB setting: app.internal_scheduler_secret (check if configured)
- * - cron.job table (job schedules and status)
+ * - DB RPC: check_scheduler_secret_configured() 
+ * - DB RPC: get_scheduler_jobs()
  * - platform_audit_log (recent scheduler activity)
  * 
  * REQUIRES: verify_jwt = true in config.toml
@@ -43,15 +43,14 @@ interface AuditLog {
   duration_ms: number | null;
 }
 
-// Map jobname to scheduler action for audit log correlation
-const JOB_ACTION_MAP: Record<string, string> = {
-  "ceo-daily-briefs": "run_daily_briefs",
-  "ceo-cost-rollup": "run_cost_rollup",
-  "ceo-outreach-queue": "run_outreach_queue",
-  "daily-briefs": "run_daily_briefs",
-  "cost-rollup": "run_cost_rollup",
-  "outreach": "run_outreach_queue",
-};
+// Map jobname substrings to scheduler action for audit log correlation
+function getActionFromJobname(jobname: string): string | null {
+  const lower = jobname.toLowerCase();
+  if (lower.includes("daily") || lower.includes("brief")) return "run_daily_briefs";
+  if (lower.includes("cost") || lower.includes("rollup")) return "run_cost_rollup";
+  if (lower.includes("outreach")) return "run_outreach_queue";
+  return null;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -109,52 +108,56 @@ serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    // Check if internal scheduler secret is configured via direct SQL
+    // Check if internal scheduler secret is configured via RPC
     let secretConfigured = false;
     try {
-      const { data: settingData, error: settingError } = await serviceClient.rpc(
+      const { data: secretData, error: secretError } = await serviceClient.rpc(
         "check_scheduler_secret_configured"
       );
-      secretConfigured = settingError ? false : Boolean(settingData);
-    } catch {
-      // Function may not exist, check if env var is set as fallback
+      if (!secretError) {
+        secretConfigured = Boolean(secretData);
+      }
+    } catch (e) {
+      console.log("[admin-scheduler-status] check_scheduler_secret_configured RPC failed, checking env", e);
+      // Fallback: check if env var is set
       secretConfigured = Boolean(Deno.env.get("INTERNAL_SCHEDULER_SECRET"));
     }
 
-    // Query cron.job for scheduler jobs (only works with service role)
+    // Query scheduler jobs via RPC (avoids PostgREST limitation on cron schema)
     const jobs: SchedulerJob[] = [];
-    const defaultJobs = [
-      { jobid: 1, jobname: "ceo-daily-briefs", schedule: "0 6 * * *", active: true },
-      { jobid: 2, jobname: "ceo-cost-rollup", schedule: "0 */6 * * *", active: true },
-      { jobid: 3, jobname: "ceo-outreach-queue", schedule: "*/15 * * * *", active: true },
+    const defaultJobs: SchedulerJob[] = [
+      { jobid: 1, jobname: "ceo-daily-briefs", schedule: "0 6 * * *", active: true, last_run: null, last_status: null },
+      { jobid: 2, jobname: "ceo-cost-rollup", schedule: "0 */6 * * *", active: true, last_run: null, last_status: null },
+      { jobid: 3, jobname: "ceo-outreach-queue", schedule: "*/15 * * * *", active: true, last_run: null, last_status: null },
     ];
 
     try {
-      // Try to query cron.job table directly via SQL
-      const { data: cronJobs, error: cronError } = await serviceClient
-        .from("cron.job")
-        .select("jobid, jobname, schedule, active")
-        .like("jobname", "%ceo%");
-
-      if (!cronError && cronJobs && cronJobs.length > 0) {
+      const { data: cronJobs, error: cronError } = await serviceClient.rpc("get_scheduler_jobs");
+      
+      if (!cronError && cronJobs && Array.isArray(cronJobs) && cronJobs.length > 0) {
         for (const job of cronJobs) {
           jobs.push({
-            jobid: job.jobid,
-            jobname: job.jobname,
-            schedule: job.schedule,
-            active: job.active,
+            jobid: Number(job.jobid),
+            jobname: String(job.jobname),
+            schedule: String(job.schedule),
+            active: Boolean(job.active),
             last_run: null,
             last_status: null,
           });
         }
+        console.log("[admin-scheduler-status] Loaded jobs from RPC", { count: jobs.length });
       } else {
-        // Cron table not accessible, use defaults
-        jobs.push(...defaultJobs.map(j => ({ ...j, last_run: null, last_status: null })));
+        // RPC returned empty or failed, use defaults
+        console.log("[admin-scheduler-status] RPC returned empty, using defaults", { 
+          error: cronError?.message,
+          dataLength: cronJobs?.length 
+        });
+        jobs.push(...defaultJobs);
       }
-    } catch {
-      // cron schema likely not accessible, use defaults
-      console.log("[admin-scheduler-status] cron.job not accessible, using defaults");
-      jobs.push(...defaultJobs.map(j => ({ ...j, last_run: null, last_status: null })));
+    } catch (e) {
+      // RPC likely doesn't exist or failed
+      console.log("[admin-scheduler-status] get_scheduler_jobs RPC failed, using defaults", e);
+      jobs.push(...defaultJobs);
     }
 
     // Get recent audit logs for scheduler
@@ -181,15 +184,8 @@ serve(async (req) => {
 
     // Correlate audit logs with jobs to get last_run/last_status
     for (const job of jobs) {
-      // Find the action that matches this job
-      let matchingAction: string | undefined;
-      for (const [key, action] of Object.entries(JOB_ACTION_MAP)) {
-        if (job.jobname.includes(key)) {
-          matchingAction = action;
-          break;
-        }
-      }
-
+      const matchingAction = getActionFromJobname(job.jobname);
+      
       if (matchingAction) {
         // Find latest audit log for this action
         const latestLog = logs.find(l => l.entity_id === matchingAction);
