@@ -30,14 +30,17 @@ import {
 
 interface DecisionItem {
   id: string;
+  source_table: string;
   agent_type: string;
   action_type: string;
   target_type: string;
+  target_id: string;
   action_payload: Record<string, unknown> | null;
   status: string;
   priority: number;
   created_at: string;
-  claude_reasoning?: string;
+  reviewed_at: string | null;
+  claude_reasoning?: string | null;
 }
 
 export default function DecisionsDashboard() {
@@ -71,56 +74,32 @@ export default function DecisionsDashboard() {
   const fetchDecisions = async () => {
     setLoading(true);
     try {
-      // GOVERNANCE: Only fetch pending_approval status
+      // GOVERNANCE: Use unified view - single source of truth
       // Official statuses: pending_approval, approved, rejected, modified, conflicted
-      const [actionRes, ceoRes] = await Promise.all([
+      const { data, error } = await supabase
+        .from("queue_unified")
+        .select("*")
+        .in("status", ["pending_approval", "pending", "pending_review"])
+        .order("priority", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      setDecisions((data || []) as DecisionItem[]);
+
+      // Update stats from unified view
+      const pending = (data || []).length;
+      const [approvedRes, rejectedRes] = await Promise.all([
         supabase
-          .from("action_queue")
-          .select("*")
-          .in("status", ["pending_approval"])
-          .order("priority", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(50),
+          .from("queue_unified")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "approved"),
         supabase
-          .from("ceo_action_queue")
-          .select("*")
-          .in("status", ["pending_approval", "pending", "pending_review"])
-          .order("priority", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(20),
+          .from("queue_unified")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["rejected", "modified", "conflicted"]),
       ]);
-
-      const actionItems = (actionRes.data || []).map(item => ({
-        ...item,
-        source: 'action_queue'
-      }));
-      
-      // Map ceo_action_queue.payload -> action_payload for UI compatibility
-      const ceoItems = (ceoRes.data || []).map(item => ({
-        ...item,
-        agent_type: 'ceo-agent',
-        action_payload: item.payload, // Map column name for UI
-        source: 'ceo_action_queue'
-      }));
-
-      const combined = [...ceoItems, ...actionItems].sort((a, b) => {
-        const priorityA = typeof a.priority === 'number' ? a.priority : 5;
-        const priorityB = typeof b.priority === 'number' ? b.priority : 5;
-        return priorityB - priorityA;
-      });
-
-      setDecisions(combined as DecisionItem[]);
-
-      // Update stats
-      const pending = combined.length;
-      const approvedRes = await supabase
-        .from("action_queue")
-        .select("id", { count: "exact" })
-        .in("status", ["approved", "executed"]);
-      const rejectedRes = await supabase
-        .from("action_queue")
-        .select("id", { count: "exact" })
-        .eq("status", "rejected");
 
       setStats({
         pending,
@@ -147,7 +126,8 @@ export default function DecisionsDashboard() {
   const handleApprove = async (decision: DecisionItem) => {
     setProcessingId(decision.id);
     try {
-      const table = (decision as any).source === 'ceo_action_queue' ? 'ceo_action_queue' : 'action_queue';
+      // GOVERNANCE: Update the source table directly (view is read-only)
+      const table = decision.source_table === 'ceo_action_queue' ? 'ceo_action_queue' : 'action_queue';
       // GOVERNANCE: Only status change - no execution logic here
       const { error } = await supabase
         .from(table)
@@ -170,7 +150,8 @@ export default function DecisionsDashboard() {
   const handleReject = async (decision: DecisionItem) => {
     setProcessingId(decision.id);
     try {
-      const table = (decision as any).source === 'ceo_action_queue' ? 'ceo_action_queue' : 'action_queue';
+      // GOVERNANCE: Update the source table directly (view is read-only)
+      const table = decision.source_table === 'ceo_action_queue' ? 'ceo_action_queue' : 'action_queue';
       const { error } = await supabase
         .from(table)
         .update({ 
@@ -197,7 +178,8 @@ export default function DecisionsDashboard() {
 
     setProcessingId(decision.id);
     try {
-      const table = (decision as any).source === 'ceo_action_queue' ? 'ceo_action_queue' : 'action_queue';
+      // GOVERNANCE: Update the source table directly (view is read-only)
+      const table = decision.source_table === 'ceo_action_queue' ? 'ceo_action_queue' : 'action_queue';
       const existingPayload = decision.action_payload || {};
       
       // GOVERNANCE: Preserve decision_card format on modify
@@ -205,13 +187,14 @@ export default function DecisionsDashboard() {
       const { wrapWithModification } = await import('@/lib/decisionSchema');
       const updatedPayload = wrapWithModification(existingPayload, modificationText);
       
+      // For ceo_action_queue, update 'payload' column; for action_queue, update 'action_payload'
+      const updateData = table === 'ceo_action_queue' 
+        ? { status: "modified", reviewed_at: new Date().toISOString(), payload: updatedPayload }
+        : { status: "modified", reviewed_at: new Date().toISOString(), action_payload: updatedPayload };
+      
       const { error } = await supabase
         .from(table)
-        .update({ 
-          status: "modified",
-          reviewed_at: new Date().toISOString(),
-          action_payload: updatedPayload
-        })
+        .update(updateData)
         .eq("id", decision.id);
 
       if (error) throw error;

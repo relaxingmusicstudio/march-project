@@ -38,6 +38,7 @@ import { EmptyState } from "@/components/EmptyState";
 
 interface ActionItem {
   id: string;
+  source_table: string;
   agent_type: string;
   action_type: string;
   target_type: string;
@@ -46,9 +47,8 @@ interface ActionItem {
   status: string;
   priority: number;
   created_at: string;
-  scheduled_at: string | null;
-  executed_at: string | null;
-  result: Record<string, unknown> | null;
+  reviewed_at: string | null;
+  claude_reasoning: string | null;
 }
 
 export default function ApprovalQueue() {
@@ -64,39 +64,37 @@ export default function ApprovalQueue() {
   const fetchActions = async () => {
     setLoading(true);
     try {
-      // GOVERNANCE: Use standardized statuses
-      // Official: pending_approval, approved, rejected, modified, conflicted
-      const { data: pending, error: pendingError } = await supabase
-        .from("action_queue")
-        .select("*")
-        .in("status", ["pending_approval"])
-        .order("priority", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(50);
+      // GOVERNANCE: Use unified view - single source of truth
+      // Official statuses: pending_approval, approved, rejected, modified, conflicted
+      const [pendingRes, approvedRes, rejectedRes] = await Promise.all([
+        supabase
+          .from("queue_unified")
+          .select("*")
+          .in("status", ["pending_approval", "pending", "pending_review"])
+          .order("priority", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(50),
+        supabase
+          .from("queue_unified")
+          .select("*")
+          .eq("status", "approved")
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("queue_unified")
+          .select("*")
+          .in("status", ["rejected", "modified", "conflicted"])
+          .order("created_at", { ascending: false })
+          .limit(20),
+      ]);
 
-      if (pendingError) throw pendingError;
+      if (pendingRes.error) throw pendingRes.error;
+      if (approvedRes.error) throw approvedRes.error;
+      if (rejectedRes.error) throw rejectedRes.error;
 
-      const { data: approved, error: approvedError } = await supabase
-        .from("action_queue")
-        .select("*")
-        .eq("status", "approved")
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (approvedError) throw approvedError;
-
-      const { data: rejected, error: rejectedError } = await supabase
-        .from("action_queue")
-        .select("*")
-        .in("status", ["rejected", "modified", "conflicted"])
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (rejectedError) throw rejectedError;
-
-      setPendingActions((pending || []) as ActionItem[]);
-      setApprovedActions((approved || []) as ActionItem[]);
-      setRejectedActions((rejected || []) as ActionItem[]);
+      setPendingActions((pendingRes.data || []) as ActionItem[]);
+      setApprovedActions((approvedRes.data || []) as ActionItem[]);
+      setRejectedActions((rejectedRes.data || []) as ActionItem[]);
     } catch (error) {
       console.error("Error fetching actions:", error);
       toast.error("Failed to load approval queue");
@@ -108,19 +106,11 @@ export default function ApprovalQueue() {
   useEffect(() => {
     fetchActions();
 
+    // Subscribe to both tables for realtime updates
     const channel = supabase
-      .channel("action_queue_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "action_queue",
-        },
-        () => {
-          fetchActions();
-        }
-      )
+      .channel("queue_unified_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "action_queue" }, () => fetchActions())
+      .on("postgres_changes", { event: "*", schema: "public", table: "ceo_action_queue" }, () => fetchActions())
       .subscribe();
 
     return () => {
@@ -128,19 +118,22 @@ export default function ApprovalQueue() {
     };
   }, []);
 
-  const handleApprove = async (actionId: string) => {
+  // GOVERNANCE: handleApprove ONLY changes status - NO execution
+  const handleApprove = async (actionId: string, sourceTable?: string) => {
     setProcessingId(actionId);
     try {
+      // Determine table from selectedAction if not passed
+      const table = (sourceTable || selectedAction?.source_table || 'action_queue') as 'action_queue' | 'ceo_action_queue';
       const { error } = await supabase
-        .from("action_queue")
+        .from(table)
         .update({ 
           status: "approved",
-          executed_at: new Date().toISOString()
+          reviewed_at: new Date().toISOString()
         })
         .eq("id", actionId);
 
       if (error) throw error;
-      toast.success("Action approved");
+      toast.success("Action approved (no execution - Propose-Only mode)");
       fetchActions();
     } catch (error) {
       console.error("Error approving action:", error);
@@ -150,14 +143,15 @@ export default function ApprovalQueue() {
     }
   };
 
-  const handleReject = async (actionId: string) => {
+  const handleReject = async (actionId: string, sourceTable?: string) => {
     setProcessingId(actionId);
     try {
+      const table = (sourceTable || selectedAction?.source_table || 'action_queue') as 'action_queue' | 'ceo_action_queue';
       const { error } = await supabase
-        .from("action_queue")
+        .from(table)
         .update({ 
           status: "rejected",
-          executed_at: new Date().toISOString()
+          reviewed_at: new Date().toISOString()
         })
         .eq("id", actionId);
 
@@ -310,7 +304,7 @@ export default function ApprovalQueue() {
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => handleApprove(action.id)}
+                      onClick={() => handleApprove(action.id, action.source_table)}
                       disabled={processingId === action.id}
                       className="h-8 bg-green-600 hover:bg-green-700"
                     >
@@ -319,7 +313,7 @@ export default function ApprovalQueue() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => handleReject(action.id)}
+                      onClick={() => handleReject(action.id, action.source_table)}
                       disabled={processingId === action.id}
                       className="h-8"
                     >
@@ -519,21 +513,21 @@ export default function ApprovalQueue() {
                 </div>
               )}
 
-              {selectedAction.result && Object.keys(selectedAction.result).length > 0 && (
+              {selectedAction.claude_reasoning && (
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Result</p>
-                  <pre className="p-4 bg-muted rounded-lg text-xs overflow-x-auto max-h-64">
-                    {JSON.stringify(selectedAction.result, null, 2)}
+                  <p className="text-sm font-medium text-muted-foreground mb-2">AI Reasoning</p>
+                  <pre className="p-4 bg-muted rounded-lg text-xs overflow-x-auto max-h-64 whitespace-pre-wrap">
+                    {selectedAction.claude_reasoning}
                   </pre>
                 </div>
               )}
 
-              {selectedAction.status === "pending_approval" && (
+              {(selectedAction.status === "pending_approval" || selectedAction.status === "pending" || selectedAction.status === "pending_review") && (
                 <div className="flex gap-3 pt-4 border-t">
                   <Button
                     className="flex-1 bg-green-600 hover:bg-green-700"
                     onClick={() => {
-                      handleApprove(selectedAction.id);
+                      handleApprove(selectedAction.id, selectedAction.source_table);
                       setDetailsOpen(false);
                     }}
                     disabled={processingId === selectedAction.id}
@@ -545,7 +539,7 @@ export default function ApprovalQueue() {
                     variant="destructive"
                     className="flex-1"
                     onClick={() => {
-                      handleReject(selectedAction.id);
+                      handleReject(selectedAction.id, selectedAction.source_table);
                       setDetailsOpen(false);
                     }}
                     disabled={processingId === selectedAction.id}

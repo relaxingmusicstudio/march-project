@@ -8574,6 +8574,23 @@ export type Database = {
         }
         Relationships: []
       }
+      queue_unified: {
+        Row: {
+          action_payload: Json | null
+          action_type: string | null
+          agent_type: string | null
+          claude_reasoning: string | null
+          created_at: string | null
+          id: string | null
+          priority: number | null
+          reviewed_at: string | null
+          source_table: string | null
+          status: string | null
+          target_id: string | null
+          target_type: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       check_feature_access: {
