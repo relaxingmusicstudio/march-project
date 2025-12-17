@@ -137,6 +137,8 @@ serve(async (req) => {
         return await runDailyBriefs(supabase, Array.isArray(tenant_ids) ? tenant_ids : undefined);
       case "run_cost_rollup":
         return await runCostRollup(supabase);
+      case "run_outreach_queue":
+        return await runOutreachQueue(supabase, Array.isArray(tenant_ids) ? tenant_ids : undefined);
       case "check_job_status":
         return await checkJobStatus(supabase);
       default:
@@ -736,6 +738,7 @@ async function hasCostAlertRecently(supabase: SupabaseClient, tenantId: string):
     .from("ceo_alerts")
     .select("id", { count: "exact", head: true })
     .eq("alert_type", "cost_spike")
+    .contains("metadata", { tenant_id: tenantId })
     .gte("created_at", yesterday);
 
   return (count || 0) > 0;
@@ -878,6 +881,126 @@ async function runCostRollup(supabase: SupabaseClient): Promise<Response> {
     tenants_processed: Object.keys(byTenant).length,
     unassigned_rows: unassignedRows,
     alerts_created: alertsCreated,
+  });
+}
+
+/**
+ * Run outreach queue for all active tenants
+ */
+async function runOutreachQueue(supabase: SupabaseClient, specificTenantIds?: string[]): Promise<Response> {
+  const started = Date.now();
+
+  // Get active tenants
+  let tenantsQuery = supabase
+    .from("tenants")
+    .select("id, name")
+    .eq("status", "active");
+
+  if (specificTenantIds?.length) {
+    tenantsQuery = tenantsQuery.in("id", specificTenantIds);
+  }
+
+  const { data: tenants, error: tenantsError } = await tenantsQuery;
+  if (tenantsError) {
+    console.error("[ceo-scheduler] Failed to fetch tenants for outreach", { message: tenantsError.message });
+    return jsonResponse({ error: "Failed to fetch tenants" }, 500);
+  }
+
+  if (!tenants?.length) {
+    return jsonResponse({ message: "No active tenants", processed: 0 });
+  }
+
+  const results: Array<{
+    tenant_id: string;
+    tenant_name: string;
+    status: "success" | "failed" | "skipped";
+    due_leads_count: number;
+    processed_count: number;
+    error?: string;
+    duration_ms: number;
+  }> = [];
+
+  for (const tenant of tenants as Array<{ id: string; name: string }>) {
+    const tenantStart = Date.now();
+
+    try {
+      // Get due leads for this tenant
+      const now = new Date().toISOString();
+      const { data: dueLeads, error: leadsError } = await supabase
+        .from("leads")
+        .select("id, tenant_id, name, phone, status, total_call_attempts, max_attempts, next_attempt_at")
+        .eq("tenant_id", tenant.id)
+        .in("status", ["new", "attempted", "contacted"])
+        .or(`next_attempt_at.is.null,next_attempt_at.lte.${now}`)
+        .not("phone", "is", null)
+        .eq("do_not_call", false)
+        .order("next_attempt_at", { ascending: true, nullsFirst: true })
+        .limit(100);
+
+      if (leadsError) {
+        throw new Error(`Failed to fetch leads: ${leadsError.message}`);
+      }
+
+      // Filter leads under max attempts (client-side for max_attempts flexibility)
+      const eligibleLeads = (dueLeads || []).filter((lead) => {
+        const maxAttempts = (lead.max_attempts as number | null) || 6;
+        return (lead.total_call_attempts || 0) < maxAttempts;
+      });
+
+      const durationMs = Date.now() - tenantStart;
+
+      // Log the run
+      await logJobRun(supabase, tenant.id, "outreach_queue", "success", null, durationMs, {
+        due_leads_count: eligibleLeads.length,
+        processed_count: 0, // Actual processing would happen via external dialer integration
+        reason: eligibleLeads.length === 0 ? "no_due_leads" : "queued_for_dialer",
+      });
+
+      results.push({
+        tenant_id: tenant.id,
+        tenant_name: tenant.name,
+        status: "success",
+        due_leads_count: eligibleLeads.length,
+        processed_count: 0,
+        duration_ms: durationMs,
+      });
+    } catch (e) {
+      const durationMs = Date.now() - tenantStart;
+      const msg = e instanceof Error ? e.message : String(e);
+
+      await logJobRun(supabase, tenant.id, "outreach_queue", "failed", msg, durationMs, {
+        due_leads_count: 0,
+        processed_count: 0,
+      });
+
+      results.push({
+        tenant_id: tenant.id,
+        tenant_name: tenant.name,
+        status: "failed",
+        due_leads_count: 0,
+        processed_count: 0,
+        error: msg,
+        duration_ms: durationMs,
+      });
+    }
+  }
+
+  const duration = Date.now() - started;
+  console.log("[ceo-scheduler] runOutreachQueue complete", {
+    total: tenants.length,
+    success: results.filter((r) => r.status === "success").length,
+    failed: results.filter((r) => r.status === "failed").length,
+    total_due_leads: results.reduce((sum, r) => sum + r.due_leads_count, 0),
+    duration_ms: duration,
+  });
+
+  return jsonResponse({
+    total: tenants.length,
+    success: results.filter((r) => r.status === "success").length,
+    failed: results.filter((r) => r.status === "failed").length,
+    total_due_leads: results.reduce((sum, r) => sum + r.due_leads_count, 0),
+    duration_ms: duration,
+    results,
   });
 }
 
