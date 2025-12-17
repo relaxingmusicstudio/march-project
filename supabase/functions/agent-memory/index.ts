@@ -6,6 +6,55 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * Agent Hierarchy - Memory Authority Enforcement
+ * - CEO: full long-term memory write
+ * - Strategy: summarized memory only
+ * - Task & Micro: NO memory write access
+ */
+type AgentTier = 'ceo' | 'strategy' | 'task' | 'micro';
+
+const AGENT_TIERS: Record<string, AgentTier> = {
+  'ceo-agent': 'ceo',
+  'funnel-agent': 'strategy',
+  'ads-agent': 'strategy',
+  'content-agent': 'strategy',
+  'social-agent': 'strategy',
+  'sequences-agent': 'strategy',
+  'finance-agent': 'strategy',
+  'inbox-agent': 'strategy',
+  'youtube-agent': 'strategy',
+  'video-coordinator': 'task',
+  'video-router': 'task',
+  'video-editor': 'task',
+  'video-quality': 'task',
+  'video-cost': 'task',
+  'lead-enrichment': 'task',
+  'analyze-lead': 'task',
+  'outreach-agent': 'task',
+  'billing-agent': 'task',
+  'alex-chat': 'task',
+  'content-generator': 'micro',
+  'prompt-enhancer': 'micro',
+  'embedding-service': 'micro',
+  'llm-gateway': 'micro',
+};
+
+function getAgentTier(agentType: string): AgentTier {
+  const normalized = agentType.toLowerCase().replace(/_/g, '-');
+  return AGENT_TIERS[normalized] || 'micro';
+}
+
+function canWriteMemory(agentType: string): boolean {
+  const tier = getAgentTier(agentType);
+  return tier === 'ceo'; // Only CEO can write full memories
+}
+
+function canWriteSummary(agentType: string): boolean {
+  const tier = getAgentTier(agentType);
+  return tier === 'ceo' || tier === 'strategy'; // CEO and Strategy can write summaries
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -47,9 +96,9 @@ serve(async (req) => {
   }
 });
 
-// Save a new memory with embedding
+// Save a new memory with embedding - ENFORCES MEMORY AUTHORITY
 async function saveMemory(supabase: any, params: any) {
-  const { agent_type, query, response, metadata = {} } = params;
+  const { agent_type, query, response, metadata = {}, is_summary = false } = params;
 
   if (!agent_type || !query || !response) {
     return new Response(
@@ -57,6 +106,41 @@ async function saveMemory(supabase: any, params: any) {
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
+
+  // GOVERNANCE: Enforce memory authority based on agent tier
+  const tier = getAgentTier(agent_type);
+  
+  if (is_summary) {
+    // Summary writes require at least Strategy tier
+    if (!canWriteSummary(agent_type)) {
+      console.log(`[GOVERNANCE] Memory write DENIED for ${agent_type} (tier: ${tier}) - summary write not permitted`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'GOVERNANCE_VIOLATION',
+          message: `Agent ${agent_type} (tier: ${tier}) is not authorized to write summaries. Only CEO and Strategy agents can write summaries.`,
+          tier,
+          allowed: false
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+  } else {
+    // Full memory writes require CEO tier
+    if (!canWriteMemory(agent_type)) {
+      console.log(`[GOVERNANCE] Memory write DENIED for ${agent_type} (tier: ${tier}) - full memory write not permitted`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'GOVERNANCE_VIOLATION',
+          message: `Agent ${agent_type} (tier: ${tier}) is not authorized to write long-term memories. Only AI CEO can write full memories.`,
+          tier,
+          allowed: false
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+
+  console.log(`[GOVERNANCE] Memory write APPROVED for ${agent_type} (tier: ${tier})`);
 
   // Generate embedding for the query
   const embeddingResponse = await fetch(
@@ -74,7 +158,7 @@ async function saveMemory(supabase: any, params: any) {
   const embeddingData = await embeddingResponse.json();
   const embedding = embeddingData.embeddings;
 
-  // Insert the memory
+  // Insert the memory with tier metadata
   const { data, error } = await supabase
     .from('agent_memories')
     .insert({
@@ -82,7 +166,7 @@ async function saveMemory(supabase: any, params: any) {
       query,
       query_embedding: embedding,
       response,
-      metadata,
+      metadata: { ...metadata, tier, is_summary },
       success_score: 0.5,
       usage_count: 1,
     })

@@ -68,6 +68,8 @@ import CommandCenterHome from "./pages/CommandCenterHome";
 import KnowledgeVault from "./pages/KnowledgeVault";
 import UnifiedDashboard from "./pages/UnifiedDashboard";
 import AdminBusinessSetup from "./pages/AdminBusinessSetup";
+// Governance Entry Point
+import DecisionsDashboard from "./pages/DecisionsDashboard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -100,13 +102,20 @@ const App = () => (
                 <Route path="/cookies" element={<CookiePolicy />} />
                 <Route path="/auth" element={<Auth />} />
                 
-                {/* Unified Dashboard - Single Entry Point */}
-                <Route path="/app" element={<ProtectedRoute requireAdmin><UnifiedDashboard /></ProtectedRoute>} />
+                {/* GOVERNANCE: /app opens to Decision Cards (human control surface) */}
+                <Route path="/app" element={<ProtectedRoute requireAdmin><DecisionsDashboard /></ProtectedRoute>} />
                 
-                {/* AI CEO Dashboard */}
+                {/* GOVERNANCE: /app/ceo is read-only intelligence (no execution controls) */}
                 <Route path="/app/ceo" element={<ProtectedRoute requireAdmin><AICEODashboard /></ProtectedRoute>} />
+                <Route path="/app/ceo/opportunities" element={<ProtectedRoute requireAdmin><AICEODashboard /></ProtectedRoute>} />
+                <Route path="/app/ceo/strategies" element={<ProtectedRoute requireAdmin><AICEODashboard /></ProtectedRoute>} />
+                <Route path="/app/ceo/risks" element={<ProtectedRoute requireAdmin><AICEODashboard /></ProtectedRoute>} />
+                <Route path="/app/ceo/learning" element={<ProtectedRoute requireAdmin><AICEODashboard /></ProtectedRoute>} />
                 
-                {/* Command Center Routes */}
+                {/* GOVERNANCE: Human Control surfaces */}
+                <Route path="/app/controls" element={<ProtectedRoute requireAdmin><AdminControlPanel /></ProtectedRoute>} />
+                <Route path="/app/health" element={<ProtectedRoute requireAdmin><AdminSystemHealth /></ProtectedRoute>} />
+                <Route path="/app/audit" element={<ProtectedRoute requireAdmin><AdminAudit /></ProtectedRoute>} />
                 <Route path="/app/command-center" element={<ProtectedRoute requireAdmin><CommandCenterHome /></ProtectedRoute>} />
                 <Route path="/app/command-center/crm" element={<ProtectedRoute requireAdmin><AdminCRM /></ProtectedRoute>} />
                 <Route path="/app/command-center/pipeline" element={<ProtectedRoute requireAdmin><AdminPipeline /></ProtectedRoute>} />

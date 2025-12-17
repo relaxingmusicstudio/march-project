@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import CEOVoiceAssistant from "@/components/CEOVoiceAssistant";
 import { SummaryWidget } from "@/components/ceo/SummaryWidget";
 import { TodaysFocusWidget } from "@/components/ceo/TodaysFocusWidget";
-import { QuickActionsPanel } from "@/components/ceo/QuickActionsPanel";
+// GOVERNANCE: QuickActionsPanel removed - no execution controls in CEO view
 import { SystemStatusWidget } from "@/components/ceo/SystemStatusWidget";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -157,32 +157,43 @@ export default function AICEODashboard() {
       <div className="container py-6 space-y-6">
         <CEOVoiceAssistant isOpen={isVoiceOpen} onClose={() => setIsVoiceOpen(false)} onTranscript={(text, role) => setMessages(prev => [...prev, { role, content: text, timestamp: new Date() }])} />
 
-        {/* Metrics Bar */}
+        {/* GOVERNANCE: Read-only Intelligence Banner */}
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">AI CEO Intelligence</span>
+            <span className="text-xs text-muted-foreground">Read-only view • No execution controls</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/app")}>
+            Go to Decisions
+          </Button>
+        </div>
+
+        {/* Metrics Bar - Read only insight */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <SummaryWidget title="Today's Revenue" value={metrics?.revenue || 0} icon={DollarSign} entity="crm" filter={{ status: "converted" }} format="currency" isLoading={isLoadingMetrics} trend="up" trendLabel={`${metrics?.revenueChange?.toFixed(1)}%`} />
-          <SummaryWidget title="Hot Leads" value={metrics?.hotLeads || 0} icon={Zap} entity="crm" filter={{ filter: "hot" }} isLoading={isLoadingMetrics} badge={metrics?.hotLeads ? "Action needed" : undefined} badgeVariant="destructive" />
+          <SummaryWidget title="Hot Leads" value={metrics?.hotLeads || 0} icon={Zap} entity="crm" filter={{ filter: "hot" }} isLoading={isLoadingMetrics} badge={metrics?.hotLeads ? "Insight" : undefined} badgeVariant="secondary" />
           <SummaryWidget title="Pipeline Value" value={metrics?.pipelineValue || 0} icon={Target} entity="pipeline" format="currency" isLoading={isLoadingMetrics} />
           <SummaryWidget title="Pending Approvals" value={metrics?.pendingApprovals || 0} icon={Clock} entity="approvals" isLoading={isLoadingMetrics} />
         </div>
 
         {/* Main Layout: Chat + Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* AI Chat Panel */}
-          <Card className="lg:col-span-2 h-[calc(100vh-340px)] flex flex-col">
+          {/* AI Chat Panel - Intelligence queries only */}
+          <Card className="lg:col-span-2 h-[calc(100vh-380px)] flex flex-col">
             <CardHeader className="pb-3 border-b">
               <CardTitle className="text-sm font-medium flex items-center justify-between">
-                <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" />AI CEO Assistant</div>
+                <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-accent" />AI CEO Intelligence</div>
                 <div className="flex items-center gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setIsVoiceOpen(true)}><Mic className="h-4 w-4" /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => navigate("/admin/analytics")}><BarChart3 className="h-4 w-4" /></Button>
-                  <Badge variant="secondary" className="text-xs">Live</Badge>
+                  <Badge variant="outline" className="text-xs">Read-only</Badge>
                 </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
               {messages.length <= 1 && (
                 <div className="p-4 border-b bg-muted/30">
-                  <p className="text-xs text-muted-foreground mb-2">Quick actions:</p>
+                  <p className="text-xs text-muted-foreground mb-2">Ask about business intelligence:</p>
                   <div className="flex flex-wrap gap-2">
                     {QUICK_PROMPTS.map((p) => <Button key={p.label} variant="outline" size="sm" className="text-xs" onClick={() => sendMessage(p.query)}>{p.label}</Button>)}
                   </div>
@@ -205,17 +216,17 @@ export default function AICEODashboard() {
               </ScrollArea>
               <div className="p-4 border-t">
                 <form onSubmit={(e) => { e.preventDefault(); sendMessage(input); }} className="flex gap-2">
-                  <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask about your business..." disabled={isLoading} className="flex-1" />
+                  <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask about your business intelligence..." disabled={isLoading} className="flex-1" />
                   <Button type="submit" disabled={isLoading || !input.trim()}>{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</Button>
                 </form>
               </div>
             </CardContent>
           </Card>
 
-          {/* Workflow Sidebar */}
+          {/* Sidebar - Intelligence widgets only, NO execution controls */}
           <div className="space-y-4">
             <TodaysFocusWidget />
-            <QuickActionsPanel />
+            {/* GOVERNANCE: QuickActionsPanel removed - no execution controls in CEO view */}
             <SystemStatusWidget />
           </div>
         </div>
