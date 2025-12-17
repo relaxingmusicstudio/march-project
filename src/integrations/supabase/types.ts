@@ -9523,7 +9523,12 @@ export type Database = {
         }
         Returns: string
       }
-      call_ceo_scheduler: { Args: { p_action: string }; Returns: undefined }
+      call_ceo_scheduler:
+        | { Args: { p_action: string }; Returns: undefined }
+        | {
+            Args: { p_action: string; p_tenant_ids?: string[] }
+            Returns: undefined
+          }
       check_budget_cap: {
         Args: { p_amount_cents?: number; p_category: string }
         Returns: Json
@@ -9540,6 +9545,7 @@ export type Database = {
         }
         Returns: Json
       }
+      check_scheduler_secret_configured: { Args: never; Returns: boolean }
       claim_system_events: {
         Args: { p_event_type: string; p_limit?: number }
         Returns: {
@@ -9623,6 +9629,17 @@ export type Database = {
           p_period_type: string
         }
         Returns: number
+      }
+      get_scheduler_jobs: {
+        Args: never
+        Returns: {
+          active: boolean
+          jobid: number
+          jobname: string
+          last_run: string
+          last_status: string
+          schedule: string
+        }[]
       }
       get_user_role: { Args: { _user_id: string }; Returns: string }
       get_user_tenant_id: { Args: never; Returns: string }
