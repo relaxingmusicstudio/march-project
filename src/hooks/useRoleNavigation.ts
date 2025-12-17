@@ -26,7 +26,7 @@ import {
   Calendar,
   HelpCircle,
   Bell,
-  FlaskConical,
+  ShieldCheck,
   Building2,
 } from "lucide-react";
 
@@ -156,7 +156,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   {
     label: "QA Tests",
     href: "/platform/qa-tests",
-    icon: FlaskConical,
+    icon: ShieldCheck,
     description: "Tenant isolation tests",
   },
 ];
