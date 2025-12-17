@@ -364,6 +364,7 @@ export type Database = {
           action_payload: Json | null
           action_type: string
           agent_type: string
+          claude_reasoning: string | null
           conflict_resolution: string | null
           created_at: string
           executed_at: string | null
@@ -383,6 +384,7 @@ export type Database = {
           action_payload?: Json | null
           action_type: string
           agent_type: string
+          claude_reasoning?: string | null
           conflict_resolution?: string | null
           created_at?: string
           executed_at?: string | null
@@ -402,6 +404,7 @@ export type Database = {
           action_payload?: Json | null
           action_type?: string
           agent_type?: string
+          claude_reasoning?: string | null
           conflict_resolution?: string | null
           created_at?: string
           executed_at?: string | null
