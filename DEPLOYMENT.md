@@ -229,3 +229,31 @@ Before going live, verify:
 - [ ] Mobile responsiveness is good
 - [ ] SEO meta tags are updated
 - [ ] Analytics tracking is active
+
+---
+
+## ℹ️ About Legacy Gateway References in Migrations
+
+The `supabase/migrations/` folder contains historical seed data that references the old Lovable AI gateway (`ai.gateway.lovable.dev`) and `LOVABLE_API_KEY`. These are **immutable migration files** and cannot be modified.
+
+**Important:** Runtime code does NOT use the gateway. All edge functions call `aiChat()` from `supabase/functions/_shared/ai.ts`, which routes directly to Gemini (`generativelanguage.googleapis.com`) or OpenAI (`api.openai.com`) based on environment configuration.
+
+### Verifying Runtime Status
+
+To confirm no runtime code uses the legacy gateway, run these searches excluding migrations:
+
+```bash
+# Should return 0 matches
+rg -n "ai\.gateway\.lovable\.dev" --glob "!supabase/migrations/**" .
+
+# Should return 0 matches  
+rg -n "LOVABLE_API_KEY" --glob "!supabase/migrations/**" .
+```
+
+### AI Provider Configuration
+
+All AI calls are configured via environment variables (see Required Secrets above):
+- `GEMINI_API_KEY` - Required for default Gemini provider
+- `OPENAI_API_KEY` - Optional for premium routing
+- `AI_PROVIDER`, `AI_MODEL_DEFAULT` - Default routing config
+- `AI_PROVIDER_PREMIUM`, `AI_MODEL_PREMIUM`, `AI_PREMIUM_ACTIONS` - Premium routing config
