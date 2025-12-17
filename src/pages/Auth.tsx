@@ -23,10 +23,10 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated - go through proper routing
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
-      navigate("/admin/analytics");
+      navigate("/app", { replace: true });
     }
   }, [isAuthenticated, authLoading, navigate]);
 
@@ -79,7 +79,7 @@ const Auth = () => {
           title: "Welcome back!",
           description: "You have successfully logged in.",
         });
-        navigate("/admin/analytics");
+        navigate("/app", { replace: true });
       } else {
         const { error } = await signUp(email, password);
         

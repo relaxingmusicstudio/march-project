@@ -25,6 +25,7 @@ import NotFound from "./pages/NotFound";
 import CEOHome from "./pages/CEOHome";
 import DecisionsDashboard from "./pages/DecisionsDashboard";
 import OnboardingConversation from "./pages/OnboardingConversation";
+import ClientPortal from "./pages/ClientPortal";
 
 // Capability Pages (accessed via Intelligence Grid cards)
 import AdminPipeline from "./pages/AdminPipeline";
@@ -78,35 +79,39 @@ const App = () => (
                 <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/cookies" element={<CookiePolicy />} />
                 <Route path="/auth" element={<Auth />} />
+                <Route path="/login" element={<Auth />} />
                 
-                {/* CEO COMMAND CENTER - Primary Landing */}
-                <Route path="/app" element={<ProtectedRoute><CEOHome /></ProtectedRoute>} />
+                {/* CEO COMMAND CENTER - Primary Landing for Owners */}
+                <Route path="/app" element={<ProtectedRoute requireOwner><CEOHome /></ProtectedRoute>} />
+                
+                {/* Client Portal - Restricted view for client role */}
+                <Route path="/app/portal" element={<ProtectedRoute requireClient><ClientPortal /></ProtectedRoute>} />
                 
                 {/* Onboarding - New user flow */}
-                <Route path="/app/onboarding" element={<ProtectedRoute skipOnboardingCheck><OnboardingConversation /></ProtectedRoute>} />
+                <Route path="/app/onboarding" element={<ProtectedRoute skipOnboardingCheck skipTenantCheck><OnboardingConversation /></ProtectedRoute>} />
                 
                 {/* Decisions - Human approval surface */}
-                <Route path="/app/decisions" element={<ProtectedRoute><DecisionsDashboard /></ProtectedRoute>} />
+                <Route path="/app/decisions" element={<ProtectedRoute requireOwner><DecisionsDashboard /></ProtectedRoute>} />
                 
-                {/* Capability Pages - Accessed from Intelligence Grid */}
-                <Route path="/app/pipeline" element={<ProtectedRoute><AdminPipeline /></ProtectedRoute>} />
-                <Route path="/app/inbox" element={<ProtectedRoute><AdminInbox /></ProtectedRoute>} />
-                <Route path="/app/analytics" element={<ProtectedRoute><AdminAnalytics /></ProtectedRoute>} />
-                <Route path="/app/billing" element={<ProtectedRoute><AdminBilling /></ProtectedRoute>} />
-                <Route path="/app/content" element={<ProtectedRoute><AdminContent /></ProtectedRoute>} />
-                <Route path="/app/clients" element={<ProtectedRoute><AdminClients /></ProtectedRoute>} />
-                <Route path="/app/leads" element={<ProtectedRoute><AdminLeads /></ProtectedRoute>} />
-                <Route path="/app/sequences" element={<ProtectedRoute><AdminSequences /></ProtectedRoute>} />
-                <Route path="/app/crm" element={<ProtectedRoute><AdminCRM /></ProtectedRoute>} />
-                <Route path="/app/contacts" element={<ProtectedRoute><AdminContacts /></ProtectedRoute>} />
-                <Route path="/app/vault" element={<ProtectedRoute><KnowledgeVault /></ProtectedRoute>} />
+                {/* Capability Pages - Owner only (accessed from Intelligence Grid) */}
+                <Route path="/app/pipeline" element={<ProtectedRoute requireOwner><AdminPipeline /></ProtectedRoute>} />
+                <Route path="/app/inbox" element={<ProtectedRoute requireOwner><AdminInbox /></ProtectedRoute>} />
+                <Route path="/app/analytics" element={<ProtectedRoute requireOwner><AdminAnalytics /></ProtectedRoute>} />
+                <Route path="/app/billing" element={<ProtectedRoute requireOwner><AdminBilling /></ProtectedRoute>} />
+                <Route path="/app/content" element={<ProtectedRoute requireOwner><AdminContent /></ProtectedRoute>} />
+                <Route path="/app/clients" element={<ProtectedRoute requireOwner><AdminClients /></ProtectedRoute>} />
+                <Route path="/app/leads" element={<ProtectedRoute requireOwner><AdminLeads /></ProtectedRoute>} />
+                <Route path="/app/sequences" element={<ProtectedRoute requireOwner><AdminSequences /></ProtectedRoute>} />
+                <Route path="/app/crm" element={<ProtectedRoute requireOwner><AdminCRM /></ProtectedRoute>} />
+                <Route path="/app/contacts" element={<ProtectedRoute requireOwner><AdminContacts /></ProtectedRoute>} />
+                <Route path="/app/vault" element={<ProtectedRoute requireOwner><KnowledgeVault /></ProtectedRoute>} />
                 
-                {/* Settings & System */}
-                <Route path="/app/settings" element={<ProtectedRoute><AdminSettings /></ProtectedRoute>} />
-                <Route path="/app/health" element={<ProtectedRoute><AdminSystemHealth /></ProtectedRoute>} />
-                <Route path="/app/audit" element={<ProtectedRoute><AdminAudit /></ProtectedRoute>} />
-                <Route path="/app/help" element={<ProtectedRoute><AdminHelp /></ProtectedRoute>} />
-                <Route path="/app/business-setup" element={<ProtectedRoute><AdminBusinessSetup /></ProtectedRoute>} />
+                {/* Settings & System - Owner only */}
+                <Route path="/app/settings" element={<ProtectedRoute requireOwner><AdminSettings /></ProtectedRoute>} />
+                <Route path="/app/health" element={<ProtectedRoute requireOwner><AdminSystemHealth /></ProtectedRoute>} />
+                <Route path="/app/audit" element={<ProtectedRoute requireOwner><AdminAudit /></ProtectedRoute>} />
+                <Route path="/app/help" element={<ProtectedRoute requireOwner><AdminHelp /></ProtectedRoute>} />
+                <Route path="/app/business-setup" element={<ProtectedRoute requireOwner><AdminBusinessSetup /></ProtectedRoute>} />
                 
                 {/* Platform Admin - Hidden */}
                 <Route path="/app/admin/tenants" element={<ProtectedRoute requireAdmin><AdminTenants /></ProtectedRoute>} />

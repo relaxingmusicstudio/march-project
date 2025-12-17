@@ -107,7 +107,7 @@ export default function OnboardingConversation() {
       }
 
       toast.success("Welcome aboard! Let's get started.");
-      navigate("/app");
+      navigate("/app", { replace: true });
     } catch (error) {
       console.error("Error completing onboarding:", error);
       toast.error("Something went wrong. Please try again.");

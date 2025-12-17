@@ -8849,6 +8849,7 @@ export type Database = {
         Args: { p_template_key: string; p_tenant_id: string }
         Returns: boolean
       }
+      get_user_role: { Args: { _user_id: string }; Returns: string }
       get_user_tenant_id: { Args: never; Returns: string }
       get_user_tenant_status: { Args: never; Returns: string }
       has_role: {
@@ -8874,7 +8875,13 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "moderator" | "user" | "platform_admin"
+      app_role:
+        | "admin"
+        | "moderator"
+        | "user"
+        | "platform_admin"
+        | "owner"
+        | "client"
       tenant_plan: "starter" | "growth" | "scale"
       tenant_status: "draft" | "active" | "suspended"
     }
@@ -9004,7 +9011,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "moderator", "user", "platform_admin"],
+      app_role: [
+        "admin",
+        "moderator",
+        "user",
+        "platform_admin",
+        "owner",
+        "client",
+      ],
       tenant_plan: ["starter", "growth", "scale"],
       tenant_status: ["draft", "active", "suspended"],
     },
