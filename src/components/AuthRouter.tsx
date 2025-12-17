@@ -1,14 +1,25 @@
 /**
- * AuthRouter - Central routing logic for authenticated users
+ * AuthRouter - SINGLE routing brain for authenticated users
  * 
- * Routing rules:
- * 1. NOT authenticated -> /auth (login screen)
- * 2. Authenticated + onboarding_complete = false -> /app/onboarding
- * 3. Authenticated + onboarding_complete = true + role = owner -> /app (CEO Home)
- * 4. Authenticated + onboarding_complete = true + role = client -> /app/portal (Client Portal)
+ * This component handles ALL routing decisions based on:
+ * 1. Authentication status
+ * 2. Onboarding completion
+ * 3. User role (owner/client)
+ * 
+ * ROUTING RULES:
+ * - !isAuthenticated -> /auth
+ * - authenticated + onboarding_complete=false -> /app/onboarding
+ * - authenticated + onboarding_complete=true + role=client -> /app/portal
+ * - authenticated + onboarding_complete=true + role=owner/admin -> /app
+ * 
+ * TEST CHECKLIST:
+ * - New user -> auth -> onboarding -> complete -> refresh -> stays on /app (owner) or /app/portal (client)
+ * - Client visiting /app/* -> redirected to /app/portal with no flash
+ * - Owner visiting /app/portal -> redirected to /app
+ * - Unauthenticated user visiting /app/* -> redirected to /auth
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,59 +30,90 @@ interface AuthRouterProps {
   children: React.ReactNode;
 }
 
+// Routes that don't require authentication
+const PUBLIC_ROUTES = ["/", "/auth", "/login", "/blog", "/privacy", "/terms", "/cookies"];
+
+// Routes allowed during onboarding
+const ONBOARDING_ROUTES = ["/app/onboarding"];
+
+// Routes for clients only
+const CLIENT_ROUTES = ["/app/portal"];
+
+// Check if path starts with any of the given prefixes
+function matchesAnyRoute(path: string, routes: string[]): boolean {
+  return routes.some(route => path === route || path.startsWith(route + "/"));
+}
+
 export function AuthRouter({ children }: AuthRouterProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { isOnboardingComplete, isLoading: onboardingLoading } = useOnboardingStatus();
-  const { isClient, isLoading: roleLoading } = useUserRole();
-  const [hasNavigated, setHasNavigated] = useState(false);
+  const { role, isClient, isOwner, isLoading: roleLoading } = useUserRole();
 
   const isLoading = authLoading || onboardingLoading || roleLoading;
+  const currentPath = location.pathname;
 
-  useEffect(() => {
-    if (isLoading || hasNavigated) return;
+  // Compute target path based on current state - IDEMPOTENT
+  const targetPath = useMemo(() => {
+    // Still loading - no redirect
+    if (isLoading) return null;
 
-    // Rule 1: Not authenticated -> go to auth
-    if (!isAuthenticated) {
-      navigate("/auth", { replace: true });
-      setHasNavigated(true);
-      return;
-    }
+    // Public routes - no redirect needed
+    if (matchesAnyRoute(currentPath, PUBLIC_ROUTES)) return null;
 
-    // Rule 2: Not completed onboarding -> go to onboarding
+    // Rule 1: Not authenticated -> /auth
+    if (!isAuthenticated) return "/auth";
+
+    // Rule 2: Onboarding not complete -> /app/onboarding
     if (isOnboardingComplete === false) {
-      if (location.pathname !== "/app/onboarding") {
-        navigate("/app/onboarding", { replace: true });
-        setHasNavigated(true);
+      if (!matchesAnyRoute(currentPath, ONBOARDING_ROUTES)) {
+        return "/app/onboarding";
       }
-      return;
+      return null;
     }
 
-    // Rule 3: Completed onboarding, determine destination by role
+    // Rule 3: Onboarding complete - route by role
     if (isOnboardingComplete === true) {
-      // Client role goes to client portal
+      // Client role
       if (isClient) {
-        if (!location.pathname.startsWith("/app/portal")) {
-          navigate("/app/portal", { replace: true });
-          setHasNavigated(true);
+        // Client on non-client routes -> redirect to portal
+        if (!matchesAnyRoute(currentPath, CLIENT_ROUTES)) {
+          return "/app/portal";
         }
-        return;
+        return null;
       }
 
-      // Owner/admin goes to CEO Home
-      if (location.pathname === "/app/onboarding") {
-        navigate("/app", { replace: true });
-        setHasNavigated(true);
+      // Owner/Admin role
+      if (isOwner) {
+        // Owner on onboarding -> redirect to home
+        if (matchesAnyRoute(currentPath, ONBOARDING_ROUTES)) {
+          return "/app";
+        }
+        // Owner on client portal -> redirect to home
+        if (matchesAnyRoute(currentPath, CLIENT_ROUTES)) {
+          return "/app";
+        }
+        return null;
+      }
+
+      // Role not determined yet (null) - wait for role to load
+      if (role === null) {
+        return null;
       }
     }
-  }, [isAuthenticated, isOnboardingComplete, isClient, isLoading, hasNavigated, location.pathname, navigate]);
 
-  // Reset navigation flag when location changes externally
+    return null;
+  }, [isLoading, isAuthenticated, isOnboardingComplete, isClient, isOwner, role, currentPath]);
+
+  // Execute navigation if target differs from current
   useEffect(() => {
-    setHasNavigated(false);
-  }, [location.pathname]);
+    if (targetPath && targetPath !== currentPath) {
+      navigate(targetPath, { replace: true });
+    }
+  }, [targetPath, currentPath, navigate]);
 
+  // Show loading state
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -83,7 +125,8 @@ export function AuthRouter({ children }: AuthRouterProps) {
     );
   }
 
-  if (!isAuthenticated) {
+  // Not authenticated on protected route - show nothing while redirecting
+  if (!isAuthenticated && !matchesAnyRoute(currentPath, PUBLIC_ROUTES)) {
     return null;
   }
 

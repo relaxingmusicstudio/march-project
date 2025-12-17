@@ -8849,6 +8849,7 @@ export type Database = {
         Args: { p_template_key: string; p_tenant_id: string }
         Returns: boolean
       }
+      ensure_user_role: { Args: { _user_id: string }; Returns: string }
       get_user_role: { Args: { _user_id: string }; Returns: string }
       get_user_tenant_id: { Args: never; Returns: string }
       get_user_tenant_status: { Args: never; Returns: string }
