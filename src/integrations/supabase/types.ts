@@ -494,6 +494,7 @@ export type Database = {
           provider: string | null
           purpose: string | null
           success_rate: number | null
+          tenant_id: string | null
           tokens_used: number | null
           updated_at: string
         }
@@ -509,6 +510,7 @@ export type Database = {
           provider?: string | null
           purpose?: string | null
           success_rate?: number | null
+          tenant_id?: string | null
           tokens_used?: number | null
           updated_at?: string
         }
@@ -524,10 +526,19 @@ export type Database = {
           provider?: string | null
           purpose?: string | null
           success_rate?: number | null
+          tenant_id?: string | null
           tokens_used?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_agent_cost_tracking_tenant"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       agent_integration_permissions: {
         Row: {
@@ -1730,6 +1741,7 @@ export type Database = {
           recording_url: string | null
           started_at: string | null
           status: string | null
+          tenant_id: string | null
           to_number: string | null
           transcription: string | null
           vapi_call_id: string | null
@@ -1756,6 +1768,7 @@ export type Database = {
           recording_url?: string | null
           started_at?: string | null
           status?: string | null
+          tenant_id?: string | null
           to_number?: string | null
           transcription?: string | null
           vapi_call_id?: string | null
@@ -1782,6 +1795,7 @@ export type Database = {
           recording_url?: string | null
           started_at?: string | null
           status?: string | null
+          tenant_id?: string | null
           to_number?: string | null
           transcription?: string | null
           vapi_call_id?: string | null
@@ -1813,6 +1827,13 @@ export type Database = {
             columns: ["phone_number_id"]
             isOneToOne: false
             referencedRelation: "phone_numbers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_call_logs_tenant"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -2817,6 +2838,7 @@ export type Database = {
           status: string | null
           stripe_invoice_id: string | null
           stripe_payment_intent_id: string | null
+          tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2833,6 +2855,7 @@ export type Database = {
           status?: string | null
           stripe_invoice_id?: string | null
           stripe_payment_intent_id?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2849,6 +2872,7 @@ export type Database = {
           status?: string | null
           stripe_invoice_id?: string | null
           stripe_payment_intent_id?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -2857,6 +2881,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_client_invoices_tenant"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
