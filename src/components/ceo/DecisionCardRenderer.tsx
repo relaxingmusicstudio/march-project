@@ -3,9 +3,11 @@
  * 
  * Renders a validated Decision Card in a structured, readable format
  * for human review in the DecisionsDashboard.
+ * Shows clear warning for legacy payloads without decision_card.
  */
 
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DecisionCard, extractDecisionCard } from "@/lib/decisionSchema";
 import {
@@ -19,6 +21,7 @@ import {
   Gauge,
   ChevronDown,
   FileJson,
+  AlertCircle,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -32,23 +35,43 @@ export function DecisionCardRenderer({ actionPayload, claudeReasoning }: Decisio
   
   const decisionCard = extractDecisionCard(actionPayload);
 
-  // If no valid decision card, show legacy format
+  // If no valid decision card, show LEGACY FORMAT WARNING
   if (!decisionCard) {
     return (
       <div className="space-y-3">
+        <Alert variant="destructive" className="border-orange-500 bg-orange-500/10">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle className="text-orange-600 dark:text-orange-400 font-semibold">
+            ⚠️ Legacy Payload - No Decision Card
+          </AlertTitle>
+          <AlertDescription className="text-orange-600/80 dark:text-orange-400/80">
+            This action was queued without the required Decision Framing Standard.
+            Consider rejecting and requiring proper decision card format.
+          </AlertDescription>
+        </Alert>
+
         {claudeReasoning && (
           <div className="bg-muted/50 p-3 rounded-lg">
             <p className="text-xs font-medium text-muted-foreground mb-1">AI Reasoning:</p>
             <p className="text-sm">{claudeReasoning}</p>
           </div>
         )}
+        
         {actionPayload && (
-          <div className="bg-muted/30 p-3 rounded-lg">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Proposed Action (Legacy):</p>
-            <pre className="text-xs overflow-auto max-h-24">
-              {JSON.stringify(actionPayload, null, 2)}
-            </pre>
-          </div>
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <FileJson className="h-3 w-3" />
+              <span>Raw Payload (Legacy)</span>
+              <ChevronDown className="h-3 w-3" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <div className="bg-muted/30 p-3 rounded-lg border border-orange-500/30">
+                <pre className="text-xs overflow-auto max-h-48">
+                  {JSON.stringify(actionPayload, null, 2)}
+                </pre>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </div>
     );

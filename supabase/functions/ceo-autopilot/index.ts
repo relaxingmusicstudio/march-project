@@ -444,14 +444,34 @@ async function executeAction(supabase: any, order: StandingOrder, config: Autopi
         .limit(10);
 
       for (const lead of staleLeads || []) {
-        await supabase.from("action_queue").insert({
-          agent_type: "email-agent",
-          action_type: "send_followup",
-          target_type: "lead",
-          target_id: lead.id,
-          action_payload: { template: action_payload.template, lead_name: lead.name },
-          priority: 5
-        });
+        // GOVERNANCE: All queue inserts MUST have decision_card
+        const followupDecisionCard: DecisionCard = {
+          decision_type: 'send_followup',
+          summary: `Follow up on stale lead: ${lead.name || lead.id}`.slice(0, 180),
+          why_now: `Lead has been stale for ${staleDays}+ days without contact`,
+          expected_impact: 'Re-engage lead and move to next pipeline stage',
+          cost: '5 minutes automated email',
+          risk: 'low - standard follow-up sequence',
+          reversibility: 'easy',
+          requires: ['Human approval'],
+          confidence: 0.7,
+          proposed_payload: { template: action_payload.template, lead_name: lead.name },
+        };
+
+        const validation = validateDecisionCard(followupDecisionCard);
+        if (validation.isValid) {
+          await supabase.from("action_queue").insert({
+            agent_type: "email-agent",
+            action_type: "send_followup",
+            target_type: "lead",
+            target_id: lead.id,
+            action_payload: wrapWithDecisionCard(validation.normalizedDecision!, { template: action_payload.template, lead_name: lead.name }),
+            priority: 5,
+            status: 'pending_approval' // GOVERNANCE: Always pending_approval
+          });
+        } else {
+          logValidationFailure('ceo-autopilot:send_followup', followupDecisionCard, validation);
+        }
       }
       return { followups_queued: (staleLeads || []).length };
 

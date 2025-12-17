@@ -185,21 +185,22 @@ export default function DecisionsDashboard() {
       const table = (decision as any).source === 'ceo_action_queue' ? 'ceo_action_queue' : 'action_queue';
       const existingPayload = decision.action_payload || {};
       
+      // GOVERNANCE: Preserve decision_card format on modify
+      // Use wrapWithModification to properly update decision_card.human_modification
+      const { wrapWithModification } = await import('@/lib/decisionSchema');
+      const updatedPayload = wrapWithModification(existingPayload, modificationText);
+      
       const { error } = await supabase
         .from(table)
         .update({ 
           status: "modified",
           reviewed_at: new Date().toISOString(),
-          action_payload: {
-            ...existingPayload,
-            human_modification: modificationText,
-            modified_at: new Date().toISOString()
-          }
+          action_payload: updatedPayload
         })
         .eq("id", decision.id);
 
       if (error) throw error;
-      toast.success("Modification submitted");
+      toast.success("Modification submitted - AI must re-propose with valid decision card");
       setModifyingId(null);
       setModificationText("");
       fetchDecisions();

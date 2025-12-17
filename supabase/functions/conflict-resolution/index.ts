@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateDecisionCard, wrapWithDecisionCard, createSystemDecisionCard, logValidationFailure, type DecisionCard } from "../_shared/decisionSchema.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,8 +22,44 @@ serve(async (req) => {
 
     switch (action) {
       case 'queue_action': {
-        const { agent_type, action_type, target_type, target_id, payload, scheduled_at } = data;
+        const { agent_type, action_type, target_type, target_id, payload, scheduled_at, decision_card: inputDecisionCard } = data;
         
+        // GOVERNANCE: All queue inserts MUST have a valid decision_card
+        let decisionCard: DecisionCard;
+        
+        if (inputDecisionCard) {
+          const validation = validateDecisionCard(inputDecisionCard);
+          if (!validation.isValid) {
+            logValidationFailure('conflict-resolution:queue_action', inputDecisionCard, validation);
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'Invalid decision_card',
+              missing_fields: validation.missingFields,
+              validation_errors: validation.errors
+            }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+          decisionCard = validation.normalizedDecision!;
+        } else {
+          // Create system decision card from payload
+          decisionCard = createSystemDecisionCard(
+            action_type,
+            `${agent_type} action: ${action_type} on ${target_type}`,
+            {
+              why_now: payload?.why_now || 'Queued by conflict resolution system',
+              expected_impact: payload?.expected_impact || `Execute ${action_type} on target`,
+              cost: payload?.cost || 'Minimal',
+              risk: payload?.risk || 'low - queued action',
+              reversibility: payload?.reversibility || 'easy',
+              requires: ['Human approval'],
+              confidence: payload?.confidence ?? 0.6,
+              proposed_payload: payload
+            }
+          );
+        }
+
         // Get priority rules
         const { data: rules } = await supabase
           .from('action_priority_rules')
@@ -48,7 +85,7 @@ serve(async (req) => {
           .select('*')
           .eq('target_type', target_type)
           .eq('target_id', target_id)
-          .in('status', ['queued', 'approved']);
+          .in('status', ['queued', 'pending_approval', 'approved']);
 
         let conflictResolution = null;
         
@@ -94,7 +131,7 @@ serve(async (req) => {
                   priority,
                   scheduled_at: scheduled_at || new Date().toISOString(),
                   status: 'conflicted',
-                  action_payload: payload,
+                  action_payload: wrapWithDecisionCard(decisionCard, payload),
                   conflict_resolution: 'deferred_by_existing',
                 })
                 .select()
@@ -112,7 +149,7 @@ serve(async (req) => {
           }
         }
 
-        // Insert the action
+        // Insert the action with decision_card wrapper
         const { data: newAction, error } = await supabase
           .from('action_queue')
           .insert({
@@ -122,14 +159,16 @@ serve(async (req) => {
             target_id,
             priority,
             scheduled_at: scheduled_at || new Date().toISOString(),
-            status: 'queued',
-            action_payload: payload,
+            status: 'pending_approval', // GOVERNANCE: Always pending_approval
+            action_payload: wrapWithDecisionCard(decisionCard, payload),
             conflict_resolution: conflictResolution,
           })
           .select()
           .single();
 
         if (error) throw error;
+
+        console.log(`[Conflict Resolution] Queued action ${newAction.id} with valid decision_card`);
 
         return new Response(JSON.stringify({
           success: true,
@@ -162,6 +201,7 @@ serve(async (req) => {
           success: true,
           queue: queue || [],
           stats: {
+            pending_approval: (queue || []).filter(a => a.status === 'pending_approval').length,
             queued: (queue || []).filter(a => a.status === 'queued').length,
             conflicted: (queue || []).filter(a => a.status === 'conflicted').length,
             executing: (queue || []).filter(a => a.status === 'executing').length,

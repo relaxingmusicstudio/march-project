@@ -1,8 +1,8 @@
 /**
- * Decision Framing Standard
+ * Decision Framing Standard - CLIENT SIDE
  * 
- * Every CEO proposal that reaches a human must follow this schema.
- * Enforced server-side in edge functions before writing to ceo_action_queue.
+ * MUST MIRROR SERVER SCHEMA EXACTLY.
+ * Server-side is authoritative: supabase/functions/_shared/decisionSchema.ts
  */
 
 export interface DecisionCard {
@@ -42,12 +42,14 @@ const REQUIRED_FIELDS: (keyof DecisionCard)[] = [
   'confidence'
 ];
 
+// STRICT ENUMS - Must match server-side exactly
 const VALID_RISK_LEVELS = ['low', 'medium', 'med', 'high'];
 const VALID_REVERSIBILITY = ['instant', 'easy', 'hard'];
 const MAX_SUMMARY_LENGTH = 180;
 
 /**
  * Validates and normalizes a decision card
+ * MIRRORS SERVER-SIDE VALIDATION EXACTLY
  */
 export function validateDecisionCard(input: unknown): ValidationResult {
   const missingFields: string[] = [];
@@ -134,7 +136,7 @@ export function validateDecisionCard(input: unknown): ValidationResult {
   }
 
   // Decision is valid if no critical missing fields
-  // Warnings (in errors[]) don't block validity
+  // Warnings (truncation, measurable suggestion) don't block validity
   const criticalErrors = errors.filter(e => 
     !e.includes('truncated') && 
     !e.includes('should include')
@@ -262,4 +264,32 @@ export function extractDecisionCard(payload: unknown): DecisionCard | null {
   // Check if the payload itself is a decision card
   const result = validateDecisionCard(payload);
   return result.isValid ? result.normalizedDecision : null;
+}
+
+/**
+ * Wraps payload with decision_card for modify flow
+ */
+export function wrapWithModification(
+  existingPayload: Record<string, unknown>,
+  humanModification: string
+): Record<string, unknown> {
+  const existingCard = extractDecisionCard(existingPayload);
+  
+  if (existingCard) {
+    // Update existing decision_card with human modification
+    return {
+      ...existingPayload,
+      decision_card: {
+        ...existingCard,
+        human_modification: humanModification,
+      }
+    };
+  }
+  
+  // No existing decision_card - add modification to payload
+  return {
+    ...existingPayload,
+    human_modification: humanModification,
+    modified_at: new Date().toISOString()
+  };
 }

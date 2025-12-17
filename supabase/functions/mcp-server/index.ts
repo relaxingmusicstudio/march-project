@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateDecisionCard, wrapWithDecisionCard, createSystemDecisionCard, logValidationFailure, type DecisionCard } from "../_shared/decisionSchema.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -705,28 +706,66 @@ async function executeTool(supabase: any, params: { name: string; arguments?: Re
 
     // === NIGHT WATCHMAN ACTION TOOLS ===
     case 'queue_action': {
+      // GOVERNANCE: All queue inserts MUST have a valid decision_card
+      let decisionCard: DecisionCard;
+      const payload = (args.payload || {}) as Record<string, unknown>;
+      const actionType = String(args.action_type || 'unknown_action');
+      const reasoning = String(args.reasoning || '');
+      
+      if (args.decision_card) {
+        const validation = validateDecisionCard(args.decision_card);
+        if (!validation.isValid) {
+          logValidationFailure('mcp-server:queue_action', args.decision_card, validation);
+          return {
+            success: false,
+            error: 'Invalid decision_card',
+            missing_fields: validation.missingFields,
+            validation_errors: validation.errors
+          };
+        }
+        decisionCard = validation.normalizedDecision!;
+      } else {
+        // Create system decision card
+        decisionCard = createSystemDecisionCard(
+          actionType,
+          `MCP action: ${actionType}`,
+          {
+            why_now: reasoning || 'Queued via MCP server',
+            expected_impact: (payload.expected_impact as string) || `Execute ${actionType}`,
+            cost: (payload.cost as string) || 'Minimal',
+            risk: (payload.risk as string) || 'low - MCP queued action',
+            reversibility: (payload.reversibility as string) || 'easy',
+            requires: ['Human approval'],
+            confidence: (payload.confidence as number) ?? 0.6,
+            proposed_payload: payload
+          }
+        );
+      }
+
       const { data, error } = await supabase
         .from('ceo_action_queue')
         .insert({
-          action_type: args.action_type,
+          action_type: actionType,
           target_type: args.target_type || null,
           target_id: args.target_id || null,
-          payload: args.payload || {},
-          claude_reasoning: args.reasoning,
+          payload: wrapWithDecisionCard(decisionCard, payload),
+          claude_reasoning: reasoning,
           priority: args.priority || 'normal',
           source: 'claude-mcp',
-          status: 'pending'
+          status: 'pending_approval' // GOVERNANCE: Always pending_approval
         })
         .select()
         .single();
       
       if (error) throw error;
 
+      console.log(`[MCP Server] Queued action ${data.id} with valid decision_card`);
+
       // Log activity
       await supabase.from('claude_activity_log').insert({
         activity_type: 'action_queued',
-        description: `Queued ${args.action_type} action`,
-        details: { action_id: data.id, reasoning: args.reasoning },
+        description: `Queued ${actionType} action`,
+        details: { action_id: data.id, reasoning, decision_card: decisionCard },
         result: 'pending_approval'
       });
 
