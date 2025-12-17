@@ -37,10 +37,11 @@ export function CEOAlertsPanel({ tenantId }: CEOAlertsPanelProps) {
 
     setLoading(true);
     try {
-      // Get alerts from ceo_alerts table
+      // Get alerts from ceo_alerts table - filter by tenant_id in metadata
       const { data, error } = await supabase
         .from("ceo_alerts")
         .select("*")
+        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null`)
         .order("created_at", { ascending: false })
         .limit(20);
 
@@ -61,7 +62,8 @@ export function CEOAlertsPanel({ tenantId }: CEOAlertsPanelProps) {
       const { error } = await supabase
         .from("ceo_alerts")
         .update({ acknowledged_at: new Date().toISOString() })
-        .eq("id", alertId);
+        .eq("id", alertId)
+        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null`);
 
       if (error) throw error;
 
