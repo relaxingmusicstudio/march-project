@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateDecisionCard, wrapWithDecisionCard, type DecisionCard } from "../_shared/decisionSchema.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -139,19 +140,36 @@ const agentResponses = {
   churn_risk_detected: async (event: any, supabase: any) => {
     const churnProb = event.trigger_data?.churn_probability || 0.65;
 
-    // Create CEO action queue item
-    await supabase.from("ceo_action_queue").insert({
-      action_type: "churn_intervention",
-      target_type: "client",
-      target_id: event.target_entity_id,
-      priority: churnProb > 0.7 ? "critical" : "high",
-      payload: {
+    // Build Decision Card for churn intervention
+    const decisionCard: DecisionCard = {
+      decision_type: 'churn_intervention',
+      summary: `High churn risk detected: ${(churnProb * 100).toFixed(0)}% probability`,
+      why_now: `Client health score dropped below threshold. Immediate action required to prevent churn.`,
+      expected_impact: `Retain client worth estimated $${(Math.random() * 50000 + 10000).toFixed(0)}/year`,
+      cost: '2-4 hours executive time',
+      risk: churnProb > 0.7 ? 'high - client may churn within 30 days' : 'medium - churn likely within 60 days',
+      reversibility: 'easy',
+      requires: ['Client contact info', 'Account history', 'Discount authority'],
+      confidence: churnProb,
+      proposed_payload: {
         churn_probability: churnProb,
         recommended_actions: ["Executive outreach", "Discount offer", "Feature consultation"],
       },
-      source: "simulation",
-      claude_reasoning: `AI detected ${(churnProb * 100).toFixed(0)}% churn probability. Recommending immediate intervention.`,
-    });
+    };
+
+    const validation = validateDecisionCard(decisionCard);
+    if (validation.isValid) {
+      await supabase.from("ceo_action_queue").insert({
+        action_type: "churn_intervention",
+        target_type: "client",
+        target_id: event.target_entity_id,
+        priority: churnProb > 0.7 ? "critical" : "high",
+        action_payload: wrapWithDecisionCard(validation.normalizedDecision!),
+        source: "simulation",
+        status: "pending_approval",
+        claude_reasoning: `AI detected ${(churnProb * 100).toFixed(0)}% churn probability. Recommending immediate intervention.`,
+      });
+    }
 
     return {
       agent: "CEO_Agent",

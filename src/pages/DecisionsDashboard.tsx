@@ -16,12 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { GovernanceNavigation } from "@/components/GovernanceNavigation";
+import { DecisionCardRenderer } from "@/components/ceo/DecisionCardRenderer";
 import {
   CheckCircle2,
   XCircle,
   MessageSquare,
   Clock,
-  AlertTriangle,
   Bot,
   ChevronRight,
   Loader2,
@@ -317,23 +317,11 @@ export default function DecisionsDashboard() {
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        {/* AI Reasoning */}
-                        {decision.claude_reasoning && (
-                          <div className="bg-muted/50 p-3 rounded-lg">
-                            <p className="text-xs font-medium text-muted-foreground mb-1">AI Reasoning:</p>
-                            <p className="text-sm">{decision.claude_reasoning}</p>
-                          </div>
-                        )}
-
-                        {/* Payload Preview */}
-                        {decision.action_payload && (
-                          <div className="bg-muted/30 p-3 rounded-lg">
-                            <p className="text-xs font-medium text-muted-foreground mb-1">Proposed Action:</p>
-                            <pre className="text-xs overflow-auto max-h-24">
-                              {JSON.stringify(decision.action_payload, null, 2)}
-                            </pre>
-                          </div>
-                        )}
+                        {/* Decision Card Renderer - structured format */}
+                        <DecisionCardRenderer 
+                          actionPayload={decision.action_payload}
+                          claudeReasoning={decision.claude_reasoning}
+                        />
 
                         {/* Modification Input */}
                         {modifyingId === decision.id && (

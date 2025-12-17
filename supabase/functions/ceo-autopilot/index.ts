@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateDecisionCard, wrapWithDecisionCard, logValidationFailure, type DecisionCard } from "../_shared/decisionSchema.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -129,19 +130,46 @@ async function runScheduledChecks(supabase: any, config: AutopilotConfig | null)
       
       if (shouldExecute) {
         // GOVERNANCE #10: Autopilot can ONLY enqueue actions as pending_approval
-        // It NEVER executes directly - requires human approval
+        // Build Decision Card following Decision Framing Standard
+        const decisionCard: DecisionCard = {
+          decision_type: order.action_type,
+          summary: `Auto-triggered: ${order.rule_name}`.slice(0, 180),
+          why_now: `Standing order conditions met at ${new Date().toISOString()}`,
+          expected_impact: order.action_payload?.expected_impact as string || 'Automated response to threshold/schedule trigger',
+          cost: order.action_payload?.cost as string || 'Minimal - automated action',
+          risk: `${order.priority >= 8 ? 'high' : order.priority >= 5 ? 'medium' : 'low'} - standing order execution`,
+          reversibility: order.action_payload?.reversibility as string || 'easy',
+          requires: ['Human approval'],
+          confidence: Math.min(0.9, order.priority / 10),
+          proposed_payload: order.action_payload,
+        };
+
+        // Validate decision card
+        const validation = validateDecisionCard(decisionCard);
+        if (!validation.isValid) {
+          logValidationFailure('ceo-autopilot:runScheduledChecks', decisionCard, validation);
+          console.error(`[CEO Autopilot] Decision card invalid for ${order.rule_name}:`, validation.missingFields);
+          results.push({
+            order_id: order.id,
+            rule_name: order.rule_name,
+            queued_for_approval: false,
+            error: `Invalid decision card: ${validation.missingFields.join(', ')}`
+          });
+          continue;
+        }
+
         const actionPayload = {
           action_type: order.action_type,
           target_type: "standing_order",
           target_id: order.id,
           agent_type: "ceo-autopilot",
-          action_payload: order.action_payload,
+          action_payload: wrapWithDecisionCard(validation.normalizedDecision!, order.action_payload),
           priority: order.priority,
-          status: "pending_approval", // ALWAYS pending - never auto-execute
+          status: "pending_approval",
           claude_reasoning: `Autopilot triggered: ${order.rule_name}`,
         };
 
-        // Queue for human approval instead of executing
+        // Queue for human approval
         const { data: queuedAction, error: queueError } = await supabase
           .from("ceo_action_queue")
           .insert(actionPayload)
@@ -160,18 +188,17 @@ async function runScheduledChecks(supabase: any, config: AutopilotConfig | null)
           queued_action_id: queuedAction?.id,
         });
 
-        // Log that we queued (not executed)
         await supabase.from("ceo_auto_executions").insert({
           standing_order_id: order.id,
           action_type: order.action_type,
-          action_payload: order.action_payload,
+          action_payload: wrapWithDecisionCard(validation.normalizedDecision!, order.action_payload),
           trigger_data: { type: "scheduled_check", queued_action_id: queuedAction?.id },
           result: { status: "queued_for_approval" },
           success: true,
-          notified_ceo: true, // Always notify when queuing
+          notified_ceo: true,
         });
 
-        console.log(`[CEO Autopilot] Queued action for approval: ${order.rule_name} -> ${queuedAction?.id}`);
+        console.log(`[CEO Autopilot] Queued valid decision card for approval: ${order.rule_name} -> ${queuedAction?.id}`);
       }
     } catch (err) {
       console.error(`[CEO Autopilot] Order ${order.id} failed:`, err);
@@ -202,7 +229,6 @@ async function processEvent(supabase: any, eventType: string, eventData: any, co
 
   for (const order of orders as StandingOrder[]) {
     if (order.conditions?.event === eventType) {
-      // Check threshold conditions
       let shouldExecute = true;
       
       if (order.conditions.threshold && eventData?.score !== undefined) {
@@ -213,13 +239,32 @@ async function processEvent(supabase: any, eventType: string, eventData: any, co
       }
 
       if (shouldExecute) {
-        // GOVERNANCE #10: Queue for approval instead of executing
+        // Build Decision Card following Decision Framing Standard
+        const decisionCard: DecisionCard = {
+          decision_type: order.action_type,
+          summary: `Event "${eventType}" triggered: ${order.rule_name}`.slice(0, 180),
+          why_now: `Event ${eventType} detected with data: ${JSON.stringify(eventData || {}).slice(0, 100)}`,
+          expected_impact: order.action_payload?.expected_impact as string || `Response to ${eventType} event`,
+          cost: order.action_payload?.cost as string || 'Minimal - event response',
+          risk: `${order.priority >= 8 ? 'high' : order.priority >= 5 ? 'medium' : 'low'} - event-triggered action`,
+          reversibility: order.action_payload?.reversibility as string || 'easy',
+          requires: ['Human approval'],
+          confidence: Math.min(0.85, order.priority / 10),
+          proposed_payload: { ...order.action_payload, trigger_event: eventType, trigger_data: eventData },
+        };
+
+        const validation = validateDecisionCard(decisionCard);
+        if (!validation.isValid) {
+          logValidationFailure('ceo-autopilot:processEvent', decisionCard, validation);
+          continue;
+        }
+
         const actionPayload = {
           action_type: order.action_type,
           target_type: "trigger_event",
           target_id: order.id,
           agent_type: "ceo-autopilot",
-          action_payload: { ...order.action_payload, trigger_event: eventType, trigger_data: eventData },
+          action_payload: wrapWithDecisionCard(validation.normalizedDecision!, order.action_payload),
           priority: order.priority,
           status: "pending_approval",
           claude_reasoning: `Event trigger: ${eventType} matched ${order.rule_name}`,
@@ -241,7 +286,7 @@ async function processEvent(supabase: any, eventType: string, eventData: any, co
         await supabase.from("ceo_auto_executions").insert({
           standing_order_id: order.id,
           action_type: order.action_type,
-          action_payload: order.action_payload,
+          action_payload: wrapWithDecisionCard(validation.normalizedDecision!, order.action_payload),
           trigger_data: { event: eventType, data: eventData, queued_action_id: queuedAction?.id },
           result: { status: "queued_for_approval" },
           success: true,
