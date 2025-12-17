@@ -5,25 +5,20 @@ import { aiChat, estimateCostCents, AIChatResponse } from "../_shared/ai.ts";
 /**
  * CEO Daily Brief Generator
  * 
- * Aggregates real business data and generates executive-level insights.
- * Uses purpose: "ceo_daily_brief" for premium AI routing.
- * 
- * TENANT SAFETY: Derives tenant_id from JWT auth context, NOT from request body.
- * COST TRACKING: Uses real token usage from aiChat() response.
- * 
- * Data sources (ALL tenant-isolated):
- * - leads (tenant_id) - last 24h + temperature distribution
- * - clients (tenant_id) - active clients + MRR
- * - ceo_action_queue (tenant_id) - pending actions
- * - call_logs (tenant_id) - missed calls tracking
- * - client_invoices (tenant_id) - revenue invoiced
- * - agent_cost_tracking (tenant_id) - AI costs
+ * SECURITY: Requires valid user JWT with tenant_id. Returns 401 if tenant cannot be resolved.
+ * No "global mode" - every brief is tenant-scoped.
  */
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Constants
+const RATE_LIMIT_ACTION = 'brief_refresh';
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface BriefData {
   leads_24h: number;
@@ -41,6 +36,7 @@ interface BriefData {
 
 interface DailyBrief {
   generated_at: string;
+  tenant_id: string;
   bullets: string[];
   risk_alert: string | null;
   opportunity: string | null;
@@ -48,25 +44,35 @@ interface DailyBrief {
 }
 
 /**
- * Get tenant_id from JWT via database function
+ * Get tenant_id from JWT via anon client with user's auth token.
+ * Returns null if auth fails or tenant not found.
  */
-async function getTenantIdFromAuth(supabase: SupabaseClient, authHeader: string | null): Promise<string | null> {
-  if (!authHeader) return null;
-  
+async function getTenantIdFromAuth(authHeader: string | null): Promise<string | null> {
+  if (!authHeader) {
+    console.log('[ceo-daily-brief] No authorization header');
+    return null;
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const token = authHeader.replace('Bearer ', '');
+
+  // Create user-context client with the user's JWT
+  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } }
+  });
+
   try {
-    // Create a user-context client to get tenant
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const token = authHeader.replace('Bearer ', '');
-    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
-    });
-    
     const { data, error } = await userClient.rpc('get_user_tenant_id');
     if (error) {
-      console.error('[ceo-daily-brief] Failed to get tenant_id from auth:', error);
+      console.error('[ceo-daily-brief] RPC get_user_tenant_id failed:', error.message);
       return null;
     }
-    return data as string | null;
+    if (!data) {
+      console.log('[ceo-daily-brief] User has no tenant_id');
+      return null;
+    }
+    return data as string;
   } catch (e) {
     console.error('[ceo-daily-brief] Auth tenant lookup error:', e);
     return null;
@@ -74,59 +80,40 @@ async function getTenantIdFromAuth(supabase: SupabaseClient, authHeader: string 
 }
 
 /**
- * Fetch business industry from business_profile
+ * Check rate limit using count query (not pulling arrays)
  */
-async function getBusinessIndustry(supabase: SupabaseClient, tenantId: string | null): Promise<string> {
-  if (!tenantId) return 'service';
-  
-  const { data } = await supabase
-    .from('business_profile')
-    .select('industry')
-    .eq('tenant_id', tenantId)
-    .single();
-  
-  return data?.industry || 'service';
-}
+async function checkRateLimit(supabase: SupabaseClient, tenantId: string): Promise<{ allowed: boolean; remaining: number }> {
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
 
-const RATE_LIMIT_MAX = 5; // Max refreshes per hour
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-
-/**
- * Check rate limit for tenant brief refresh (max 5/hour)
- * Uses NULL for tenant_id when global (proper UUID handling)
- */
-async function checkRateLimit(supabase: SupabaseClient, tenantId: string | null): Promise<{ allowed: boolean; remaining: number }> {
-  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
-  const actionType = 'brief_refresh';
-  
-  // Build query with proper NULL handling for tenant_id
-  let countQuery = supabase
+  const { count, error } = await supabase
     .from('ceo_rate_limits')
     .select('id', { count: 'exact', head: true })
-    .eq('action_type', actionType)
-    .gte('created_at', windowStart.toISOString());
-  
-  // Filter by tenant_id (NULL for global)
-  if (tenantId) {
-    countQuery = countQuery.eq('tenant_id', tenantId);
-  } else {
-    countQuery = countQuery.is('tenant_id', null);
+    .eq('tenant_id', tenantId)
+    .eq('action_type', RATE_LIMIT_ACTION)
+    .gte('created_at', windowStart);
+
+  if (error) {
+    console.error('[ceo-daily-brief] Rate limit check failed:', error.message);
+    // Fail open but log
+    return { allowed: true, remaining: RATE_LIMIT_MAX };
   }
-  
-  const { count } = await countQuery;
+
   const currentCount = count || 0;
-  
   if (currentCount >= RATE_LIMIT_MAX) {
     return { allowed: false, remaining: 0 };
   }
-  
-  // Log this request with proper tenant_id (NULL for global)
+
+  return { allowed: true, remaining: RATE_LIMIT_MAX - currentCount };
+}
+
+/**
+ * Record rate limit usage
+ */
+async function recordRateLimitUsage(supabase: SupabaseClient, tenantId: string): Promise<void> {
   await supabase.from('ceo_rate_limits').insert({
-    tenant_id: tenantId, // Will be NULL if no tenant
-    action_type: actionType,
+    tenant_id: tenantId,
+    action_type: RATE_LIMIT_ACTION,
   });
-  
-  return { allowed: true, remaining: RATE_LIMIT_MAX - currentCount - 1 };
 }
 
 serve(async (req) => {
@@ -134,285 +121,98 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
   try {
     const authHeader = req.headers.get('authorization');
-    const { force_refresh = false } = await req.json().catch(() => ({}));
     
-    // TENANT SAFETY: Get tenant_id from auth, not request body
-    const tenantId = await getTenantIdFromAuth(supabase, authHeader);
-    const cacheKey = tenantId ? `ceo_daily_brief_${tenantId}` : 'ceo_daily_brief_global';
-    
-    console.log(`[ceo-daily-brief] Generating brief for tenant=${tenantId || 'global'} force=${force_refresh}`);
+    // SECURITY: Require valid tenant_id from JWT
+    const tenantId = await getTenantIdFromAuth(authHeader);
+    if (!tenantId) {
+      return jsonResponse({ 
+        error: 'Unauthorized', 
+        message: 'Valid authentication with tenant association required' 
+      }, 401);
+    }
 
-    // RATE LIMITING: Check if force_refresh is within limits
+    console.log(`[ceo-daily-brief] Request for tenant=${tenantId}`);
+
+    // Service role client for tenant-filtered reads
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { force_refresh = false } = await req.json().catch(() => ({}));
+    const cacheKey = `ceo_daily_brief_${tenantId}`;
+
+    // Rate limiting on force refresh
     if (force_refresh) {
       const rateCheck = await checkRateLimit(supabase, tenantId);
       if (!rateCheck.allowed) {
-        console.log(`[ceo-daily-brief] Rate limit exceeded for tenant=${tenantId || 'global'}`);
-        return jsonResponse({ 
-          error: 'Rate limit exceeded. Maximum 5 refreshes per hour.',
+        console.log(`[ceo-daily-brief] Rate limit exceeded for tenant=${tenantId}`);
+        return jsonResponse({
+          error: 'Rate limit exceeded',
+          message: `Maximum ${RATE_LIMIT_MAX} refreshes per hour`,
           rate_limit: { max: RATE_LIMIT_MAX, remaining: 0, window_hours: 1 }
         }, 429);
       }
-      console.log(`[ceo-daily-brief] Rate limit OK. Remaining: ${rateCheck.remaining}`);
+      await recordRateLimitUsage(supabase, tenantId);
+      console.log(`[ceo-daily-brief] Rate limit OK. Remaining: ${rateCheck.remaining - 1}`);
     }
 
-    // Check for cached brief (TTL based on expires_at)
+    // Check cache (TTL based on expires_at)
     if (!force_refresh) {
       const { data: cached } = await supabase
         .from('agent_shared_state')
         .select('value, updated_at, expires_at')
         .eq('key', cacheKey)
-        .single();
+        .maybeSingle();
 
-      if (cached && cached.expires_at) {
+      if (cached?.expires_at) {
         const expiresAt = new Date(cached.expires_at).getTime();
-        
         if (Date.now() < expiresAt) {
           const cacheAge = Date.now() - new Date(cached.updated_at).getTime();
           console.log(`[ceo-daily-brief] Returning cached brief (age=${Math.round(cacheAge / 3600000)}h)`);
-          return jsonResponse({ ...cached.value, from_cache: true });
+          return jsonResponse({ ...cached.value, from_cache: true, cache_age_hours: Math.round(cacheAge / 3600000 * 10) / 10 });
         }
       }
     }
 
-    // ─────────────────────────────────────────────────────────
-    // AGGREGATE REAL DATA (with tenant filtering on ALL tables)
-    // ─────────────────────────────────────────────────────────
-
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    // 1. Leads - filter by tenant_id
-    let leadsQuery = supabase
-      .from('leads')
-      .select('id, status, lead_temperature, source', { count: 'exact' })
-      .gte('created_at', yesterday.toISOString());
-    
-    if (tenantId) {
-      leadsQuery = leadsQuery.eq('tenant_id', tenantId);
-    }
-    
-    const { data: recentLeads, count: leadsCount } = await leadsQuery;
-
-    const leadTemperature: Record<string, number> = { hot: 0, warm: 0, cold: 0, unknown: 0 };
-    const sourceCount: Record<string, number> = {};
-    
-    (recentLeads || []).forEach((lead: { lead_temperature?: string; source?: string }) => {
-      const temp = (lead.lead_temperature || 'unknown').toLowerCase();
-      leadTemperature[temp] = (leadTemperature[temp] || 0) + 1;
-      
-      const source = lead.source || 'direct';
-      sourceCount[source] = (sourceCount[source] || 0) + 1;
-    });
-
-    const topSources = Object.entries(sourceCount)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([source, count]) => ({ source, count }));
-
-    // 2. call_logs - NOW HAS tenant_id column, filter properly
-    let callLogsQuery = supabase
-      .from('call_logs')
-      .select('id, status', { count: 'exact' })
-      .gte('created_at', yesterday.toISOString());
-    
-    if (tenantId) {
-      callLogsQuery = callLogsQuery.eq('tenant_id', tenantId);
-    }
-    
-    const { data: callLogsData, count: totalCalls } = await callLogsQuery;
-    
-    // Count missed calls (status = missed, no_answer, voicemail)
-    const missedCalls = (callLogsData || []).filter((c: { status?: string }) => 
-      ['missed', 'no_answer', 'voicemail'].includes(c.status || '')
-    ).length;
-
-    // 3. Clients - filter by tenant_id
-    let clientsQuery = supabase
-      .from('clients')
-      .select('mrr', { count: 'exact' })
-      .eq('status', 'active');
-    
-    if (tenantId) {
-      clientsQuery = clientsQuery.eq('tenant_id', tenantId);
-    }
-
-    const { data: clientsData, count: activeClients } = await clientsQuery;
-
-    // Sum actual MRR from active clients (mrr is in dollars, convert to cents)
-    const mrrCents = (clientsData || []).reduce(
-      (sum: number, c: { mrr?: number }) => sum + Math.round((c.mrr || 0) * 100),
-      0
-    );
-
-    // 4. client_invoices - NOW HAS tenant_id column, filter properly
-    let invoicesQuery = supabase
-      .from('client_invoices')
-      .select('amount_cents, status')
-      .gte('created_at', monthStart.toISOString())
-      .eq('status', 'paid');
-    
-    if (tenantId) {
-      invoicesQuery = invoicesQuery.eq('tenant_id', tenantId);
-    }
-    
-    const { data: invoicesData } = await invoicesQuery;
-    
-    const revenueInvoicedThisMonthCents = (invoicesData || []).reduce(
-      (sum: number, inv: { amount_cents?: number }) => sum + (inv.amount_cents || 0),
-      0
-    );
-
-    // 5. agent_cost_tracking - NOW HAS tenant_id column, filter properly
-    let costs24hQuery = supabase
-      .from('agent_cost_tracking')
-      .select('cost_cents')
-      .gte('created_at', yesterday.toISOString());
-    
-    if (tenantId) {
-      costs24hQuery = costs24hQuery.eq('tenant_id', tenantId);
-    }
-
-    const { data: costs24h } = await costs24hQuery;
-    const aiCost24h = (costs24h || []).reduce((sum: number, c: { cost_cents?: number }) => sum + (c.cost_cents || 0), 0);
-
-    let costs30dQuery = supabase
-      .from('agent_cost_tracking')
-      .select('cost_cents')
-      .gte('created_at', thirtyDaysAgo.toISOString());
-    
-    if (tenantId) {
-      costs30dQuery = costs30dQuery.eq('tenant_id', tenantId);
-    }
-
-    const { data: costs30d } = await costs30dQuery;
-    const totalCost30d = (costs30d || []).reduce((sum: number, c: { cost_cents?: number }) => sum + (c.cost_cents || 0), 0);
-    const aiCost30dAvg = Math.round(totalCost30d / 30);
-
-    // 6. ceo_action_queue - filter by tenant_id
-    let pendingQuery = supabase
-      .from('ceo_action_queue')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending');
-    
-    if (tenantId) {
-      pendingQuery = pendingQuery.eq('tenant_id', tenantId);
-    }
-
-    const { count: pendingActions } = await pendingQuery;
-
-    const briefData: BriefData = {
-      leads_24h: leadsCount || 0,
-      lead_temperature: leadTemperature,
-      missed_calls_24h: missedCalls,
-      total_calls_24h: totalCalls || 0,
-      active_clients: activeClients || 0,
-      mrr_cents: mrrCents,
-      revenue_invoiced_this_month_cents: revenueInvoicedThisMonthCents,
-      ai_cost_24h_cents: aiCost24h,
-      ai_cost_30d_avg_cents: aiCost30dAvg,
-      top_lead_sources: topSources,
-      pending_actions: pendingActions || 0,
-    };
-
-    console.log(`[ceo-daily-brief] Data aggregated:`, JSON.stringify(briefData));
-
-    // ─────────────────────────────────────────────────────────
-    // GENERATE EXECUTIVE BRIEF VIA AI (industry-agnostic)
-    // ─────────────────────────────────────────────────────────
-
+    // Aggregate data with tenant filtering
+    const briefData = await aggregateTenantData(supabase, tenantId);
     const industry = await getBusinessIndustry(supabase, tenantId);
 
-    const prompt = `You are the AI Chief of Staff for a ${industry} business. Generate a crisp executive daily brief.
-
-DATA (last 24 hours unless noted):
-- New leads: ${briefData.leads_24h}
-- Lead temperature: Hot=${leadTemperature.hot}, Warm=${leadTemperature.warm}, Cold=${leadTemperature.cold}
-- Total calls: ${briefData.total_calls_24h}
-- Missed calls: ${briefData.missed_calls_24h}
-- Active clients: ${briefData.active_clients}
-- MRR (Monthly Recurring Revenue): $${(briefData.mrr_cents / 100).toFixed(2)}
-- Invoiced revenue this month: $${(briefData.revenue_invoiced_this_month_cents / 100).toFixed(2)}
-- AI costs (24h): $${(briefData.ai_cost_24h_cents / 100).toFixed(2)}
-- AI costs (30d avg/day): $${(briefData.ai_cost_30d_avg_cents / 100).toFixed(2)}
-- Top lead sources: ${topSources.map(s => `${s.source}(${s.count})`).join(', ') || 'none'}
-- Pending CEO actions: ${briefData.pending_actions}
-
-RULES:
-1. Provide 5-7 bullet points summarizing business health
-2. Include exactly 1 risk alert (or "None" if no concerns)
-3. Include exactly 1 opportunity recommendation
-4. Be specific with numbers, not vague
-5. Focus on actionable insights
-
-Respond in this exact JSON format:
-{
-  "bullets": ["...", "...", "...", "...", "..."],
-  "risk_alert": "...",
-  "opportunity": "..."
-}`;
-
-    const aiResponse: AIChatResponse = await aiChat({
-      messages: [{ role: 'user', content: prompt }],
-      purpose: 'ceo_daily_brief',
-      max_tokens: 800,
-    });
+    // Generate AI brief
+    const aiResponse = await generateAIBrief(briefData, industry);
 
     let briefContent: { bullets: string[]; risk_alert: string | null; opportunity: string | null };
-    
     try {
-      let responseText = aiResponse.text.trim();
-      // Strip markdown code blocks if present
-      if (responseText.startsWith('```')) {
-        responseText = responseText.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+      let text = aiResponse.text.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
       }
-      briefContent = JSON.parse(responseText);
-    } catch (parseErr) {
-      console.error('[ceo-daily-brief] Failed to parse AI response:', aiResponse.text);
-      // Fallback to structured response
-      briefContent = {
-        bullets: [
-          `${briefData.leads_24h} new leads captured in last 24h`,
-          `${briefData.active_clients} active clients on roster (MRR: $${(briefData.mrr_cents / 100).toFixed(2)})`,
-          `${briefData.missed_calls_24h} missed calls out of ${briefData.total_calls_24h} total`,
-          `${briefData.pending_actions} pending CEO actions`,
-          `AI operations costing $${(briefData.ai_cost_24h_cents / 100).toFixed(2)}/day`,
-        ],
-        risk_alert: briefData.missed_calls_24h > 5 ? `${briefData.missed_calls_24h} missed calls - potential revenue leakage` : null,
-        opportunity: leadTemperature.hot > 0 ? `${leadTemperature.hot} hot leads ready for immediate follow-up` : null,
-      };
+      briefContent = JSON.parse(text);
+    } catch {
+      briefContent = createFallbackBrief(briefData);
     }
 
+    const now = new Date();
     const dailyBrief: DailyBrief = {
       generated_at: now.toISOString(),
+      tenant_id: tenantId,
       bullets: briefContent.bullets,
       risk_alert: briefContent.risk_alert,
       opportunity: briefContent.opportunity,
       data_snapshot: briefData,
     };
 
-    // ─────────────────────────────────────────────────────────
-    // CACHE THE BRIEF (24h TTL via expires_at)
-    // ─────────────────────────────────────────────────────────
-
+    // Cache the brief with TTL
     await supabase.from('agent_shared_state').upsert({
       key: cacheKey,
       value: dailyBrief,
       category: 'ceo_brief',
-      expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-    });
+      expires_at: new Date(now.getTime() + CACHE_TTL_MS).toISOString(),
+    }, { onConflict: 'key' });
 
-    // ─────────────────────────────────────────────────────────
-    // LOG COST WITH TENANT_ID
-    // ─────────────────────────────────────────────────────────
-    
+    // Log cost with tenant_id
     const tokensUsed = aiResponse.usage?.total_tokens || 0;
     const costCents = estimateCostCents(aiResponse.provider, aiResponse.model, aiResponse.usage);
 
@@ -425,20 +225,193 @@ Respond in this exact JSON format:
       tokens_used: tokensUsed,
       cost_cents: costCents,
       avg_latency_ms: aiResponse.latency_ms || null,
-      tenant_id: tenantId, // Now includes tenant_id!
+      tenant_id: tenantId,
     });
 
-    console.log(`[ceo-daily-brief] Brief generated. provider=${aiResponse.provider} model=${aiResponse.model} tokens=${tokensUsed} cost_cents=${costCents}`);
-    
+    console.log(`[ceo-daily-brief] Brief generated. tokens=${tokensUsed} cost_cents=${costCents}`);
     return jsonResponse(dailyBrief);
 
   } catch (error) {
     console.error('[ceo-daily-brief] Error:', error);
-    // Never leak stack traces to client
-    const message = error instanceof Error ? error.message : 'Internal server error';
-    return jsonResponse({ error: message }, 500);
+    return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });
+
+async function aggregateTenantData(supabase: SupabaseClient, tenantId: string): Promise<BriefData> {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Execute all queries in parallel - ALL tenant filtered
+  const [
+    leadsResult,
+    clientsResult,
+    decisionsResult,
+    actionsResult,
+    callLogsResult,
+    invoicesResult,
+    costs24hResult,
+    costs30dResult
+  ] = await Promise.all([
+    supabase
+      .from('leads')
+      .select('id, lead_temperature, source')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', yesterday.toISOString()),
+    supabase
+      .from('clients')
+      .select('mrr')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'active'),
+    supabase
+      .from('ceo_decisions')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending'),
+    supabase
+      .from('ceo_action_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending'),
+    supabase
+      .from('call_logs')
+      .select('id, status')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', yesterday.toISOString()),
+    supabase
+      .from('client_invoices')
+      .select('amount_cents')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'paid')
+      .gte('created_at', monthStart.toISOString()),
+    supabase
+      .from('agent_cost_tracking')
+      .select('cost_cents')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', yesterday.toISOString()),
+    supabase
+      .from('agent_cost_tracking')
+      .select('cost_cents')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', thirtyDaysAgo.toISOString()),
+  ]);
+
+  const leads = leadsResult.data || [];
+  const clients = clientsResult.data || [];
+  const callLogs = callLogsResult.data || [];
+  const invoices = invoicesResult.data || [];
+  const costs24h = costs24hResult.data || [];
+  const costs30d = costs30dResult.data || [];
+
+  // Process lead temperatures and sources
+  const leadTemperature: Record<string, number> = { hot: 0, warm: 0, cold: 0, unknown: 0 };
+  const sourceCount: Record<string, number> = {};
+
+  leads.forEach((lead: { lead_temperature?: string; source?: string }) => {
+    const temp = (lead.lead_temperature || 'unknown').toLowerCase();
+    leadTemperature[temp] = (leadTemperature[temp] || 0) + 1;
+    const source = lead.source || 'direct';
+    sourceCount[source] = (sourceCount[source] || 0) + 1;
+  });
+
+  const topSources = Object.entries(sourceCount)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([source, count]) => ({ source, count }));
+
+  // MRR: dollars * 100 = cents
+  const mrrCents = clients.reduce(
+    (sum: number, c: { mrr?: number }) => sum + Math.round((c.mrr || 0) * 100),
+    0
+  );
+
+  // Missed calls
+  const missedCalls = callLogs.filter((c: { status?: string }) =>
+    ['missed', 'no_answer', 'voicemail'].includes(c.status || '')
+  ).length;
+
+  // Revenue invoiced
+  const revenueInvoicedCents = invoices.reduce(
+    (sum: number, inv: { amount_cents?: number }) => sum + (inv.amount_cents || 0),
+    0
+  );
+
+  // AI costs
+  const aiCost24h = costs24h.reduce((sum: number, c: { cost_cents?: number }) => sum + (c.cost_cents || 0), 0);
+  const totalCost30d = costs30d.reduce((sum: number, c: { cost_cents?: number }) => sum + (c.cost_cents || 0), 0);
+  const aiCost30dAvg = Math.round(totalCost30d / 30);
+
+  return {
+    leads_24h: leads.length,
+    lead_temperature: leadTemperature,
+    missed_calls_24h: missedCalls,
+    total_calls_24h: callLogs.length,
+    active_clients: clients.length,
+    mrr_cents: mrrCents,
+    revenue_invoiced_this_month_cents: revenueInvoicedCents,
+    ai_cost_24h_cents: aiCost24h,
+    ai_cost_30d_avg_cents: aiCost30dAvg,
+    top_lead_sources: topSources,
+    pending_actions: (actionsResult.count || 0) + (decisionsResult.count || 0),
+  };
+}
+
+async function getBusinessIndustry(supabase: SupabaseClient, tenantId: string): Promise<string> {
+  const { data } = await supabase
+    .from('business_profile')
+    .select('industry')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  return data?.industry || 'service';
+}
+
+async function generateAIBrief(briefData: BriefData, industry: string): Promise<AIChatResponse> {
+  const prompt = `You are the AI Chief of Staff for a ${industry} business. Generate a crisp executive daily brief.
+
+DATA (last 24 hours unless noted):
+- New leads: ${briefData.leads_24h}
+- Lead temperature: Hot=${briefData.lead_temperature.hot}, Warm=${briefData.lead_temperature.warm}, Cold=${briefData.lead_temperature.cold}
+- Total calls: ${briefData.total_calls_24h}
+- Missed calls: ${briefData.missed_calls_24h}
+- Active clients: ${briefData.active_clients}
+- MRR: $${(briefData.mrr_cents / 100).toFixed(2)}
+- Invoiced this month: $${(briefData.revenue_invoiced_this_month_cents / 100).toFixed(2)}
+- AI costs (24h): $${(briefData.ai_cost_24h_cents / 100).toFixed(2)}
+- AI costs (30d avg/day): $${(briefData.ai_cost_30d_avg_cents / 100).toFixed(2)}
+- Top lead sources: ${briefData.top_lead_sources.map(s => `${s.source}(${s.count})`).join(', ') || 'none'}
+- Pending actions: ${briefData.pending_actions}
+
+RULES:
+1. Provide 5-7 bullet points summarizing business health
+2. Include exactly 1 risk alert (or "None" if no concerns)
+3. Include exactly 1 opportunity recommendation
+4. Be specific with numbers
+5. Focus on actionable insights
+
+Respond ONLY as JSON: {"bullets": [...], "risk_alert": "...", "opportunity": "..."}`;
+
+  return await aiChat({
+    messages: [{ role: 'user', content: prompt }],
+    purpose: 'ceo_daily_brief',
+    max_tokens: 800,
+  });
+}
+
+function createFallbackBrief(briefData: BriefData): { bullets: string[]; risk_alert: string | null; opportunity: string | null } {
+  return {
+    bullets: [
+      `${briefData.leads_24h} new leads in last 24h`,
+      `${briefData.active_clients} active clients (MRR: $${(briefData.mrr_cents / 100).toFixed(2)})`,
+      `${briefData.missed_calls_24h} missed calls out of ${briefData.total_calls_24h} total`,
+      `Revenue invoiced this month: $${(briefData.revenue_invoiced_this_month_cents / 100).toFixed(2)}`,
+      `${briefData.pending_actions} pending actions`,
+    ],
+    risk_alert: briefData.missed_calls_24h > 5 ? `${briefData.missed_calls_24h} missed calls - potential revenue leakage` : null,
+    opportunity: briefData.lead_temperature.hot > 0 ? `${briefData.lead_temperature.hot} hot leads ready for follow-up` : null,
+  };
+}
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
