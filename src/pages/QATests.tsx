@@ -6,9 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle, XCircle, Loader2, Copy, Play, AlertTriangle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CheckCircle, XCircle, Loader2, Copy, Play, AlertTriangle, ShieldX } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface TestResult {
   name: string;
@@ -30,11 +33,37 @@ interface TestOutput {
 }
 
 export default function QATests() {
+  const { isAdmin, isLoading: roleLoading } = useUserRole();
   const [tenantIdA, setTenantIdA] = useState("");
   const [tenantIdB, setTenantIdB] = useState("");
   const [alertIdFromTenantB, setAlertIdFromTenantB] = useState("");
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<TestOutput | null>(null);
+  const [showJsonTextarea, setShowJsonTextarea] = useState(false);
+
+  // Admin-only guard
+  if (roleLoading) {
+    return (
+      <div className="container mx-auto py-8 px-4 max-w-4xl flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="container mx-auto py-8 px-4 max-w-4xl">
+        <Alert variant="destructive">
+          <ShieldX className="h-5 w-5" />
+          <AlertTitle>Access Denied</AlertTitle>
+          <AlertDescription>
+            This page is restricted to platform administrators only.
+            You do not have permission to access QA Tests.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   const runAllTests = async () => {
     if (!tenantIdA || !tenantIdB) {
@@ -43,6 +72,7 @@ export default function QATests() {
     }
 
     setRunning(true);
+    setShowJsonTextarea(false);
     const tests: TestResult[] = [];
 
     // TEST 1: Read isolation (Tenant A)
@@ -87,12 +117,15 @@ export default function QATests() {
   const runReadIsolationTest = async (label: string, tenantId: string): Promise<TestResult> => {
     const start = Date.now();
     const name = `TEST ${label === "Tenant A" ? "1" : "2"} - Read Isolation (${label})`;
+    // Quoted UUID in PostgREST filter for safety
+    const filterString = `metadata->>tenant_id.eq."${tenantId}",metadata->>tenant_id.is.null`;
 
     try {
+      // Select only safe fields - no PII
       const { data, error } = await supabase
         .from("ceo_alerts")
-        .select("id, metadata, created_at")
-        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null,metadata->tenant_id.is.null`)
+        .select("id, metadata, created_at, acknowledged_at, alert_type, title")
+        .or(filterString)
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -139,7 +172,7 @@ export default function QATests() {
           tenant_rows: tenantRows,
           foreign_rows: foreignRows,
           foreign_tenant_ids: foreignTenants.length > 0 ? foreignTenants : undefined,
-          filter_used: `metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null,metadata->tenant_id.is.null`,
+          filter_used: filterString,
         },
         error: passed ? undefined : `Found ${foreignRows} row(s) from other tenants`,
         duration_ms: Date.now() - start,
@@ -158,6 +191,8 @@ export default function QATests() {
   const runUpdateIsolationTest = async (actingTenantId: string, targetAlertId: string): Promise<TestResult> => {
     const start = Date.now();
     const name = "TEST 3 - Update Isolation (Cross-tenant)";
+    // Quoted UUID in PostgREST filter
+    const filterString = `metadata->>tenant_id.eq."${actingTenantId}",metadata->>tenant_id.is.null`;
 
     try {
       // Attempt to update an alert from Tenant B while acting as Tenant A
@@ -168,7 +203,7 @@ export default function QATests() {
         .from("ceo_alerts")
         .update({ acknowledged_at: testTimestamp })
         .eq("id", targetAlertId)
-        .or(`metadata->>tenant_id.eq.${actingTenantId},metadata->>tenant_id.is.null,metadata->tenant_id.is.null`)
+        .or(filterString)
         .select("id");
 
       if (error) {
@@ -191,7 +226,7 @@ export default function QATests() {
           rows_updated: rowsUpdated,
           target_alert_id: targetAlertId,
           acting_tenant_id: actingTenantId,
-          filter_used: `id.eq.${targetAlertId} AND (metadata->>tenant_id.eq.${actingTenantId} OR is.null)`,
+          filter_used: `id.eq.${targetAlertId} AND (${filterString})`,
         },
         error: passed ? undefined : `ISOLATION BREACH: Updated ${rowsUpdated} row(s) from another tenant!`,
         duration_ms: Date.now() - start,
@@ -210,29 +245,35 @@ export default function QATests() {
   const runOrSyntaxTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
     const name = "TEST 4 - OR Syntax Robustness";
+    // Quoted UUID in PostgREST filter
+    const filterString = `metadata->>tenant_id.eq."${tenantId}",metadata->>tenant_id.is.null`;
 
     try {
       // Test that the PostgREST OR filter parses correctly
+      // Use .select().limit(1) instead of head:true for actual validation
       const { data, error } = await supabase
         .from("ceo_alerts")
-        .select("id", { count: "exact", head: true })
-        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null,metadata->tenant_id.is.null`);
+        .select("id")
+        .or(filterString)
+        .limit(1);
 
       if (error) {
         // Check if it's a parse error
         const isParseError = error.message.includes("parse") || 
                             error.message.includes("syntax") ||
-                            error.code === "PGRST100";
+                            error.code === "PGRST100" ||
+                            error.code === "PGRST102";
         
         return {
           name,
-          status: "error",
+          status: isParseError ? "fail" : "error",
           details: { 
             supabase_error: error.message, 
             code: error.code,
             is_parse_error: isParseError,
+            filter_used: filterString,
           },
-          error: error.message,
+          error: isParseError ? `PostgREST parse error: ${error.message}` : error.message,
           duration_ms: Date.now() - start,
         };
       }
@@ -242,7 +283,8 @@ export default function QATests() {
         status: "pass",
         details: {
           filter_parsed: true,
-          filter_used: `metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null,metadata->tenant_id.is.null`,
+          rows_returned: data?.length ?? 0,
+          filter_used: filterString,
         },
         duration_ms: Date.now() - start,
       };
@@ -264,9 +306,10 @@ export default function QATests() {
 
     try {
       // Query 1: next_attempt_at is null
+      // Select only safe fields - no phone/email PII
       const { data: nullAttemptLeads, error: error1 } = await supabase
         .from("leads")
-        .select("id, status, total_call_attempts, max_attempts")
+        .select("id, status, total_call_attempts, max_attempts, next_attempt_at, created_at")
         .eq("tenant_id", tenantId)
         .in("status", ["new", "attempted", "contacted"])
         .eq("do_not_call", false)
@@ -277,7 +320,7 @@ export default function QATests() {
         return {
           name,
           status: "error",
-          details: { query: "null_attempt", supabase_error: error1.message },
+          details: { query: "null_attempt", supabase_error: error1.message, code: error1.code },
           error: error1.message,
           duration_ms: Date.now() - start,
         };
@@ -286,7 +329,7 @@ export default function QATests() {
       // Query 2: next_attempt_at <= now
       const { data: dueLeads, error: error2 } = await supabase
         .from("leads")
-        .select("id, status, total_call_attempts, max_attempts")
+        .select("id, status, total_call_attempts, max_attempts, next_attempt_at, created_at")
         .eq("tenant_id", tenantId)
         .in("status", ["new", "attempted", "contacted"])
         .eq("do_not_call", false)
@@ -297,7 +340,7 @@ export default function QATests() {
         return {
           name,
           status: "error",
-          details: { query: "due_attempt", supabase_error: error2.message },
+          details: { query: "due_attempt", supabase_error: error2.message, code: error2.code },
           error: error2.message,
           duration_ms: Date.now() - start,
         };
@@ -305,14 +348,14 @@ export default function QATests() {
 
       // Merge unique by id
       const allLeads = [...(nullAttemptLeads || []), ...(dueLeads || [])];
-      const uniqueMap = new Map<string, typeof allLeads[0]>();
+      const uniqueMap = new Map<string, (typeof allLeads)[0]>();
       for (const lead of allLeads) {
         if (!uniqueMap.has(lead.id)) {
           uniqueMap.set(lead.id, lead);
         }
       }
 
-      // Filter by max_attempts
+      // Filter by max_attempts - eligible = total_call_attempts < (max_attempts ?? 6)
       const uniqueLeads = Array.from(uniqueMap.values());
       const eligibleLeads = uniqueLeads.filter((lead) => {
         const maxAttempts = lead.max_attempts ?? 6;
@@ -344,10 +387,18 @@ export default function QATests() {
     }
   };
 
-  const copyDebugJson = () => {
-    if (results) {
-      navigator.clipboard.writeText(JSON.stringify(results, null, 2));
+  const copyDebugJson = async () => {
+    if (!results) return;
+    
+    const jsonStr = JSON.stringify(results, null, 2);
+    
+    try {
+      await navigator.clipboard.writeText(jsonStr);
       toast.success("Debug JSON copied to clipboard");
+    } catch {
+      // Clipboard API failed - show textarea fallback
+      toast.error("Clipboard access denied. Use the textarea below to copy.");
+      setShowJsonTextarea(true);
     }
   };
 
@@ -450,7 +501,7 @@ export default function QATests() {
           {results && (
             <div className="space-y-4">
               {/* Summary */}
-              <div className="flex items-center gap-4 p-4 rounded-lg bg-muted/50">
+              <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg bg-muted/50">
                 <span className="text-sm font-medium">Summary:</span>
                 <Badge variant="outline">{results.summary.total} Total</Badge>
                 <Badge className="bg-green-500/20 text-green-600 border-green-500/30">
@@ -465,6 +516,19 @@ export default function QATests() {
                   </Badge>
                 )}
               </div>
+
+              {/* Clipboard fallback textarea */}
+              {showJsonTextarea && (
+                <div className="space-y-2">
+                  <Label>Debug JSON (select all and copy):</Label>
+                  <Textarea
+                    readOnly
+                    className="font-mono text-xs h-40"
+                    value={JSON.stringify(results, null, 2)}
+                    onFocus={(e) => e.target.select()}
+                  />
+                </div>
+              )}
 
               {/* Test Results */}
               <ScrollArea className="h-[500px] pr-4">
@@ -491,7 +555,7 @@ export default function QATests() {
                             {test.error}
                           </div>
                         )}
-                        <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                        <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap">
                           {JSON.stringify(test.details, null, 2)}
                         </pre>
                       </CardContent>

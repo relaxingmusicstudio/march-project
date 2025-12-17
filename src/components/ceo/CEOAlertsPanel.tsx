@@ -38,11 +38,11 @@ export function CEOAlertsPanel({ tenantId }: CEOAlertsPanelProps) {
     setLoading(true);
     try {
       // Server-side filtering: tenant's alerts OR global alerts (metadata.tenant_id is null)
-      // Using PostgREST JSON operator syntax for proper filtering
+      // Using PostgREST JSON operator syntax with quoted UUID for safety
       const { data, error } = await supabase
         .from("ceo_alerts")
         .select("*")
-        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null,metadata->tenant_id.is.null`)
+        .or(`metadata->>tenant_id.eq."${tenantId}",metadata->>tenant_id.is.null`)
         .order("created_at", { ascending: false })
         .limit(20);
 
@@ -72,12 +72,12 @@ export function CEOAlertsPanel({ tenantId }: CEOAlertsPanelProps) {
 
     try {
       // Server-side tenant safety: only update if alert belongs to this tenant OR is global
-      // Using PostgREST JSON operator for metadata filtering
+      // Using PostgREST JSON operator with quoted UUID for safety
       const { data, error } = await supabase
         .from("ceo_alerts")
         .update({ acknowledged_at: new Date().toISOString() })
         .eq("id", alertId)
-        .or(`metadata->>tenant_id.eq.${tenantId},metadata->>tenant_id.is.null,metadata->tenant_id.is.null`)
+        .or(`metadata->>tenant_id.eq."${tenantId}",metadata->>tenant_id.is.null`)
         .select("id");
 
       if (error) throw error;
