@@ -1744,6 +1744,7 @@ export type Database = {
           status: string | null
           target_id: string | null
           target_type: string | null
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1762,6 +1763,7 @@ export type Database = {
           status?: string | null
           target_id?: string | null
           target_type?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1780,9 +1782,18 @@ export type Database = {
           status?: string | null
           target_id?: string | null
           target_type?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ceo_action_queue_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ceo_agent_delegations: {
         Row: {
@@ -7720,19 +7731,62 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_templates: {
+        Row: {
+          created_at: string | null
+          default_business_dna: Json | null
+          default_ceo_prompt: string | null
+          default_settings: Json | null
+          description: string | null
+          display_name: string
+          id: string
+          is_active: boolean | null
+          template_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          default_business_dna?: Json | null
+          default_ceo_prompt?: string | null
+          default_settings?: Json | null
+          description?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean | null
+          template_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          default_business_dna?: Json | null
+          default_ceo_prompt?: string | null
+          default_settings?: Json | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean | null
+          template_key?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       tenants: {
         Row: {
           created_at: string | null
           environment: string | null
           features_enabled: Json | null
           id: string
+          initialized_at: string | null
           is_active: boolean | null
           monthly_ai_spend_cap_cents: number | null
           name: string
           owner_user_id: string | null
+          plan: Database["public"]["Enums"]["tenant_plan"] | null
           settings: Json | null
           slug: string
+          status: Database["public"]["Enums"]["tenant_status"] | null
           subscription_plan: string | null
+          template_source: string | null
           update_channel: string | null
           updated_at: string | null
         }
@@ -7741,13 +7795,17 @@ export type Database = {
           environment?: string | null
           features_enabled?: Json | null
           id?: string
+          initialized_at?: string | null
           is_active?: boolean | null
           monthly_ai_spend_cap_cents?: number | null
           name: string
           owner_user_id?: string | null
+          plan?: Database["public"]["Enums"]["tenant_plan"] | null
           settings?: Json | null
           slug: string
+          status?: Database["public"]["Enums"]["tenant_status"] | null
           subscription_plan?: string | null
+          template_source?: string | null
           update_channel?: string | null
           updated_at?: string | null
         }
@@ -7756,13 +7814,17 @@ export type Database = {
           environment?: string | null
           features_enabled?: Json | null
           id?: string
+          initialized_at?: string | null
           is_active?: boolean | null
           monthly_ai_spend_cap_cents?: number | null
           name?: string
           owner_user_id?: string | null
+          plan?: Database["public"]["Enums"]["tenant_plan"] | null
           settings?: Json | null
           slug?: string
+          status?: Database["public"]["Enums"]["tenant_status"] | null
           subscription_plan?: string | null
+          template_source?: string | null
           update_channel?: string | null
           updated_at?: string | null
         }
@@ -8599,11 +8661,13 @@ export type Database = {
       }
     }
     Functions: {
+      activate_tenant: { Args: { p_tenant_id: string }; Returns: boolean }
       check_feature_access: {
         Args: { check_tenant_id: string; feature: string }
         Returns: boolean
       }
       get_user_tenant_id: { Args: never; Returns: string }
+      get_user_tenant_status: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -8611,13 +8675,25 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_platform_admin: { Args: never; Returns: boolean }
+      provision_tenant: {
+        Args: {
+          p_name: string
+          p_owner_user_id: string
+          p_plan?: Database["public"]["Enums"]["tenant_plan"]
+          p_template_key?: string
+        }
+        Returns: string
+      }
       user_belongs_to_tenant: {
         Args: { check_tenant_id: string }
         Returns: boolean
       }
     }
     Enums: {
-      app_role: "admin" | "moderator" | "user"
+      app_role: "admin" | "moderator" | "user" | "platform_admin"
+      tenant_plan: "starter" | "growth" | "scale"
+      tenant_status: "draft" | "active" | "suspended"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -8745,7 +8821,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "moderator", "user"],
+      app_role: ["admin", "moderator", "user", "platform_admin"],
+      tenant_plan: ["starter", "growth", "scale"],
+      tenant_status: ["draft", "active", "suspended"],
     },
   },
 } as const
