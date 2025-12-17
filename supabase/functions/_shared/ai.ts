@@ -1,8 +1,9 @@
 /**
- * AI Provider Abstraction Layer - GEMINI DEFAULT with Premium Routing
+ * AI Provider Abstraction Layer - Multi-Provider with Premium Routing
  * 
  * Environment Variables:
- * - GEMINI_API_KEY: Key for Google Gemini API (required)
+ * - GEMINI_API_KEY: Key for Google Gemini API (required for gemini provider)
+ * - OPENAI_API_KEY: Key for OpenAI API (required for openai provider)
  * - AI_PROVIDER: Default provider (default: "gemini")
  * - AI_MODEL_DEFAULT: Default model (default: "gemini-2.0-flash")
  * - AI_PROVIDER_PREMIUM: Premium provider for escalated calls (optional)
@@ -12,6 +13,7 @@
  * Features:
  * - aiChat: Text chat completion with purpose-based routing
  * - aiVision: Real multimodal vision analysis
+ * - aiChatStream: Streaming chat for Gemini
  * - aiImage: Image generation (returns error on free tier)
  * - Quota-safe: Retry with backoff, structured error codes
  * - In-memory caching for identical requests
@@ -68,8 +70,10 @@ export interface AIError {
 }
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_PROVIDER: AIProvider = "gemini";
 const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
 // Simple in-memory cache (60s TTL)
 const responseCache = new Map<string, { response: AIChatResponse; expires: number }>();
@@ -80,10 +84,18 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX = 30;
 
+interface AIConfig {
+  provider: AIProvider;
+  model: string;
+  premiumProvider: AIProvider | undefined;
+  premiumModel: string | undefined;
+  premiumActions: string[];
+}
+
 /**
  * Get configuration from environment
  */
-function getConfig() {
+function getConfig(): AIConfig {
   const provider = (Deno.env.get("AI_PROVIDER") || DEFAULT_PROVIDER) as AIProvider;
   const model = Deno.env.get("AI_MODEL_DEFAULT") || DEFAULT_MODEL;
   const premiumProvider = Deno.env.get("AI_PROVIDER_PREMIUM") as AIProvider | undefined;
@@ -96,7 +108,7 @@ function getConfig() {
 /**
  * Check if purpose should use premium tier
  */
-function shouldUsePremium(purpose: string | undefined, config: ReturnType<typeof getConfig>): boolean {
+function shouldUsePremium(purpose: string | undefined, config: AIConfig): boolean {
   if (!purpose || !config.premiumProvider || !config.premiumModel) return false;
   return config.premiumActions.includes(purpose);
 }
@@ -179,6 +191,22 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Safe base64 encoding for large binary data (chunked to avoid stack overflow)
+ */
+function safeBase64Encode(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000; // 32KB chunks
+  let result = '';
+  
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    result += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  
+  return btoa(result);
+}
+
+/**
  * Calls Google Gemini API with retry logic
  */
 async function callGeminiWithRetry(
@@ -236,6 +264,13 @@ async function callGeminiWithRetry(
         };
       }
 
+      // Retry on 5xx errors
+      if (response.status >= 500 && attempt < maxRetries) {
+        console.log(`[ai] server_error provider=gemini status=${response.status} retry=${attempt + 1}/${maxRetries}`);
+        await sleep(Math.pow(2, attempt + 1) * 1000);
+        continue;
+      }
+
       console.error("[ai] error provider=gemini", {
         status: response.status,
         key_masked: maskKey(apiKey),
@@ -269,6 +304,119 @@ async function callGeminiWithRetry(
 }
 
 /**
+ * Calls OpenAI API with retry logic
+ */
+async function callOpenAIWithRetry(
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+  options: { temperature?: number; max_tokens?: number; tools?: any[]; tool_choice?: any } = {},
+  maxRetries: number = 2
+): Promise<{ data: any; error?: AIError }> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  
+  if (!apiKey || apiKey.length === 0) {
+    return {
+      data: null,
+      error: { code: "CONFIG_ERROR", message: "OPENAI_API_KEY is not configured", provider: "openai", model }
+    };
+  }
+
+  const requestBody: any = {
+    model,
+    messages,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.max_tokens ?? 2048,
+  };
+
+  if (options.tools && options.tools.length > 0) {
+    requestBody.tools = options.tools;
+    if (options.tool_choice) {
+      requestBody.tool_choice = options.tool_choice;
+    }
+  }
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const startTime = Date.now();
+      const response = await fetch(OPENAI_API_URL, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
+      const latencyMs = Date.now() - startTime;
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[ai] success provider=openai model=${model} latency_ms=${latencyMs}`);
+        return { data };
+      }
+
+      const errorText = await response.text();
+      
+      if (response.status === 429) {
+        const retryAfter = Math.pow(2, attempt + 1) * 1000;
+        
+        if (attempt < maxRetries) {
+          console.log(`[ai] rate_limited provider=openai retry=${attempt + 1}/${maxRetries} wait_ms=${retryAfter}`);
+          await sleep(retryAfter);
+          continue;
+        }
+        
+        return {
+          data: null,
+          error: { 
+            code: "QUOTA_EXCEEDED", 
+            message: "OpenAI rate limit exceeded. Please try again later.",
+            provider: "openai",
+            model,
+            retryAfter: 60
+          }
+        };
+      }
+
+      // Retry on 5xx errors
+      if (response.status >= 500 && attempt < maxRetries) {
+        console.log(`[ai] server_error provider=openai status=${response.status} retry=${attempt + 1}/${maxRetries}`);
+        await sleep(Math.pow(2, attempt + 1) * 1000);
+        continue;
+      }
+
+      console.error("[ai] error provider=openai", {
+        status: response.status,
+        key_masked: maskKey(apiKey),
+        error: errorText.slice(0, 200),
+        latency_ms: latencyMs,
+      });
+      
+      return {
+        data: null,
+        error: { 
+          code: "API_ERROR", 
+          message: `OpenAI error: ${response.status}`,
+          provider: "openai",
+          model
+        }
+      };
+      
+    } catch (fetchError) {
+      if (attempt < maxRetries) {
+        await sleep(Math.pow(2, attempt + 1) * 1000);
+        continue;
+      }
+      return {
+        data: null,
+        error: { code: "API_ERROR", message: "Network error connecting to OpenAI", provider: "openai", model }
+      };
+    }
+  }
+  
+  return { data: null, error: { code: "API_ERROR", message: "Max retries exceeded", provider: "openai", model } };
+}
+
+/**
  * Main AI chat function with purpose-based routing
  */
 export async function aiChat(options: AIChatOptions): Promise<AIChatResponse> {
@@ -294,7 +442,7 @@ export async function aiChat(options: AIChatOptions): Promise<AIChatResponse> {
       message: "Rate limit exceeded. Please slow down.",
       provider,
       model 
-    }));
+    } as AIError));
   }
 
   // Check cache
@@ -305,91 +453,126 @@ export async function aiChat(options: AIChatOptions): Promise<AIChatResponse> {
     return cached;
   }
 
-  // Currently only Gemini is implemented - others can be added later
-  if (provider !== "gemini") {
-    console.log(`[ai] fallback provider=${provider} -> gemini (not implemented)`);
-    provider = "gemini";
-    model = config.model;
-  }
+  let response: AIChatResponse;
 
-  // Convert messages to Gemini format
-  const systemMessage = options.messages.find(m => m.role === "system")?.content || "";
-  const conversationMessages = options.messages.filter(m => m.role !== "system");
-  
-  const contents = conversationMessages.map(msg => ({
-    role: msg.role === "assistant" ? "model" : "user",
-    parts: [{ text: msg.content }],
-  }));
+  if (provider === "openai") {
+    // OpenAI path
+    const openAIMessages = options.messages.map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
 
-  // Handle tools by adding instruction to return JSON
-  let enhancedSystemMessage = systemMessage;
-  if (options.tools && options.tools.length > 0) {
-    const toolSchema = options.tools[0]?.function?.parameters;
-    if (toolSchema) {
-      enhancedSystemMessage += `\n\nIMPORTANT: Respond with a valid JSON object matching this schema:\n${JSON.stringify(toolSchema, null, 2)}\n\nReturn ONLY the JSON object.`;
+    const { data, error } = await callOpenAIWithRetry(
+      openAIMessages,
+      model || DEFAULT_OPENAI_MODEL,
+      {
+        temperature: options.temperature,
+        max_tokens: options.max_tokens,
+        tools: options.tools,
+        tool_choice: options.tool_choice,
+      }
+    );
+
+    if (error) {
+      throw new Error(JSON.stringify(error));
     }
-  }
 
-  const requestBody: any = {
-    contents,
-    generationConfig: {
-      temperature: options.temperature ?? 0.7,
-      maxOutputTokens: options.max_tokens ?? 2048,
-    },
-  };
+    const text = data.choices?.[0]?.message?.content || "";
+    const latencyMs = Date.now() - startTime;
+    
+    console.log(`[ai] complete provider=openai model=${model} purpose=${options.purpose || 'default'} latency_ms=${latencyMs}`);
+    
+    response = { text, raw: data, provider: "openai", model: model || DEFAULT_OPENAI_MODEL };
 
-  if (enhancedSystemMessage) {
-    requestBody.systemInstruction = { parts: [{ text: enhancedSystemMessage }] };
-  }
+  } else if (provider === "gemini") {
+    // Gemini path
+    const systemMessage = options.messages.find(m => m.role === "system")?.content || "";
+    const conversationMessages = options.messages.filter(m => m.role !== "system");
+    
+    const contents = conversationMessages.map(msg => ({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: msg.content }],
+    }));
 
-  const { data, error } = await callGeminiWithRetry(requestBody, model);
-  
-  if (error) {
-    throw new Error(JSON.stringify(error));
-  }
-
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  const latencyMs = Date.now() - startTime;
-  
-  console.log(`[ai] complete provider=${provider} model=${model} purpose=${options.purpose || 'default'} latency_ms=${latencyMs}`);
-
-  // Wrap tool responses in OpenAI-compatible format
-  let responseData = data;
-  if (options.tools && options.tools.length > 0) {
-    try {
-      let jsonText = text.trim();
-      if (jsonText.startsWith("```json")) jsonText = jsonText.slice(7);
-      else if (jsonText.startsWith("```")) jsonText = jsonText.slice(3);
-      if (jsonText.endsWith("```")) jsonText = jsonText.slice(0, -3);
-      jsonText = jsonText.trim();
-      
-      JSON.parse(jsonText);
-      
-      responseData = {
-        choices: [{
-          message: {
-            tool_calls: [{
-              function: {
-                name: options.tools[0]?.function?.name || "response",
-                arguments: jsonText,
-              }
-            }]
-          }
-        }]
-      };
-    } catch {
-      // Not valid JSON, return as-is
+    // Handle tools by adding instruction to return JSON
+    let enhancedSystemMessage = systemMessage;
+    if (options.tools && options.tools.length > 0) {
+      const toolSchema = options.tools[0]?.function?.parameters;
+      if (toolSchema) {
+        enhancedSystemMessage += `\n\nIMPORTANT: Respond with a valid JSON object matching this schema:\n${JSON.stringify(toolSchema, null, 2)}\n\nReturn ONLY the JSON object.`;
+      }
     }
+
+    const requestBody: any = {
+      contents,
+      generationConfig: {
+        temperature: options.temperature ?? 0.7,
+        maxOutputTokens: options.max_tokens ?? 2048,
+      },
+    };
+
+    if (enhancedSystemMessage) {
+      requestBody.systemInstruction = { parts: [{ text: enhancedSystemMessage }] };
+    }
+
+    const { data, error } = await callGeminiWithRetry(requestBody, model || DEFAULT_MODEL);
+    
+    if (error) {
+      throw new Error(JSON.stringify(error));
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const latencyMs = Date.now() - startTime;
+    
+    console.log(`[ai] complete provider=gemini model=${model} purpose=${options.purpose || 'default'} latency_ms=${latencyMs}`);
+
+    // Wrap tool responses in OpenAI-compatible format
+    let responseData = data;
+    if (options.tools && options.tools.length > 0) {
+      try {
+        let jsonText = text.trim();
+        if (jsonText.startsWith("```json")) jsonText = jsonText.slice(7);
+        else if (jsonText.startsWith("```")) jsonText = jsonText.slice(3);
+        if (jsonText.endsWith("```")) jsonText = jsonText.slice(0, -3);
+        jsonText = jsonText.trim();
+        
+        JSON.parse(jsonText);
+        
+        responseData = {
+          choices: [{
+            message: {
+              tool_calls: [{
+                function: {
+                  name: options.tools[0]?.function?.name || "response",
+                  arguments: jsonText,
+                }
+              }]
+            }
+          }]
+        };
+      } catch {
+        // Not valid JSON, return as-is
+      }
+    }
+
+    response = { text, raw: responseData, provider: "gemini", model: model || DEFAULT_MODEL };
+
+  } else {
+    // Unknown provider - return CONFIG_ERROR
+    throw new Error(JSON.stringify({
+      code: "CONFIG_ERROR",
+      message: `Unknown AI provider: ${provider}. Supported providers: gemini, openai`,
+      provider,
+      model
+    } as AIError));
   }
 
-  const response: AIChatResponse = { text, raw: responseData, provider, model };
   setCache(cacheKey, response);
-  
   return response;
 }
 
 /**
- * Vision analysis - REAL multimodal with image support
+ * Vision analysis - REAL multimodal with image support (Gemini only)
  */
 export async function aiVision(options: AIVisionOptions): Promise<AIChatResponse> {
   const model = "gemini-2.0-flash";
@@ -404,7 +587,7 @@ export async function aiVision(options: AIVisionOptions): Promise<AIChatResponse
       message: "Rate limit exceeded for vision.",
       provider: "gemini",
       model 
-    }));
+    } as AIError));
   }
 
   // Build parts array for multimodal
@@ -428,7 +611,7 @@ export async function aiVision(options: AIVisionOptions): Promise<AIChatResponse
       }
     });
   } else if (options.image_url) {
-    // Fetch image and convert to base64
+    // Fetch image and convert to base64 using safe chunked encoding
     try {
       console.log(`[ai] fetching_image url=${options.image_url.substring(0, 50)}...`);
       const imageResponse = await fetch(options.image_url);
@@ -436,7 +619,7 @@ export async function aiVision(options: AIVisionOptions): Promise<AIChatResponse
         throw new Error(`Failed to fetch image: ${imageResponse.status}`);
       }
       const imageBuffer = await imageResponse.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+      const base64 = safeBase64Encode(imageBuffer);
       const contentType = imageResponse.headers.get("content-type") || "image/png";
       
       parts.push({
@@ -497,7 +680,7 @@ export async function aiImage(options: AIImageOptions): Promise<AIChatResponse> 
 }
 
 /**
- * Streaming chat - returns async iterator
+ * Streaming chat - returns async iterator (Gemini only)
  */
 export async function* aiChatStream(options: AIChatOptions): AsyncGenerator<string, void, unknown> {
   const config = getConfig();
@@ -505,7 +688,7 @@ export async function* aiChatStream(options: AIChatOptions): AsyncGenerator<stri
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   
   if (!apiKey) {
-    throw new Error(JSON.stringify({ code: "CONFIG_ERROR", message: "GEMINI_API_KEY is not configured" }));
+    throw new Error(JSON.stringify({ code: "CONFIG_ERROR", message: "GEMINI_API_KEY is not configured" } as AIError));
   }
   
   console.log(`[ai] stream_request provider=gemini model=${model} purpose=${options.purpose || 'default'}`);
@@ -541,7 +724,7 @@ export async function* aiChatStream(options: AIChatOptions): AsyncGenerator<stri
   if (!response.ok) {
     const errorText = await response.text();
     if (response.status === 429) {
-      throw new Error(JSON.stringify({ code: "QUOTA_EXCEEDED", message: "API quota exceeded", provider: "gemini", model }));
+      throw new Error(JSON.stringify({ code: "QUOTA_EXCEEDED", message: "API quota exceeded", provider: "gemini", model } as AIError));
     }
     throw new Error(`Gemini streaming error: ${response.status}`);
   }

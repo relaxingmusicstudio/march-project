@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat, parseAIError } from "../_shared/ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,12 +19,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     // Build prompt based on format
     let systemPrompt = `You are an expert content creator for the ${niche} industry.`;
@@ -50,29 +45,15 @@ serve(async (req) => {
         userPrompt = `Create content about: ${topic}`;
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ]
-      })
+    const result = await aiChat({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      purpose: "content_generation",
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI API error:", response.status, errorText);
-      throw new Error(`AI API error: ${response.status}`);
-    }
-
-    const aiData = await response.json();
-    const generatedContent = aiData.choices?.[0]?.message?.content || "";
+    const generatedContent = result.text;
 
     // Extract title (first line or generated)
     const lines = generatedContent.split("\n").filter((l: string) => l.trim());
@@ -108,7 +89,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("Content generator error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+    const parsed = parseAIError(error);
+    return new Response(JSON.stringify({ error: parsed.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

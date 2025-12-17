@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat, parseAIError } from "../_shared/ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,12 +40,10 @@ serve(async (req) => {
     }
 
     // Use AI to analyze why content succeeded/failed
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     let aiAnalysis = {};
     let extractedPatterns: Array<{category: string; description: string; pattern_type: string}> = [];
 
-    if (LOVABLE_API_KEY) {
-      const analysisPrompt = `Analyze this ${content.content_type} content and explain why it ${classification === "winner" ? "succeeded" : classification === "loser" ? "failed" : "performed neutrally"}.
+    const analysisPrompt = `Analyze this ${content.content_type} content and explain why it ${classification === "winner" ? "succeeded" : classification === "loser" ? "failed" : "performed neutrally"}.
 
 CONTENT:
 Title: ${content.title || "N/A"}
@@ -66,46 +65,35 @@ Respond in JSON format:
   "recommendations": ["actionable improvements"]
 }`;
 
-      try {
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: "You are a content performance analyst. Analyze content and extract learnable patterns. Always respond in valid JSON." },
-              { role: "user", content: analysisPrompt }
-            ]
-          })
-        });
+    try {
+      const result = await aiChat({
+        messages: [
+          { role: "system", content: "You are a content performance analyst. Analyze content and extract learnable patterns. Always respond in valid JSON." },
+          { role: "user", content: analysisPrompt }
+        ],
+        purpose: "content_analysis",
+      });
 
-        if (response.ok) {
-          const aiData = await response.json();
-          const analysisText = aiData.choices?.[0]?.message?.content || "{}";
-          
-          // Parse AI response
-          try {
-            const cleanJson = analysisText.replace(/```json\n?|\n?```/g, "").trim();
-            aiAnalysis = JSON.parse(cleanJson);
-            
-            // Extract patterns from AI analysis
-            if (Array.isArray((aiAnalysis as {patterns?: Array<{category: string; description: string; is_positive: boolean}>}).patterns)) {
-              extractedPatterns = (aiAnalysis as {patterns: Array<{category: string; description: string; is_positive: boolean}>}).patterns.map((p: {category: string; description: string; is_positive: boolean}) => ({
-                category: p.category,
-                description: p.description,
-                pattern_type: p.is_positive ? "winner" : "loser"
-              }));
-            }
-          } catch {
-            console.log("Could not parse AI analysis as JSON");
-          }
+      const analysisText = result.text;
+      
+      // Parse AI response
+      try {
+        const cleanJson = analysisText.replace(/```json\n?|\n?```/g, "").trim();
+        aiAnalysis = JSON.parse(cleanJson);
+        
+        // Extract patterns from AI analysis
+        if (Array.isArray((aiAnalysis as {patterns?: Array<{category: string; description: string; is_positive: boolean}>}).patterns)) {
+          extractedPatterns = (aiAnalysis as {patterns: Array<{category: string; description: string; is_positive: boolean}>}).patterns.map((p: {category: string; description: string; is_positive: boolean}) => ({
+            category: p.category,
+            description: p.description,
+            pattern_type: p.is_positive ? "winner" : "loser"
+          }));
         }
-      } catch (aiError) {
-        console.error("AI analysis failed:", aiError);
+      } catch {
+        console.log("Could not parse AI analysis as JSON");
       }
+    } catch (aiError) {
+      console.error("AI analysis failed:", aiError);
     }
 
     // Save performance record
@@ -168,8 +156,8 @@ Respond in JSON format:
 
   } catch (error: unknown) {
     console.error("Content analyzer error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    const parsed = parseAIError(error);
+    return new Response(JSON.stringify({ error: parsed.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

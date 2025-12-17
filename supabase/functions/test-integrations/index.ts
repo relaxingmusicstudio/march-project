@@ -13,11 +13,11 @@ serve(async (req) => {
 
   try {
     const { integrations = ['all'] } = await req.json();
-    const results: Array<{ name: string; status: string; message: string; latency_ms?: number }> = [];
+    const results: Array<{ name: string; status: string; message: string; latency_ms?: number; provider?: string; model?: string }> = [];
     
     const runAll = integrations.includes('all');
 
-    // 1. Test Gemini AI (via shared helper)
+    // 1. Test Gemini AI (via shared helper) - default provider
     if (runAll || integrations.includes('gemini_ai')) {
       const start = Date.now();
       try {
@@ -31,6 +31,8 @@ serve(async (req) => {
           name: 'Gemini AI', 
           status: 'success', 
           message: `Connected via ${result.provider}`,
+          provider: result.provider,
+          model: result.model,
           latency_ms: Date.now() - start,
         });
       } catch (error) {
@@ -44,7 +46,36 @@ serve(async (req) => {
       }
     }
 
-    // 2. Test Supabase connection
+    // 2. Test Premium AI routing (with purpose that triggers premium)
+    if (runAll || integrations.includes('premium_ai')) {
+      const start = Date.now();
+      try {
+        const result = await aiChat({
+          messages: [{ role: 'user', content: 'Say "premium test" in 3 words or less' }],
+          max_tokens: 10,
+          purpose: 'ceo_daily_brief', // This purpose should trigger premium routing if configured
+        });
+        
+        results.push({ 
+          name: 'Premium AI Routing', 
+          status: 'success', 
+          message: `Routed to ${result.provider}/${result.model}`,
+          provider: result.provider,
+          model: result.model,
+          latency_ms: Date.now() - start,
+        });
+      } catch (error) {
+        const parsed = parseAIError(error);
+        results.push({ 
+          name: 'Premium AI Routing', 
+          status: parsed.code === 'CONFIG_ERROR' ? 'warning' : 'error', 
+          message: parsed.message,
+          latency_ms: Date.now() - start,
+        });
+      }
+    }
+
+    // 3. Test Supabase connection
     if (runAll || integrations.includes('supabase')) {
       const start = Date.now();
       try {
@@ -71,31 +102,17 @@ serve(async (req) => {
       }
     }
 
-    // 3. Test Resend email
+    // 4. Test Resend email
     if (runAll || integrations.includes('resend')) {
-      const start = Date.now();
-      try {
-        const resendKey = Deno.env.get('RESEND_API_KEY');
-        if (!resendKey) {
-          results.push({ name: 'Resend Email', status: 'warning', message: 'RESEND_API_KEY not configured' });
-        } else {
-          results.push({ 
-            name: 'Resend Email', 
-            status: 'success', 
-            message: 'API key configured',
-            latency_ms: Date.now() - start,
-          });
-        }
-      } catch (error) {
-        results.push({ 
-          name: 'Resend Email', 
-          status: 'error', 
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
+      const resendKey = Deno.env.get('RESEND_API_KEY');
+      if (!resendKey) {
+        results.push({ name: 'Resend Email', status: 'warning', message: 'RESEND_API_KEY not configured' });
+      } else {
+        results.push({ name: 'Resend Email', status: 'success', message: 'API key configured' });
       }
     }
 
-    // 4. Test Twilio
+    // 5. Test Twilio
     if (runAll || integrations.includes('twilio')) {
       const twilioSid = Deno.env.get('TWILIO_ACCOUNT_SID');
       const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN');
@@ -107,7 +124,7 @@ serve(async (req) => {
       }
     }
 
-    // 5. Test Stripe
+    // 6. Test Stripe
     if (runAll || integrations.includes('stripe')) {
       const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
       
@@ -116,6 +133,21 @@ serve(async (req) => {
       } else {
         results.push({ name: 'Stripe', status: 'success', message: 'API key configured' });
       }
+    }
+
+    // 7. Check AI configuration
+    if (runAll || integrations.includes('ai_config')) {
+      const geminiKey = Deno.env.get('GEMINI_API_KEY');
+      const openaiKey = Deno.env.get('OPENAI_API_KEY');
+      const aiProvider = Deno.env.get('AI_PROVIDER') || 'gemini';
+      const premiumProvider = Deno.env.get('AI_PROVIDER_PREMIUM');
+      const premiumActions = Deno.env.get('AI_PREMIUM_ACTIONS');
+
+      results.push({
+        name: 'AI Configuration',
+        status: geminiKey ? 'success' : 'error',
+        message: `Default: ${aiProvider}, Premium: ${premiumProvider || 'none'}, OpenAI: ${openaiKey ? 'configured' : 'not set'}, Actions: ${premiumActions || 'none'}`,
+      });
     }
 
     console.log(`[test-integrations] Tested ${results.length} integrations`);
