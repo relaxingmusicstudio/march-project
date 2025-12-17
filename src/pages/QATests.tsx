@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle, XCircle, Loader2, Copy, Play, AlertTriangle, ShieldX } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Copy, Play, AlertTriangle, ShieldX, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -405,13 +405,13 @@ export default function QATests() {
   const getStatusIcon = (status: TestResult["status"]) => {
     switch (status) {
       case "pass":
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
+        return <CheckCircle2 className="h-5 w-5 text-green-500" />;
       case "fail":
         return <XCircle className="h-5 w-5 text-destructive" />;
       case "error":
         return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
       default:
-        return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
+        return <Clock className="h-5 w-5 text-muted-foreground" />;
     }
   };
 

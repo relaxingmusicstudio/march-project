@@ -26,6 +26,8 @@ import {
   Calendar,
   HelpCircle,
   Bell,
+  FlaskConical,
+  Building2,
 } from "lucide-react";
 
 export interface NavItem {
@@ -143,15 +145,37 @@ const CLIENT_NAV_ITEMS: NavItem[] = [
 const OWNER_MOBILE_NAV = OWNER_NAV_ITEMS.slice(0, 5);
 const CLIENT_MOBILE_NAV = CLIENT_NAV_ITEMS.slice(0, 5);
 
+// Admin-only navigation items (platform admins)
+const ADMIN_NAV_ITEMS: NavItem[] = [
+  {
+    label: "Tenants",
+    href: "/platform/tenants",
+    icon: Building2,
+    description: "Manage tenants",
+  },
+  {
+    label: "QA Tests",
+    href: "/platform/qa-tests",
+    icon: FlaskConical,
+    description: "Tenant isolation tests",
+  },
+];
+
 export function useRoleNavigation() {
-  const { isOwner, isClient, isLoading } = useUserRole();
+  const { isOwner, isClient, isAdmin, isLoading } = useUserRole();
 
   const navItems = useMemo(() => {
     if (isLoading) return [];
     if (isClient) return CLIENT_NAV_ITEMS;
-    if (isOwner) return OWNER_NAV_ITEMS;
+    if (isOwner) {
+      // Admin gets owner nav + admin-only items
+      if (isAdmin) {
+        return [...OWNER_NAV_ITEMS, ...ADMIN_NAV_ITEMS];
+      }
+      return OWNER_NAV_ITEMS;
+    }
     return [];
-  }, [isOwner, isClient, isLoading]);
+  }, [isOwner, isClient, isAdmin, isLoading]);
 
   const mobileNavItems = useMemo(() => {
     if (isLoading) return [];
@@ -171,6 +195,7 @@ export function useRoleNavigation() {
     homeRoute,
     isOwner,
     isClient,
+    isAdmin,
     isLoading,
   };
 }
