@@ -522,7 +522,7 @@ export default function ApprovalQueue() {
                 </div>
               )}
 
-              {(selectedAction.status === "pending_approval" || selectedAction.status === "pending" || selectedAction.status === "pending_review") && (
+              {selectedAction.status === "pending_approval" && (
                 <div className="flex gap-3 pt-4 border-t">
                   <Button
                     className="flex-1 bg-green-600 hover:bg-green-700"
