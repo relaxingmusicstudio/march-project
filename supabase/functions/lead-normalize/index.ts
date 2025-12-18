@@ -53,30 +53,37 @@ interface AuditColumns {
 }
 
 // ==================== RATE LIMITING ====================
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
+// Rate limit config - uses database-backed RPC for persistence across edge function invocations
+const RATE_LIMIT_MAX = 20; // 20 requests per minute per key
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+
+interface RateLimitResult {
+  allowed: boolean;
+  current_count: number;
+  max_requests: number;
+  retry_after_seconds: number;
 }
 
-const rateLimitMap = new Map<string, RateLimitEntry>();
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
-const RATE_LIMIT_MAX = 60; // 60 requests per minute
-
-function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-  
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
+// deno-lint-ignore no-explicit-any
+async function checkRateLimitDb(supabase: any, key: string): Promise<RateLimitResult> {
+  try {
+    const { data, error } = await supabase.rpc("check_and_increment_rate_limit", {
+      p_rate_key: key,
+      p_max_requests: RATE_LIMIT_MAX,
+      p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+    });
+    
+    if (error) {
+      console.warn("[lead-normalize] Rate limit RPC error (allowing request):", error.message);
+      // Fail open - allow request if rate limit check fails
+      return { allowed: true, current_count: 0, max_requests: RATE_LIMIT_MAX, retry_after_seconds: 0 };
+    }
+    
+    return data as RateLimitResult;
+  } catch (err) {
+    console.warn("[lead-normalize] Rate limit exception (allowing request):", err);
+    return { allowed: true, current_count: 0, max_requests: RATE_LIMIT_MAX, retry_after_seconds: 0 };
   }
-  
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-  
-  entry.count++;
-  return true;
 }
 
 // ==================== INPUT VALIDATION ====================
@@ -407,10 +414,33 @@ serve(async (req: Request): Promise<Response> => {
       return makeErrorResponse({ error: "unauthorized" }, 401, corsHeaders, startTime);
     }
 
-    // ==================== RATE LIMITING ====================
-    if (!checkRateLimit(rateLimitKey)) {
-      safeLog("Rate limited", { key: rateLimitKey.substring(0, 8) });
-      return makeErrorResponse({ error: "rate_limited" }, 429, corsHeaders, startTime);
+    // ==================== RATE LIMITING (Database-backed) ====================
+    // Create service role client for rate limiting
+    const supabaseForRateLimit = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false },
+    });
+    
+    const rateLimitResult = await checkRateLimitDb(supabaseForRateLimit, rateLimitKey);
+    if (!rateLimitResult.allowed) {
+      safeLog("Rate limited", { 
+        key: rateLimitKey.substring(0, 8), 
+        current: rateLimitResult.current_count,
+        max: rateLimitResult.max_requests 
+      });
+      return new Response(JSON.stringify({
+        ok: false,
+        rpc_used: false,
+        error: "rate_limited",
+        retry_after_seconds: rateLimitResult.retry_after_seconds,
+        duration_ms: Date.now() - startTime,
+      }), {
+        status: 429,
+        headers: { 
+          ...corsHeaders, 
+          "Content-Type": "application/json",
+          "Retry-After": String(rateLimitResult.retry_after_seconds),
+        },
+      });
     }
 
     // ==================== PARSE & VALIDATE INPUT ====================

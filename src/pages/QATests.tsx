@@ -92,6 +92,16 @@ export default function QATests() {
   const [schemaInfo, setSchemaInfo] = useState<CeoAlertsSchemaInfo | null>(null);
   const [networkProbeLoading, setNetworkProbeLoading] = useState(false);
   const [networkProbeDiagnostic, setNetworkProbeDiagnostic] = useState<NetworkProbeDiagnostic | null>(null);
+  const [rpcSmokeTestLoading, setRpcSmokeTestLoading] = useState(false);
+  const [rpcSmokeTestResults, setRpcSmokeTestResults] = useState<{
+    testedAt: string;
+    rpcs: Array<{
+      name: string;
+      exists: boolean;
+      error?: string;
+      testResult?: unknown;
+    }>;
+  } | null>(null);
 
   // Detect schema on mount
   useEffect(() => {
@@ -1750,6 +1760,70 @@ export default function QATests() {
     toast.success("Network probe complete");
   };
 
+  // RPC Smoke Test - Check all RPCs that lead-normalize depends on
+  const runRpcSmokeTest = async () => {
+    setRpcSmokeTestLoading(true);
+    setRpcSmokeTestResults(null);
+    
+    const rpcChecks: Array<{
+      name: string;
+      exists: boolean;
+      error?: string;
+      testResult?: unknown;
+    }> = [];
+    
+    // List of RPCs that lead-normalize depends on
+    const rpcsToCheck = [
+      { name: "normalize_lead_atomic", testParams: { p_tenant_id: tenantIdA || "00000000-0000-0000-0000-000000000000", p_email: "test@test.com" } },
+      { name: "compute_lead_fingerprint", testParams: { p_email: "test@test.com", p_phone: "1234567890", p_company_name: "Test" } },
+      { name: "normalize_email", testParams: { raw_email: "TEST@EXAMPLE.COM" } },
+      { name: "normalize_phone", testParams: { raw_phone: "(555) 123-4567" } },
+      { name: "check_and_increment_rate_limit", testParams: { p_rate_key: "qa_smoke_test", p_max_requests: 1000, p_window_seconds: 60 } },
+    ];
+    
+    for (const rpc of rpcsToCheck) {
+      try {
+        // Cast to any to allow checking RPCs that may not be in generated types
+        const { data, error } = await (supabase.rpc as any)(rpc.name, rpc.testParams);
+        
+        if (error) {
+          rpcChecks.push({
+            name: rpc.name,
+            exists: error.code !== "42883", // 42883 = function does not exist
+            error: `${error.code}: ${error.message}`,
+          });
+        } else {
+          rpcChecks.push({
+            name: rpc.name,
+            exists: true,
+            testResult: data,
+          });
+        }
+      } catch (err) {
+        rpcChecks.push({
+          name: rpc.name,
+          exists: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    
+    setRpcSmokeTestResults({
+      testedAt: new Date().toISOString(),
+      rpcs: rpcChecks,
+    });
+    setRpcSmokeTestLoading(false);
+    
+    const allExist = rpcChecks.every(r => r.exists);
+    const noErrors = rpcChecks.every(r => !r.error || r.error.includes("42704") === false);
+    
+    if (allExist && noErrors) {
+      toast.success("All RPCs exist and are callable");
+    } else {
+      toast.error("Some RPCs missing or have errors - see results below");
+    }
+  };
+
   const copyDebugJson = async () => {
     if (!results) return;
     const jsonStr = JSON.stringify(results, null, 2);
@@ -1836,10 +1910,37 @@ export default function QATests() {
                 {networkProbeLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Network className="h-4 w-4 mr-2" />}
                 Network Probe (lead-normalize)
               </Button>
+              <Button variant="outline" onClick={runRpcSmokeTest} disabled={rpcSmokeTestLoading} size="sm">
+                {rpcSmokeTestLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Wifi className="h-4 w-4 mr-2" />}
+                Check RPC Dependencies
+              </Button>
             </div>
           </div>
 
-          {/* ===== LAST RUN SUMMARY ===== */}
+          {/* ===== RPC SMOKE TEST RESULTS ===== */}
+          {rpcSmokeTestResults && (
+            <Alert variant={rpcSmokeTestResults.rpcs.some(r => !r.exists || r.error?.includes("42704")) ? "destructive" : "default"}>
+              <Wifi className="h-4 w-4" />
+              <AlertTitle>RPC Dependency Check - {rpcSmokeTestResults.testedAt}</AlertTitle>
+              <AlertDescription className="font-mono text-xs space-y-1 mt-2">
+                {rpcSmokeTestResults.rpcs.map((rpc) => (
+                  <div key={rpc.name} className="flex items-center gap-2">
+                    {rpc.exists && !rpc.error?.includes("42704") ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span className="font-semibold">{rpc.name}:</span>
+                    {rpc.error ? (
+                      <span className="text-destructive">{rpc.error}</span>
+                    ) : (
+                      <span className="text-green-600">OK</span>
+                    )}
+                  </div>
+                ))}
+              </AlertDescription>
+            </Alert>
+          )}
           {results && (
             <Alert variant={results.summary.failed > 0 || results.summary.errors > 0 ? "destructive" : "default"}>
               <Clock className="h-4 w-4" />
