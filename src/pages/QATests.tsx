@@ -536,7 +536,7 @@ export default function QATests() {
 
   const runAdminSchedulerTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
-    const name = "TEST 9 - Admin Scheduler Trigger (Real)";
+    const name = "TEST 9 - Admin Scheduler Trigger + Audit Proof";
     
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -552,6 +552,9 @@ export default function QATests() {
         };
       }
 
+      // Record timestamp before triggering
+      const triggerTimestamp = new Date().toISOString();
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-run-scheduler`, {
         method: "POST",
         headers: { 
@@ -559,7 +562,7 @@ export default function QATests() {
           "Authorization": `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ 
-          action: "check_job_status",
+          action: "run_daily_briefs",
           tenant_ids: [tenantId]
         }),
       });
@@ -577,14 +580,52 @@ export default function QATests() {
         };
       }
 
+      // Wait a moment for audit logs to be written
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Verify BOTH cron_invocation_started and cron_invocation_finished audit records
+      const { data: auditLogs, error: auditError } = await supabase
+        .from("platform_audit_log")
+        .select("id, action_type, entity_id, success, timestamp")
+        .eq("entity_type", "scheduler")
+        .eq("entity_id", "run_daily_briefs")
+        .gte("timestamp", triggerTimestamp)
+        .order("timestamp", { ascending: false });
+
+      if (auditError) {
+        return {
+          name,
+          status: "error",
+          details: { audit_error: auditError.message },
+          error: "Failed to query audit logs",
+          duration_ms: Date.now() - start,
+        };
+      }
+
+      const startedLogs = auditLogs?.filter(l => l.action_type === "cron_invocation_started") || [];
+      const finishedLogs = auditLogs?.filter(l => l.action_type === "cron_invocation_finished") || [];
+      
+      const hasStarted = startedLogs.length > 0;
+      const hasFinished = finishedLogs.length > 0;
+      const passed = response.ok && hasStarted && hasFinished;
+
       return {
         name,
-        status: response.ok ? "pass" : "error",
+        status: passed ? "pass" : (response.ok ? "fail" : "error"),
         details: {
           status: response.status,
           response: responseBody,
+          trigger_timestamp: triggerTimestamp,
+          audit_logs_found: auditLogs?.length || 0,
+          has_started_log: hasStarted,
+          has_finished_log: hasFinished,
+          started_count: startedLogs.length,
+          finished_count: finishedLogs.length,
         },
-        error: response.ok ? undefined : `Scheduler returned ${response.status}`,
+        error: passed ? undefined : 
+          !response.ok ? `Scheduler returned ${response.status}` :
+          !hasStarted ? "Missing cron_invocation_started audit log" :
+          !hasFinished ? "Missing cron_invocation_finished audit log" : undefined,
         duration_ms: Date.now() - start,
       };
     } catch (err) {

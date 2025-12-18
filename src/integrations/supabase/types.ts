@@ -9631,6 +9631,8 @@ export type Database = {
           active: boolean
           jobid: number
           jobname: string
+          last_run: string
+          last_status: string
           schedule: string
         }[]
       }

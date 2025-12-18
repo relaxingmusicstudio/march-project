@@ -28,7 +28,7 @@ interface AuditLog {
   entity_id: string;
   description: string;
   success: boolean;
-  created_at: string;
+  timestamp: string; // Using 'timestamp' consistently (not created_at)
   duration_ms: number | null;
 }
 
@@ -435,7 +435,7 @@ export default function SchedulerControl() {
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">
-                      {new Date(log.created_at).toLocaleString()}
+                      {new Date(log.timestamp).toLocaleString()}
                     </p>
                     {log.duration_ms && (
                       <p className="text-xs text-muted-foreground">{log.duration_ms}ms</p>
