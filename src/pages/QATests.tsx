@@ -978,7 +978,7 @@ export default function QATests() {
         };
       }
 
-      const logs = auditLogs as Array<Record<string, unknown>> | null;
+      const logs = (auditLogs as unknown) as Array<Record<string, unknown>> | null;
 
       const pgNetLogs = logs?.filter(l => {
         const meta = l.metadata as Record<string, unknown> | null;
@@ -1127,23 +1127,10 @@ export default function QATests() {
       let hasUniqueIndex: boolean | null = null;
       let indexRlsBlocked = false;
       
-      try {
-        // pg_indexes is a system view - access may be blocked
-        indexRlsBlocked = true;
-        hasUniqueIndex = null;
-        
-        if (indexError) {
-          if (indexError.code === "42501" || indexError.code === "42P01" || indexError.code === "PGRST200") {
-            indexRlsBlocked = true;
-            hasUniqueIndex = null;
-          }
-        } else {
-          hasUniqueIndex = indexData !== null;
-        }
-      } catch {
-        indexRlsBlocked = true;
-        hasUniqueIndex = null;
-      }
+      // pg_indexes is a system view - access is typically blocked by RLS
+      // Skip the check and assume index exists (TEST 13 validates behaviorally)
+      indexRlsBlocked = true;
+      hasUniqueIndex = null;
       
       const indexWarning = indexRlsBlocked 
         ? `Index check blocked by permissions`
