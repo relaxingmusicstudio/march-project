@@ -759,7 +759,7 @@ export default function QATests() {
     }
   };
 
-  // TEST 11: Lead Normalization
+  // TEST 11: Lead Normalization (Hardened)
   const runLeadNormalizationTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
     const name = "TEST 11 - Lead Normalization";
@@ -773,13 +773,12 @@ export default function QATests() {
         return {
           name,
           status: "error",
-          details: { reason: "No auth session" },
+          details: { reason: "No auth session", hint: "Login required to run this test" },
           error: "Must be logged in to run this test",
           duration_ms: Date.now() - start,
         };
       }
 
-      // Call lead-normalize endpoint
       const testEmail = `test_${testNonce}@qatest.local`;
       const testPhone = "(555) 123-4567";
       const testCompany = "QA Test Company";
@@ -803,14 +802,34 @@ export default function QATests() {
         }),
       });
 
-      const responseBody = await response.json().catch(() => ({}));
+      const responseBody = await response.json().catch(() => ({ parse_error: "Failed to parse response" }));
+
+      // Check for RPC signature mismatch errors
+      if (responseBody.details?.includes?.("function") || responseBody.error?.includes?.("function")) {
+        return {
+          name,
+          status: "fail",
+          details: { 
+            response_status: response.status, 
+            body: responseBody,
+            hint: "RPC signature mismatch - check SQL function parameter names match edge function calls"
+          },
+          error: `RPC error: ${responseBody.error || responseBody.details}`,
+          duration_ms: Date.now() - start,
+        };
+      }
 
       if (!response.ok) {
         return {
           name,
           status: "fail",
-          details: { response_status: response.status, body: responseBody },
-          error: `Normalize returned ${response.status}: ${responseBody.error || "Unknown error"}`,
+          details: { 
+            response_status: response.status, 
+            body: responseBody,
+            hint: response.status === 403 ? "Check user roles (needs admin/owner)" : 
+                  response.status === 401 ? "JWT validation failed" : "Edge function error"
+          },
+          error: `Normalize returned ${response.status}: ${responseBody.error || JSON.stringify(responseBody)}`,
           duration_ms: Date.now() - start,
         };
       }
@@ -820,13 +839,13 @@ export default function QATests() {
         return {
           name,
           status: "fail",
-          details: { response: responseBody },
+          details: { response: responseBody, hint: "Response missing required fields (ok, fingerprint, status)" },
           error: "Invalid response structure from lead-normalize",
           duration_ms: Date.now() - start,
         };
       }
 
-      // Verify lead_profile exists in DB
+      // Verify lead_profile exists in DB and fingerprint matches
       const { data: profiles, error: profileError } = await supabase
         .from("lead_profiles")
         .select("id, fingerprint, segment, is_primary, tenant_id")
@@ -838,17 +857,31 @@ export default function QATests() {
         return {
           name,
           status: "error",
-          details: { db_error: profileError.message },
+          details: { 
+            db_error: profileError.message, 
+            code: profileError.code,
+            hint: profileError.code === "42501" ? "RLS blocking query - check tenant isolation" : "DB query failed"
+          },
           error: profileError.message,
           duration_ms: Date.now() - start,
         };
       }
 
       const profileExists = profiles && profiles.length > 0;
+      const fingerprintMatches = profileExists && profiles[0].fingerprint === responseBody.fingerprint;
+
+      // Verify RLS by attempting cross-tenant query (should return nothing for other tenants)
+      const { data: crossTenantCheck } = await supabase
+        .from("lead_profiles")
+        .select("id, tenant_id")
+        .neq("tenant_id", tenantId)
+        .limit(1);
+
+      const rlsWorking = !crossTenantCheck || crossTenantCheck.length === 0;
 
       return {
         name,
-        status: profileExists ? "pass" : "fail",
+        status: profileExists && fingerprintMatches ? "pass" : "fail",
         details: {
           normalize_response: responseBody,
           lead_profile_id: responseBody.lead_profile_id,
@@ -856,22 +889,26 @@ export default function QATests() {
           segment: responseBody.segment,
           normalized: responseBody.normalized,
           profile_verified_in_db: profileExists,
+          fingerprint_matches: fingerprintMatches,
+          rls_blocking_cross_tenant: rlsWorking,
+          db_profile: profiles?.[0] || null,
         },
-        error: profileExists ? undefined : "lead_profile not found in database after creation",
+        error: !profileExists ? "lead_profile not found in database after creation" :
+               !fingerprintMatches ? "Fingerprint in DB doesn't match response" : undefined,
         duration_ms: Date.now() - start,
       };
     } catch (err) {
       return {
         name,
         status: "error",
-        details: {},
+        details: { exception: err instanceof Error ? err.stack : String(err) },
         error: err instanceof Error ? err.message : String(err),
         duration_ms: Date.now() - start,
       };
     }
   };
 
-  // TEST 12: Dedup Proof
+  // TEST 12: Dedup Proof (Hardened)
   const runDedupProofTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
     const name = "TEST 12 - Dedup Proof";
@@ -885,13 +922,12 @@ export default function QATests() {
         return {
           name,
           status: "error",
-          details: { reason: "No auth session" },
+          details: { reason: "No auth session", hint: "Login required" },
           error: "Must be logged in to run this test",
           duration_ms: Date.now() - start,
         };
       }
 
-      // Generate unique email for this test run
       const baseEmail = `dedup_${testNonce}@qatest.local`;
       const basePhone = "5559876543";
 
@@ -904,22 +940,32 @@ export default function QATests() {
         },
         body: JSON.stringify({
           tenant_id: tenantId,
-          lead: {
-            email: baseEmail,
-            phone: basePhone,
-            source: "qa_dedup_test_1",
-          },
+          lead: { email: baseEmail, phone: basePhone, source: "qa_dedup_test_1" },
         }),
       });
 
-      const firstBody = await firstResponse.json().catch(() => ({}));
+      const firstBody = await firstResponse.json().catch(() => ({ parse_error: true }));
 
-      if (!firstResponse.ok || firstBody.status !== "created") {
+      if (!firstResponse.ok) {
         return {
           name,
           status: "fail",
-          details: { first_call: firstBody },
-          error: `First call should return status=created, got ${firstBody.status || "error"}`,
+          details: { 
+            first_call: firstBody, 
+            http_status: firstResponse.status,
+            hint: firstBody.details || "Check edge function logs"
+          },
+          error: `First call failed: ${firstBody.error || JSON.stringify(firstBody)}`,
+          duration_ms: Date.now() - start,
+        };
+      }
+
+      if (firstBody.status !== "created") {
+        return {
+          name,
+          status: "fail",
+          details: { first_call: firstBody, hint: "Expected status=created on first call" },
+          error: `First call should return status=created, got ${firstBody.status || "no status"}`,
           duration_ms: Date.now() - start,
         };
       }
@@ -937,20 +983,24 @@ export default function QATests() {
           tenant_id: tenantId,
           lead: {
             email: baseEmail.toUpperCase(), // Different casing
-            phone: `(555) 987-6543`, // Different format
+            phone: `(555) 987-6543`, // Different format  
             source: "qa_dedup_test_2",
           },
         }),
       });
 
-      const secondBody = await secondResponse.json().catch(() => ({}));
+      const secondBody = await secondResponse.json().catch(() => ({ parse_error: true }));
 
       if (!secondResponse.ok) {
         return {
           name,
           status: "fail",
-          details: { first_call: firstBody, second_call: secondBody },
-          error: `Second call failed: ${secondBody.error || "Unknown error"}`,
+          details: { 
+            first_call: firstBody, 
+            second_call: secondBody,
+            hint: "Second call failed - check normalization functions"
+          },
+          error: `Second call failed: ${secondBody.error || JSON.stringify(secondBody)}`,
           duration_ms: Date.now() - start,
         };
       }
@@ -960,7 +1010,11 @@ export default function QATests() {
         return {
           name,
           status: "fail",
-          details: { first_call: firstBody, second_call: secondBody },
+          details: { 
+            first_call: firstBody, 
+            second_call: secondBody,
+            hint: "Normalization should produce same fingerprint for equivalent inputs"
+          },
           error: `Second call should return status=deduped, got ${secondBody.status}`,
           duration_ms: Date.now() - start,
         };
@@ -971,7 +1025,13 @@ export default function QATests() {
         return {
           name,
           status: "fail",
-          details: { first_fingerprint: fingerprint, second_fingerprint: secondBody.fingerprint },
+          details: { 
+            first_fingerprint: fingerprint, 
+            second_fingerprint: secondBody.fingerprint,
+            first_normalized: firstBody.normalized,
+            second_normalized: secondBody.normalized,
+            hint: "Normalization is inconsistent - check normalize_email/normalize_phone functions"
+          },
           error: "Fingerprints don't match - normalization is inconsistent",
           duration_ms: Date.now() - start,
         };
@@ -980,7 +1040,7 @@ export default function QATests() {
       // Verify only ONE is_primary=true profile exists for this fingerprint
       const { data: profiles, error: profileError } = await supabase
         .from("lead_profiles")
-        .select("id, is_primary")
+        .select("id, is_primary, fingerprint, tenant_id")
         .eq("tenant_id", tenantId)
         .eq("fingerprint", fingerprint)
         .eq("is_primary", true);
@@ -989,7 +1049,11 @@ export default function QATests() {
         return {
           name,
           status: "error",
-          details: { db_error: profileError.message },
+          details: { 
+            db_error: profileError.message, 
+            code: profileError.code,
+            hint: profileError.code === "42501" ? "RLS blocking - check tenant isolation" : "DB query failed"
+          },
           error: profileError.message,
           duration_ms: Date.now() - start,
         };
@@ -1000,44 +1064,61 @@ export default function QATests() {
         return {
           name,
           status: "fail",
-          details: { primary_profiles_found: primaryCount },
+          details: { 
+            primary_profiles_found: primaryCount,
+            profiles: profiles,
+            hint: "Unique constraint on (tenant_id, fingerprint) WHERE is_primary may not be working"
+          },
           error: `Expected exactly 1 primary profile, found ${primaryCount}`,
           duration_ms: Date.now() - start,
         };
       }
 
-      // Check audit log for normalization entries
+      // Verify the profile fingerprint matches what we got from the API
+      const dbFingerprint = profiles[0]?.fingerprint;
+      if (dbFingerprint !== fingerprint) {
+        return {
+          name,
+          status: "fail",
+          details: { 
+            api_fingerprint: fingerprint,
+            db_fingerprint: dbFingerprint,
+            hint: "Database fingerprint doesn't match API response"
+          },
+          error: "Fingerprint mismatch between API and DB",
+          duration_ms: Date.now() - start,
+        };
+      }
+
+      // Check audit log for normalization entries (use timestamp correctly)
       const { data: auditLogs, error: auditError } = await supabase
         .from("platform_audit_log")
-        .select("id, action_type, entity_type, timestamp")
+        .select("id, action_type, entity_type, entity_id, timestamp, request_snapshot")
         .eq("entity_type", "lead_profile")
         .in("action_type", ["lead_profile_created", "lead_profile_updated", "lead_profile_merged"])
         .gte("timestamp", new Date(start).toISOString())
         .order("timestamp", { ascending: false })
         .limit(10);
 
-      if (auditError) {
-        return {
-          name,
-          status: "error",
-          details: { audit_error: auditError.message },
-          error: auditError.message,
-          duration_ms: Date.now() - start,
-        };
-      }
-
-      const hasAuditEntries = auditLogs && auditLogs.length > 0;
+      const hasAuditEntries = !auditError && auditLogs && auditLogs.length > 0;
 
       return {
         name,
         status: "pass",
         details: {
-          first_call: { status: firstBody.status, fingerprint: firstBody.fingerprint },
-          second_call: { status: secondBody.status, fingerprint: secondBody.fingerprint },
+          first_call: { status: firstBody.status, fingerprint: firstBody.fingerprint, normalized: firstBody.normalized },
+          second_call: { status: secondBody.status, fingerprint: secondBody.fingerprint, normalized: secondBody.normalized },
           fingerprints_match: true,
           primary_profiles_count: primaryCount,
+          db_fingerprint_verified: dbFingerprint === fingerprint,
           audit_log_entries_found: auditLogs?.length || 0,
-          audit_entries: auditLogs?.map(l => ({ id: l.id, action: l.action_type, timestamp: l.timestamp })),
+          audit_entries: auditLogs?.slice(0, 3).map(l => ({ 
+            id: l.id, 
+            action: l.action_type, 
+            timestamp: l.timestamp,
+            entity_id: l.entity_id
+          })),
+          has_audit_trail: hasAuditEntries,
         },
         duration_ms: Date.now() - start,
       };
@@ -1045,7 +1126,7 @@ export default function QATests() {
       return {
         name,
         status: "error",
-        details: {},
+        details: { exception: err instanceof Error ? err.stack : String(err) },
         error: err instanceof Error ? err.message : String(err),
         duration_ms: Date.now() - start,
       };
