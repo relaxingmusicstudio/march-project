@@ -141,37 +141,39 @@ function validateInput(body: NormalizeRequest, rawBody: string): ValidationResul
 function getCorsHeaders(origin: string | null): Record<string, string> {
   const allowedOriginsStr = Deno.env.get("ALLOWED_ORIGINS") || "";
   const allowedOrigins = allowedOriginsStr.split(",").map(o => o.trim()).filter(Boolean);
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const isDev = Deno.env.get("DENO_ENV") === "development" || Deno.env.get("NODE_ENV") === "development";
   
-  let allowOrigin: string;
+  let allowOrigin: string | null = null;
   
   if (allowedOrigins.length > 0) {
     // Explicit allowlist configured
     if (origin && (allowedOrigins.includes(origin) || allowedOrigins.includes("*"))) {
       allowOrigin = origin;
-    } else {
-      // Origin not in allowlist - use first allowed origin (blocks CORS for unknown origins)
-      allowOrigin = allowedOrigins[0];
     }
+    // If origin not in allowlist, allowOrigin stays null (CORS blocked)
+  } else if (isDev) {
+    // Development mode with no allowlist - permit all
+    allowOrigin = origin || "*";
   } else {
-    // No allowlist configured - production safety: only allow same Supabase project origin
-    // This prevents defaulting to "*" in production
-    if (origin && supabaseUrl && origin.includes(new URL(supabaseUrl).hostname.split('.')[0])) {
-      allowOrigin = origin;
-    } else if (origin) {
-      // Unknown origin with no allowlist - reject by returning mismatched origin
-      allowOrigin = "https://blocked.invalid";
-    } else {
-      // No origin header (same-origin or server-to-server) - allow
+    // Production with no allowlist - only allow server-to-server (no Origin header)
+    if (!origin) {
+      // No Origin header means same-origin or server-to-server request - allow
       allowOrigin = "*";
     }
+    // If origin exists but no allowlist in production, allowOrigin stays null (blocked)
   }
   
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret, x-request-timestamp, x-request-nonce",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
+  
+  // Only include Allow-Origin if we have a valid value (omitting blocks CORS properly)
+  if (allowOrigin) {
+    headers["Access-Control-Allow-Origin"] = allowOrigin;
+  }
+  
+  return headers;
 }
 
 function jsonResponse(data: unknown, status: number, corsHeaders: Record<string, string>): Response {
