@@ -508,7 +508,7 @@ serve(async (req: Request): Promise<Response> => {
       duration_ms: durationMs,
     });
 
-    const response: NormalizeResponse = {
+    const response: NormalizeResponse & { rpc_used: boolean } = {
       ok: true,
       status: status!,
       tenant_id: body.tenant_id,
@@ -518,6 +518,7 @@ serve(async (req: Request): Promise<Response> => {
       segment: segment as "b2b" | "b2c" | "unknown",
       normalized: normalized || { email: null, phone: null },
       duration_ms: durationMs,
+      rpc_used: true,
     };
 
     return jsonResponse(response, 200, corsHeaders);

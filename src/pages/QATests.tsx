@@ -1568,7 +1568,7 @@ export default function QATests() {
     }
   };
 
-  // TEST 15: Atomic Normalize RPC
+  // TEST 15: Atomic Normalize RPC (via edge function only - RPC is service_role only)
   const runAtomicNormalizeRpcTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
     const name = "TEST 15 - Atomic Normalize RPC";
@@ -1588,44 +1588,7 @@ export default function QATests() {
         };
       }
 
-      // First check if the RPC exists
-      const { data: rpcCheck, error: rpcCheckError } = await supabase.rpc("normalize_lead_atomic", {
-        p_tenant_id: tenantId,
-        p_email: `rpc_check_${testNonce}@qatest.local`,
-        p_phone: null,
-        p_company_name: null,
-        p_first_name: "RPC",
-        p_last_name: "Check",
-        p_job_title: null,
-        p_source: "qa_rpc_check",
-      });
-
-      if (rpcCheckError) {
-        return {
-          name,
-          status: "fail",
-          details: { 
-            rpc_error: rpcCheckError.message,
-            hint: "normalize_lead_atomic RPC may not exist or has permission issues"
-          },
-          error: `RPC call failed: ${rpcCheckError.message}`,
-          duration_ms: Date.now() - start,
-        };
-      }
-
-      // Verify RPC returned expected structure
-      const checkResult = rpcCheck as { ok?: boolean; status?: string; fingerprint?: string };
-      if (!checkResult.ok || !checkResult.fingerprint) {
-        return {
-          name,
-          status: "fail",
-          details: { rpc_result: checkResult },
-          error: "RPC did not return expected structure (ok, fingerprint)",
-          duration_ms: Date.now() - start,
-        };
-      }
-
-      // Now test concurrent calls via edge function (which now uses the RPC)
+      // Test concurrent calls via edge function (RPC is service_role only)
       const testEmail = `atomic_${testNonce}@qatest.local`;
       const testPhone = "5559876543";
 
@@ -1665,13 +1628,22 @@ export default function QATests() {
         };
       }
 
+      // Check rpc_used flag
+      const rpc1Used = result1.body.rpc_used === true;
+      const rpc2Used = result2.body.rpc_used === true;
+
       const fingerprint = result1.body.fingerprint || result2.body.fingerprint;
       const fingerprintsMatch = result1.body.fingerprint === result2.body.fingerprint;
+
+      // Verify lead_id stability
+      const leadId1 = result1.body.lead_id;
+      const leadId2 = result2.body.lead_id;
+      const leadIdsStable = leadId1 && leadId2 && leadId1 === leadId2;
 
       // Verify only ONE primary profile exists
       const { data: profiles, error: profileError } = await supabase
         .from("lead_profiles")
-        .select("id, is_primary, fingerprint")
+        .select("id, lead_id, is_primary, fingerprint")
         .eq("tenant_id", tenantId)
         .eq("fingerprint", fingerprint)
         .eq("is_primary", true);
@@ -1687,34 +1659,52 @@ export default function QATests() {
       }
 
       const primaryCount = profiles?.length || 0;
+      const dbLeadId = profiles?.[0]?.lead_id;
       const statuses = [result1.body.status, result2.body.status].sort();
 
-      // One should be created, one should be deduped (or both deduped if very fast)
+      // Acceptable: created/deduped OR deduped/deduped
       const validStatuses =
         (statuses[0] === "created" && statuses[1] === "deduped") ||
         (statuses[0] === "deduped" && statuses[1] === "deduped");
 
-      const passed = primaryCount === 1 && validStatuses && fingerprintsMatch;
+      const passed = 
+        primaryCount === 1 && 
+        validStatuses && 
+        fingerprintsMatch && 
+        leadIdsStable &&
+        rpc1Used && 
+        rpc2Used &&
+        dbLeadId === leadId1;
 
       return {
         name,
         status: passed ? "pass" : "fail",
         details: {
-          rpc_exists: true,
-          rpc_initial_check: { ok: checkResult.ok, status: checkResult.status },
+          rpc_used: { result1: rpc1Used, result2: rpc2Used },
           result1_status: result1.body.status,
           result2_status: result2.body.status,
           fingerprint,
           fingerprints_match: fingerprintsMatch,
+          lead_id_result1: leadId1,
+          lead_id_result2: leadId2,
+          lead_ids_stable: leadIdsStable,
+          db_lead_id: dbLeadId,
+          db_lead_id_matches: dbLeadId === leadId1,
           primary_profiles_found: primaryCount,
           valid_status_combination: validStatuses,
-          profiles: profiles?.map((p) => ({ id: p.id, is_primary: p.is_primary })),
+          profiles: profiles?.map((p) => ({ id: p.id, lead_id: p.lead_id, is_primary: p.is_primary })),
         },
         error: !passed
-          ? primaryCount !== 1
-            ? `Expected 1 primary profile, found ${primaryCount}. Atomic RPC may have race issue.`
+          ? !rpc1Used || !rpc2Used
+            ? "Edge function response missing rpc_used:true"
+            : primaryCount !== 1
+            ? `Expected 1 primary profile, found ${primaryCount}`
             : !fingerprintsMatch
             ? "Fingerprints do not match between concurrent calls"
+            : !leadIdsStable
+            ? `Lead IDs not stable: ${leadId1} vs ${leadId2}`
+            : dbLeadId !== leadId1
+            ? `DB lead_id (${dbLeadId}) doesn't match response (${leadId1})`
             : `Invalid status combination: ${statuses.join(", ")}`
           : undefined,
         duration_ms: Date.now() - start,
