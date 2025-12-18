@@ -5613,6 +5613,30 @@ export type Database = {
           },
         ]
       }
+      lead_normalize_rate_limits: {
+        Row: {
+          created_at: string
+          id: string
+          rate_key: string
+          request_count: number
+          window_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rate_key: string
+          request_count?: number
+          window_start?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rate_key?: string
+          request_count?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
       lead_profiles: {
         Row: {
           company_name: string | null
@@ -9626,6 +9650,14 @@ export type Database = {
         Returns: string
       }
       call_ceo_scheduler: { Args: { p_action: string }; Returns: Json }
+      check_and_increment_rate_limit: {
+        Args: {
+          p_max_requests?: number
+          p_rate_key: string
+          p_window_seconds?: number
+        }
+        Returns: Json
+      }
       check_budget_cap: {
         Args: { p_amount_cents?: number; p_category: string }
         Returns: Json
@@ -9826,6 +9858,13 @@ export type Database = {
         | "owner"
         | "client"
       lead_segment: "b2b" | "b2c" | "unknown"
+      lead_temperature:
+        | "ice_cold"
+        | "cold"
+        | "warm"
+        | "hot"
+        | "booked"
+        | "closed"
       lead_temperature_type:
         | "ice_cold"
         | "cold"
@@ -9971,6 +10010,7 @@ export const Constants = {
         "client",
       ],
       lead_segment: ["b2b", "b2c", "unknown"],
+      lead_temperature: ["ice_cold", "cold", "warm", "hot", "booked", "closed"],
       lead_temperature_type: [
         "ice_cold",
         "cold",
