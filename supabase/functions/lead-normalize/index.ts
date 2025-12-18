@@ -154,13 +154,16 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
 
   if (allowedOrigins.length > 0) {
     // Explicit allowlist configured
-    if (origin && (allowedOrigins.includes(origin) || allowedOrigins.includes("*"))) {
+    if (
+      origin &&
+      (allowedOrigins.includes(origin) || allowedOrigins.includes("*"))
+    ) {
       allowOrigin = origin;
       varyOrigin = true;
     }
     // else: do NOT set allow-origin (blocked)
   } else if (isDev) {
-    // Development with no allowlist: echo origin for consistency
+    // Development with no allowlist: echo origin for consistent behavior
     if (origin) {
       allowOrigin = origin;
       varyOrigin = true;
@@ -168,7 +171,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
       allowOrigin = "*";
     }
   } else {
-    // Production with no allowlist
+    // Production with no allowlist:
     // - If Origin exists: do NOT set allow-origin (blocked)
     // - If Origin missing: do NOT set allow-origin (CORS irrelevant to server-to-server)
     allowOrigin = null;
