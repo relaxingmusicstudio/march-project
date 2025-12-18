@@ -2,6 +2,7 @@
  * Proof Gate - One-click diagnostic orchestrator
  * 
  * Runs sequential checks and produces a canonical Evidence Pack.
+ * Includes FS Reality Check and Contradiction Detector.
  * "This is how we prove what's true."
  */
 
@@ -12,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, XCircle, Loader2, Copy, Download, Play, AlertTriangle, Shield, RotateCcw } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Copy, Download, Play, AlertTriangle, Shield, RotateCcw, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,6 +30,7 @@ import {
   copyEvidencePackToClipboard,
   downloadEvidencePack,
   storeEvidencePack,
+  loadStoredEvidencePack,
   loadIssueCounts,
   saveIssueCounts,
   incrementIssueCounts,
@@ -41,6 +43,15 @@ import { platformTools, getAllPlatformRoutes } from "@/lib/toolRegistry";
 import { getPlatformRouteGuards } from "@/lib/routeGuards";
 import { runRouteNavAudit, AuditContext } from "@/lib/routeNavAudit";
 import { getNavRoutesForRole } from "@/hooks/useRoleNavigation";
+import { 
+  runFSRealityCheck, 
+  loadBuildOutput, 
+  loadClaimLog, 
+  detectClaimContradictions,
+  compareFSResults,
+  loadStoredFSRealityCheck,
+  FSRealityCheckResult,
+} from "@/lib/fsRealityCheck";
 
 type StepStatus = "pending" | "running" | "pass" | "fail" | "skip";
 
@@ -59,6 +70,8 @@ export default function ProofGate() {
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<Step[]>([
     { id: "access_check", name: "Access/Role Check", status: "pending" },
+    { id: "fs_reality_check", name: "FS Reality Check (Existence + Env)", status: "pending" },
+    { id: "contradiction_check", name: "Contradiction Detector", status: "pending" },
     { id: "route_audit", name: "Route & Nav Audit", status: "pending" },
     { id: "db_doctor", name: "DB Doctor (preflight)", status: "pending" },
     { id: "edge_preflight", name: "Edge Preflight", status: "pending" },
@@ -132,7 +145,77 @@ export default function ProofGate() {
       updateStep("access_check", { status: "fail", error: String(err) });
     }
 
-    // === STEP 2: Route & Nav Audit ===
+    // === STEP 2: FS Reality Check ===
+    updateStep("fs_reality_check", { status: "running" });
+    let fsResult: FSRealityCheckResult | null = null;
+    try {
+      fsResult = await runFSRealityCheck();
+      pack.fs_reality_check = fsResult;
+      pack.build_output = { 
+        present: fsResult.build_output_present, 
+        text: loadBuildOutput() || null 
+      };
+      updateStep("fs_reality_check", { 
+        status: fsResult.all_imports_ok ? "pass" : "fail",
+        result: { 
+          imports_ok: fsResult.all_imports_ok, 
+          failed: fsResult.failed_imports 
+        }
+      });
+    } catch (err) {
+      updateStep("fs_reality_check", { status: "fail", error: String(err) });
+    }
+
+    // === STEP 3: Contradiction Detector ===
+    updateStep("contradiction_check", { status: "running" });
+    try {
+      let hasContradiction = false;
+      const contradictionDetails: string[] = [];
+      
+      // Check claim log for contradictions
+      const claimLog = loadClaimLog();
+      if (claimLog && fsResult) {
+        const claimResult = detectClaimContradictions(claimLog, fsResult);
+        if (claimResult.hasContradiction) {
+          hasContradiction = true;
+          contradictionDetails.push(...claimResult.contradictions);
+        }
+      }
+      
+      // Compare with previous FS result
+      const previousFS = loadStoredFSRealityCheck();
+      if (previousFS && fsResult) {
+        const comparison = compareFSResults(previousFS, fsResult);
+        if (comparison.hasContradiction) {
+          hasContradiction = true;
+          contradictionDetails.push(...comparison.details);
+        }
+      }
+      
+      if (hasContradiction) {
+        // Increment contradiction counter
+        const newCounts = { ...issueCounts, proof_contradiction: (issueCounts.proof_contradiction || 0) + 1 };
+        setIssueCounts(newCounts);
+        saveIssueCounts(newCounts);
+        pack.recurring_issue_counts = newCounts;
+        
+        pack.human_actions_required.push({
+          action: "Resolve contradiction - update claim log or re-verify",
+          location: "/platform/ops",
+          value: contradictionDetails.join("; "),
+        });
+        
+        updateStep("contradiction_check", { 
+          status: "fail", 
+          result: { contradictions: contradictionDetails },
+          error: "proof_contradiction"
+        });
+      } else {
+        updateStep("contradiction_check", { status: "pass", result: { clean: true } });
+      }
+    } catch (err) {
+      updateStep("contradiction_check", { status: "skip", error: String(err) });
+    }
     updateStep("route_audit", { status: "running" });
     try {
       // Populate routing snapshots

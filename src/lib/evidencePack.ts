@@ -62,6 +62,9 @@ export interface MiniQAResult {
   errors: string[];
 }
 
+// Import FS Reality Check type
+import type { FSRealityCheckResult } from "./fsRealityCheck";
+
 /**
  * Evidence Pack - Comprehensive diagnostic snapshot
  * Proves what's true at runtime, no guessing.
@@ -86,6 +89,12 @@ export interface EvidencePack {
   
   // ========== AUDIT RESULTS ==========
   route_nav_audit: RouteNavAuditResult | null;
+  
+  // ========== FS REALITY CHECK ==========
+  fs_reality_check: FSRealityCheckResult | null;
+  
+  // ========== BUILD OUTPUT ==========
+  build_output: { present: boolean; text: string | null };
   
   // ========== QA ==========
   qa_access_status: "available" | "denied" | "not_run";
@@ -138,6 +147,12 @@ export function createEmptyEvidencePack(): EvidencePack {
     
     // Audit
     route_nav_audit: null,
+    
+    // FS Reality Check
+    fs_reality_check: null,
+    
+    // Build Output
+    build_output: { present: false, text: null },
     
     // QA
     qa_access_status: "not_run",

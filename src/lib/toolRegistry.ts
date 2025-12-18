@@ -150,6 +150,26 @@ export const platformTools: PlatformTool[] = [
     category: "diagnostics",
     canRunInline: true,
   },
+  {
+    id: "ops-center",
+    name: "Ops Center",
+    description: "Central cockpit for all diagnostics, build proof, and contradiction detection",
+    route: "/platform/ops",
+    icon: Terminal,
+    requires: "authenticated",
+    category: "diagnostics",
+    canRunInline: false,
+  },
+  {
+    id: "vibes-inspector",
+    name: "Vibes Inspector",
+    description: "Detect common vibes errors - contradictions, missing proof, broken assumptions",
+    route: "/platform/vibes",
+    icon: Shield,
+    requires: "authenticated",
+    category: "diagnostics",
+    canRunInline: true,
+  },
 ];
 
 /**
