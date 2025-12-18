@@ -381,3 +381,6 @@ verify_jwt = true
 
 [functions.placeholder-scan]
 verify_jwt = false
+
+[functions.proof-sign]
+verify_jwt = false

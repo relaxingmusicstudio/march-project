@@ -118,7 +118,11 @@ export interface EvidencePack {
   fs_reality_check: FSRealityCheckResult | null;
   
   // ========== BUILD OUTPUT ==========
-  build_output: { present: boolean; text: string | null };
+  build_output: { 
+    present: boolean; 
+    text: string | null;
+    meta?: { timestamp?: string; length?: number };
+  };
   
   // ========== QA ==========
   qa_access_status: "available" | "denied" | "not_run";
@@ -136,6 +140,14 @@ export interface EvidencePack {
   
   // ========== BLOCKERS ==========
   human_actions_required: HumanActionRequired[];
+  
+  // ========== PROOF KERNEL ==========
+  proof_kernel: {
+    proof_token: string | null;
+    signature: string | null;
+    validator: { ok: boolean; errors: string[]; warnings: string[] };
+    run_log: Array<{ step_id: string; ok: boolean; duration_ms: number; error?: string }>;
+  } | null;
   
   // ========== VALIDATION ==========
   validation_result: ValidationResult | null;
@@ -201,6 +213,9 @@ export function createEmptyEvidencePack(): EvidencePack {
     
     // Blockers
     human_actions_required: [],
+    
+    // Proof Kernel
+    proof_kernel: null,
     
     // Validation
     validation_result: null,
