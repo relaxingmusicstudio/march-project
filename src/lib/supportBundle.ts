@@ -1,7 +1,9 @@
 /**
- * Support Bundle - The Loop Killer
- * Canonical JSON object that captures ALL diagnostic evidence
+ * Support Bundle & Evidence Pack - The Loop Killer
+ * Canonical JSON objects that capture ALL diagnostic evidence
  */
+
+import type { RouteNavAuditResult as AuditResult, AuditContext } from "./routeNavAudit";
 
 export interface PreflightReport {
   ok: boolean;
@@ -42,15 +44,54 @@ export interface HumanActionRequired {
 }
 
 export interface RouteNavAuditResult {
-  summary: { critical: number; warning: number; passed: number; total_tools: number };
+  summary: { critical: number; warning: number; passed: number; total_tools?: number; total_checks?: number };
   findings: Array<{
     severity: string;
     issue_code: string;
-    tool_id: string;
+    tool_id?: string;
+    identifier?: string;
     route: string;
     description: string;
   }>;
   counters: Record<string, number>;
+}
+
+/**
+ * Evidence Pack - Comprehensive diagnostic snapshot
+ * Proves what's true at runtime, no guessing.
+ */
+export interface EvidencePack {
+  // Meta
+  timestamp: string;
+  app_version: string;
+  current_route: string;
+  
+  // User context
+  user_id_masked: string;
+  role_flags: {
+    isOwner: boolean;
+    isAdmin: boolean;
+    isClient: boolean;
+    isAuthenticated: boolean;
+  };
+  
+  // Navigation & Routes
+  nav_routes_visible: string[];
+  tool_registry_snapshot: Array<{ id: string; route: string; requires: string }>;
+  route_guard_snapshot: Array<{ path: string; requires: string }>;
+  
+  // Audit Results
+  route_nav_audit: AuditResult | null;
+  
+  // Edge Console
+  latest_edge_console_run: EdgeConsoleRun | null;
+  
+  // QA
+  qa_debug_json: unknown | null;
+  qa_access_status: "available" | "denied" | "not_run";
+  
+  // Issue Counters
+  recurring_issue_counts: Record<string, number>;
 }
 
 export interface SupportBundle {
@@ -128,8 +169,44 @@ export function createEmptyBundle(): SupportBundle {
   };
 }
 
+/**
+ * Create an empty Evidence Pack for runtime population.
+ */
+export function createEmptyEvidencePack(): EvidencePack {
+  return {
+    timestamp: new Date().toISOString(),
+    app_version: "1.0.0",
+    current_route: typeof window !== "undefined" ? window.location.pathname : "",
+    user_id_masked: "",
+    role_flags: {
+      isOwner: false,
+      isAdmin: false,
+      isClient: false,
+      isAuthenticated: false,
+    },
+    nav_routes_visible: [],
+    tool_registry_snapshot: [],
+    route_guard_snapshot: [],
+    route_nav_audit: null,
+    latest_edge_console_run: null,
+    qa_debug_json: null,
+    qa_access_status: "not_run",
+    recurring_issue_counts: {},
+  };
+}
+
 export async function copyBundleToClipboard(bundle: SupportBundle): Promise<{ success: boolean; fallbackText?: string }> {
   const jsonStr = JSON.stringify(bundle, null, 2);
+  try {
+    await navigator.clipboard.writeText(jsonStr);
+    return { success: true };
+  } catch {
+    return { success: false, fallbackText: jsonStr };
+  }
+}
+
+export async function copyEvidencePackToClipboard(pack: EvidencePack): Promise<{ success: boolean; fallbackText?: string }> {
+  const jsonStr = JSON.stringify(pack, null, 2);
   try {
     await navigator.clipboard.writeText(jsonStr);
     return { success: true };
@@ -145,6 +222,19 @@ export function downloadBundle(bundle: SupportBundle): void {
   const a = document.createElement("a");
   a.href = url;
   a.download = `support-bundle-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function downloadEvidencePack(pack: EvidencePack): void {
+  const jsonStr = JSON.stringify(pack, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `evidence-pack-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

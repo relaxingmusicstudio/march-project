@@ -1,33 +1,44 @@
 /**
  * ToolsHub - Central Platform Tools Dashboard
  * Always reachable at /platform/tools
+ * 
+ * Features:
+ * - Evidence Pack runner with localStorage storage
+ * - Find My Page search
+ * - Quick links to key tools
  */
 
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Copy, Download, Wrench, Shield, CheckCircle2, XCircle, 
-  AlertTriangle, Clock, ExternalLink, Play, Info, Search
+  AlertTriangle, ExternalLink, Play, Info, Search, FileJson, Map, Code
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import { PlatformStatusBanner } from "@/components/platform/PlatformStatusBanner";
 import { IssuePanel, BlockerItem } from "@/components/platform/IssuePanel";
 import { platformTools, getToolsForAccessLevel, PlatformTool } from "@/lib/toolRegistry";
+import { ROUTE_GUARDS, getPlatformRouteGuards } from "@/lib/routeGuards";
+import { runRouteNavAudit, AuditContext } from "@/lib/routeNavAudit";
+import { getNavRoutesForRole } from "@/hooks/useRoleNavigation";
 import { 
-  SupportBundle, 
-  createEmptyBundle, 
-  copyBundleToClipboard, 
-  downloadBundle 
+  EvidencePack,
+  createEmptyEvidencePack, 
+  copyEvidencePackToClipboard, 
+  downloadEvidencePack 
 } from "@/lib/supportBundle";
+
+const EVIDENCE_PACK_KEY = "platform_evidence_pack_v1";
+const ISSUE_COUNTS_KEY = "platform_issue_counts_v1";
 
 interface ToolRunResult {
   toolId: string;
@@ -38,31 +49,32 @@ interface ToolRunResult {
 
 export default function ToolsHub() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
-  const { role, isOwner, isAdmin, isLoading } = useUserRole();
+  const { role, isOwner, isAdmin, isClient, isLoading } = useUserRole();
   
   const [toolRuns, setToolRuns] = useState<ToolRunResult[]>([]);
   const [blockers, setBlockers] = useState<BlockerItem[]>([]);
-  const [tenantIds, setTenantIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [evidencePack, setEvidencePack] = useState<EvidencePack | null>(null);
+  const [showEvidenceJson, setShowEvidenceJson] = useState(false);
+  const [isRunningEvidence, setIsRunningEvidence] = useState(false);
+  const [issueCounts, setIssueCounts] = useState<Record<string, number>>({});
   
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "(not set)";
-  const edgeBaseUrl = supabaseUrl !== "(not set)" ? `${supabaseUrl}/functions/v1` : "(not set)";
-  
-  // Fetch tenant IDs on mount
+  // Load stored evidence pack and issue counts on mount
   useEffect(() => {
-    async function fetchTenants() {
-      try {
-        const { data } = await supabase.from("tenants").select("id").limit(5);
-        setTenantIds(data?.map(t => t.id) || []);
-      } catch {}
-    }
-    fetchTenants();
+    try {
+      const storedPack = localStorage.getItem(EVIDENCE_PACK_KEY);
+      if (storedPack) setEvidencePack(JSON.parse(storedPack));
+      
+      const storedCounts = localStorage.getItem(ISSUE_COUNTS_KEY);
+      if (storedCounts) setIssueCounts(JSON.parse(storedCounts));
+    } catch {}
   }, []);
 
   const availableTools = getToolsForAccessLevel(isAdmin ?? false, isOwner ?? false);
   
-  // Filter tools based on search query
+  // Filter tools based on search query - "Find My Page"
   const filteredTools = searchQuery.trim()
     ? availableTools.filter(t => 
         t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -71,54 +83,103 @@ export default function ToolsHub() {
       )
     : availableTools;
 
-  const copyAllContext = () => {
-    const context = {
-      timestamp: new Date().toISOString(),
-      user_id: user?.id?.substring(0, 8) + "...",
-      role,
-      isOwner,
-      isAdmin,
-      supabase_url: supabaseUrl,
-      edge_base_url: edgeBaseUrl,
-      tenant_ids: tenantIds,
-      available_tools: availableTools.map(t => ({ id: t.id, route: t.route })),
-    };
-    navigator.clipboard.writeText(JSON.stringify(context, null, 2));
-    toast.success("Context copied to clipboard");
+  const roleContext: AuditContext = {
+    isAdmin: isAdmin ?? false,
+    isOwner: isOwner ?? false,
+    isClient: isClient ?? false,
+    isAuthenticated: !!user,
   };
 
-  const downloadEvidencePack = async () => {
-    const bundle = createEmptyBundle();
-    bundle.user_id = user?.id || null;
-    bundle.role = role || null;
-    bundle.isOwner = isOwner ?? false;
-    bundle.isAdmin = isAdmin ?? false;
-    bundle.tenant_ids = tenantIds;
+  /**
+   * Run Evidence Pack - captures ALL diagnostic evidence
+   */
+  const runEvidencePack = async () => {
+    setIsRunningEvidence(true);
     
-    // Add tool runs
-    (bundle as any).tool_runs = toolRuns;
-    (bundle as any).ui_version = "1.0.0";
-    (bundle as any).current_route = window.location.pathname;
-    (bundle as any).timestamp_local = new Date().toLocaleString();
+    const pack = createEmptyEvidencePack();
     
-    downloadBundle(bundle);
-    toast.success("Evidence pack downloaded");
-  };
-
-  const getRunResult = (toolId: string): ToolRunResult | undefined => {
-    return toolRuns.find(r => r.toolId === toolId);
+    // Meta
+    pack.timestamp = new Date().toISOString();
+    pack.current_route = location.pathname;
+    
+    // User context
+    pack.user_id_masked = user?.id ? `${user.id.substring(0, 8)}...` : "(unauthenticated)";
+    pack.role_flags = { ...roleContext };
+    
+    // Navigation & Routes
+    pack.nav_routes_visible = getNavRoutesForRole(roleContext);
+    pack.tool_registry_snapshot = platformTools.map(t => ({ 
+      id: t.id, 
+      route: t.route, 
+      requires: t.requires 
+    }));
+    pack.route_guard_snapshot = getPlatformRouteGuards().map(g => ({ 
+      path: g.path, 
+      requires: g.requires 
+    }));
+    
+    // Run Route & Nav Audit
+    try {
+      const auditResult = runRouteNavAudit(roleContext);
+      pack.route_nav_audit = auditResult;
+      
+      // Update issue counts
+      const newCounts = { ...issueCounts };
+      for (const finding of auditResult.findings) {
+        newCounts[finding.issue_code] = (newCounts[finding.issue_code] || 0) + 1;
+      }
+      setIssueCounts(newCounts);
+      localStorage.setItem(ISSUE_COUNTS_KEY, JSON.stringify(newCounts));
+    } catch (err) {
+      console.error("Audit failed:", err);
+    }
+    
+    // Load latest edge console run from localStorage if exists
+    try {
+      const edgeRuns = localStorage.getItem("platform_edge_console_runs");
+      if (edgeRuns) {
+        const runs = JSON.parse(edgeRuns);
+        if (runs.length > 0) {
+          pack.latest_edge_console_run = runs[runs.length - 1];
+        }
+      }
+    } catch {}
+    
+    // QA Debug JSON - try to fetch if accessible
+    pack.qa_access_status = "not_run";
+    
+    // Issue counts
+    pack.recurring_issue_counts = issueCounts;
+    
+    // Store and display
+    setEvidencePack(pack);
+    localStorage.setItem(EVIDENCE_PACK_KEY, JSON.stringify(pack));
+    
+    // Auto-copy
+    const result = await copyEvidencePackToClipboard(pack);
+    if (result.success) {
+      toast.success("Evidence Pack captured and copied!");
+    } else {
+      setShowEvidenceJson(true);
+      toast.info("Evidence Pack captured. Copy from textarea below.");
+    }
+    
+    setIsRunningEvidence(false);
   };
 
   const getCategoryTools = (category: PlatformTool["category"]) => {
     return filteredTools.filter(t => t.category === category && t.id !== "tools-hub");
   };
 
-  const handleToolRerun = (toolId: string) => {
+  const handleToolClick = (toolId: string) => {
     const tool = platformTools.find(t => t.id === toolId);
-    if (tool) {
-      navigate(tool.route);
-    }
+    if (tool) navigate(tool.route);
   };
+
+  // Check for recurring issues
+  const recurringIssues = Object.entries(issueCounts)
+    .filter(([_, count]) => count >= 2)
+    .map(([code]) => code);
 
   if (isLoading) {
     return (
@@ -150,13 +211,19 @@ export default function ToolsHub() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={copyAllContext}>
-                <Copy className="h-4 w-4 mr-2" />
-                Copy Context
-              </Button>
-              <Button variant="outline" size="sm" onClick={downloadEvidencePack}>
-                <Download className="h-4 w-4 mr-2" />
-                Evidence Pack
+              <Button 
+                onClick={runEvidencePack} 
+                disabled={isRunningEvidence}
+                className="bg-primary"
+              >
+                {isRunningEvidence ? (
+                  <span className="animate-pulse">Running...</span>
+                ) : (
+                  <>
+                    <FileJson className="h-4 w-4 mr-2" />
+                    Run Evidence Pack
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -166,7 +233,7 @@ export default function ToolsHub() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Find a tool... (e.g., 'proof', 'route', 'schema')"
+              placeholder="Find a tool... (e.g., 'proof', 'route', 'schema', 'scan')"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -178,8 +245,8 @@ export default function ToolsHub() {
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Access Level:</span>
               {isAdmin && <Badge className="bg-red-500">Admin</Badge>}
-              {isOwner && <Badge className="bg-blue-500">Owner</Badge>}
-              {!isAdmin && !isOwner && <Badge variant="secondary">Standard</Badge>}
+              {isOwner && !isAdmin && <Badge className="bg-blue-500">Owner</Badge>}
+              {!isAdmin && !isOwner && <Badge variant="secondary">Authenticated</Badge>}
             </div>
             <Separator orientation="vertical" className="h-6" />
             <div className="text-sm text-muted-foreground">
@@ -187,23 +254,155 @@ export default function ToolsHub() {
             </div>
             <Separator orientation="vertical" className="h-6" />
             <div className="text-xs text-muted-foreground font-mono">
-              user: {user?.id?.substring(0, 8)}...
+              user: {user?.id?.substring(0, 8) || "(none)"}...
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Blockers Panel */}
-      {blockers.length > 0 && (
-        <IssuePanel 
-          blockers={blockers} 
-          onRerun={handleToolRerun}
-          onMarkComplete={(id, completed) => {
-            if (completed) {
-              setBlockers(prev => prev.filter(b => b.id !== id));
-            }
-          }}
-        />
+      {/* Recurring Issues Banner */}
+      {recurringIssues.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Recurring Issues Detected (2+)</AlertTitle>
+          <AlertDescription>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {recurringIssues.map(code => (
+                <Badge key={code} variant="destructive">
+                  {code} ({issueCounts[code]}x)
+                </Badge>
+              ))}
+            </div>
+            <p className="mt-2 text-sm">
+              Recommended: Create or expand a tool rule to prevent these issues.
+            </p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-2"
+              onClick={() => {
+                setIssueCounts({});
+                localStorage.removeItem(ISSUE_COUNTS_KEY);
+                toast.success("Issue counters reset");
+              }}
+            >
+              Reset Counters
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Evidence Pack Results */}
+      {evidencePack && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileJson className="h-5 w-5" />
+                Evidence Pack
+              </CardTitle>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => copyEvidencePackToClipboard(evidencePack).then(r => {
+                    if (r.success) toast.success("Copied!");
+                    else setShowEvidenceJson(true);
+                  })}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Evidence JSON
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => downloadEvidencePack(evidencePack)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+              </div>
+            </div>
+            <CardDescription>
+              "This is how we prove what's true." Last run: {new Date(evidencePack.timestamp).toLocaleString()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Summary Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-lg font-bold">{evidencePack.nav_routes_visible.length}</div>
+                <div className="text-xs text-muted-foreground">Nav Routes</div>
+              </div>
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-lg font-bold">{evidencePack.tool_registry_snapshot.length}</div>
+                <div className="text-xs text-muted-foreground">Tools</div>
+              </div>
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className="text-lg font-bold">{evidencePack.route_guard_snapshot.length}</div>
+                <div className="text-xs text-muted-foreground">Route Guards</div>
+              </div>
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <div className={`text-lg font-bold ${(evidencePack.route_nav_audit?.summary.critical ?? 0) > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  {evidencePack.route_nav_audit?.summary.critical ?? 0}
+                </div>
+                <div className="text-xs text-muted-foreground">Critical Issues</div>
+              </div>
+            </div>
+            
+            {/* Role Flags */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Badge variant={evidencePack.role_flags.isAuthenticated ? "default" : "secondary"}>
+                {evidencePack.role_flags.isAuthenticated ? "✓" : "✗"} Authenticated
+              </Badge>
+              <Badge variant={evidencePack.role_flags.isOwner ? "default" : "secondary"}>
+                {evidencePack.role_flags.isOwner ? "✓" : "✗"} Owner
+              </Badge>
+              <Badge variant={evidencePack.role_flags.isAdmin ? "default" : "secondary"}>
+                {evidencePack.role_flags.isAdmin ? "✓" : "✗"} Admin
+              </Badge>
+            </div>
+            
+            {/* Audit Findings Summary */}
+            {evidencePack.route_nav_audit && evidencePack.route_nav_audit.findings.length > 0 && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Audit Found {evidencePack.route_nav_audit.findings.length} Issues</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc pl-4 mt-2 text-sm">
+                    {evidencePack.route_nav_audit.findings.slice(0, 3).map((f, i) => (
+                      <li key={i}>{f.issue_code}: {f.description}</li>
+                    ))}
+                    {evidencePack.route_nav_audit.findings.length > 3 && (
+                      <li>...and {evidencePack.route_nav_audit.findings.length - 3} more</li>
+                    )}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {evidencePack.route_nav_audit && evidencePack.route_nav_audit.findings.length === 0 && (
+              <Alert className="mb-4">
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertTitle>All Clear</AlertTitle>
+                <AlertDescription>No routing or navigation issues detected.</AlertDescription>
+              </Alert>
+            )}
+            
+            {/* JSON Textarea (fallback) */}
+            {showEvidenceJson && (
+              <div className="mt-4">
+                <p className="text-sm text-muted-foreground mb-2">Clipboard access denied. Copy from below:</p>
+                <Textarea 
+                  value={JSON.stringify(evidencePack, null, 2)} 
+                  readOnly 
+                  className="font-mono text-xs h-64"
+                  onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Quick Actions */}
@@ -216,8 +415,13 @@ export default function ToolsHub() {
             <Shield className="h-4 w-4" />
             Run Proof Gate
           </Button>
-          <Button variant="outline" onClick={() => navigate("/platform/db-doctor")} className="gap-2">
-            Run DB Doctor
+          <Button variant="outline" onClick={() => navigate("/platform/route-nav-auditor")} className="gap-2">
+            <Map className="h-4 w-4" />
+            Route & Nav Auditor
+          </Button>
+          <Button variant="outline" onClick={() => navigate("/platform/placeholder-scan")} className="gap-2">
+            <Code className="h-4 w-4" />
+            Placeholder Scanner
           </Button>
           <Button variant="outline" onClick={() => navigate("/platform/qa-tests")} className="gap-2">
             Run QA Tests
@@ -239,7 +443,7 @@ export default function ToolsHub() {
               <div className="grid gap-4 md:grid-cols-2">
                 {categoryTools.map((tool) => {
                   const Icon = tool.icon;
-                  const runResult = getRunResult(tool.id);
+                  const runResult = toolRuns.find(r => r.toolId === tool.id);
                   
                   return (
                     <div 
@@ -281,18 +485,6 @@ export default function ToolsHub() {
                           <ExternalLink className="h-3 w-3 mr-1" />
                           Open
                         </Button>
-                        {tool.canRunInline && runResult && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => {
-                              navigator.clipboard.writeText(JSON.stringify(runResult, null, 2));
-                              toast.success("Evidence copied");
-                            }}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        )}
                       </div>
                     </div>
                   );
@@ -306,11 +498,11 @@ export default function ToolsHub() {
       {/* Info Panel */}
       <Alert>
         <Info className="h-4 w-4" />
-        <AlertTitle>About Platform Tools</AlertTitle>
+        <AlertTitle>About Evidence Pack</AlertTitle>
         <AlertDescription className="text-sm">
-          These tools help diagnose issues, configure the platform, and generate evidence for debugging.
-          Tools marked with access requirements need elevated permissions.
-          Use "Evidence Pack" to download a complete diagnostic bundle.
+          The Evidence Pack captures ALL diagnostic evidence at runtime: user context, role flags, 
+          visible navigation routes, tool registry snapshot, route guards, and audit findings.
+          Use "Run Evidence Pack" to prove what's true—no guessing.
         </AlertDescription>
       </Alert>
     </div>

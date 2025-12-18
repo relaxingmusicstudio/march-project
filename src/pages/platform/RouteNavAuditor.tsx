@@ -1,12 +1,8 @@
 /**
- * Route & Nav Auditor - Detects routing and navigation mismatches
+ * Route & Nav Auditor - UI for route and navigation auditing
  * 
- * Uses SHARED sources of truth:
- * - toolRegistry.ts for platform tools and their access requirements
- * - routeConfig.ts for route access policies
- * - useRoleNavigation.ts for nav item visibility
- * 
- * NO HARDCODED LISTS - everything is derived from the registry.
+ * Uses the pure function module routeNavAudit.ts for all checks.
+ * Shows results, recurring issue tracking, and malformed pattern scanning.
  */
 
 import { useState, useEffect } from "react";
@@ -20,93 +16,42 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Copy, AlertTriangle, CheckCircle2, XCircle, 
-  RefreshCw, Map, Navigation, Route as RouteIcon, Info, Code
+  RefreshCw, Map, Navigation, Route as RouteIcon, Code, FileJson
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
+import { platformTools, getVisibleTools } from "@/lib/toolRegistry";
 import { 
-  platformTools, 
-  getVisibleTools, 
-  getAllPlatformRoutes 
-} from "@/lib/toolRegistry";
-import { 
-  getRouteAccessPolicies, 
-  scanRouteSource,
-  RouteAccessPolicy 
-} from "@/lib/routeConfig";
-import { getNavRoutesForRole } from "@/hooks/useRoleNavigation";
+  runRouteNavAudit, 
+  scanSourceForMalformed, 
+  AuditContext, 
+  RouteNavAuditResult,
+  AuditFinding 
+} from "@/lib/routeNavAudit";
 
-// Issue codes for categorization
-type IssueCode = 
-  | "missing_route" 
-  | "nav_missing" 
-  | "tools_hub_missing" 
-  | "role_mismatch" 
-  | "malformed_route";
-
-interface AuditFinding {
-  severity: "critical" | "warning";
-  issue_code: IssueCode;
-  tool_id: string;
-  tool_name: string;
-  route: string;
-  description: string;
-  file_hint: string;
-  suggested_fix: string;
-}
-
-interface AuditResult {
-  timestamp: string;
-  current_path: string;
-  role_context: {
-    isAdmin: boolean;
-    isOwner: boolean;
-    isClient: boolean;
-    isAuthenticated: boolean;
-  };
-  findings: AuditFinding[];
-  summary: {
-    critical: number;
-    warning: number;
-    passed: number;
-    total_tools: number;
-  };
-  checks: {
-    registry_routes: string[];
-    visible_tools: string[];
-    nav_routes: string[];
-    route_policies: RouteAccessPolicy[];
-  };
-  malformed_scan?: {
-    source_provided: boolean;
-    findings: Array<{
-      severity: string;
-      pattern: string;
-      line: number;
-      snippet: string;
-    }>;
-  };
-}
-
-// Local storage key for recurring issue counter
 const ISSUE_COUNTS_KEY = "platform_issue_counts_v1";
 
 export default function RouteNavAuditor() {
   const location = useLocation();
   const { isOwner, isAdmin, isClient, isLoading } = useUserRole();
-  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
+  
+  const [auditResult, setAuditResult] = useState<RouteNavAuditResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [issueCounts, setIssueCounts] = useState<Record<string, number>>({});
   const [recurringIssues, setRecurringIssues] = useState<string[]>([]);
   const [routeSource, setRouteSource] = useState("");
+  const [sourceScanFindings, setSourceScanFindings] = useState<Array<{
+    severity: string;
+    pattern: string;
+    line: number;
+    snippet: string;
+  }>>([]);
 
   // Load issue counts from localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem(ISSUE_COUNTS_KEY);
-      if (stored) {
-        setIssueCounts(JSON.parse(stored));
-      }
+      if (stored) setIssueCounts(JSON.parse(stored));
     } catch {}
   }, []);
 
@@ -118,7 +63,7 @@ export default function RouteNavAuditor() {
     setRecurringIssues(recurring);
   }, [issueCounts]);
 
-  const roleContext = {
+  const roleContext: AuditContext = {
     isAdmin: isAdmin ?? false,
     isOwner: isOwner ?? false,
     isClient: isClient ?? false,
@@ -128,149 +73,46 @@ export default function RouteNavAuditor() {
   const runAudit = () => {
     setIsRunning(true);
     
-    const findings: AuditFinding[] = [];
+    // Run the pure function audit
+    const result = runRouteNavAudit(roleContext);
     
-    // Get data from SHARED sources - no hardcoded lists
-    const registryRoutes = getAllPlatformRoutes();
-    const routePolicies = getRouteAccessPolicies();
-    const visibleTools = getVisibleTools(roleContext);
-    const navRoutes = getNavRoutesForRole(roleContext);
-    
-    // Check each tool in the registry
-    for (const tool of platformTools) {
-      // Skip the tools hub itself for some checks
-      if (tool.id === "tools-hub") continue;
-      
-      // Check 1: Would this tool be visible in ToolsHub for current role?
-      const isVisibleInToolsHub = visibleTools.some(t => t.id === tool.id);
-      const shouldBeVisible = (
-        (tool.requires === "authenticated") ||
-        (tool.requires === "owner" && (roleContext.isOwner || roleContext.isAdmin)) ||
-        (tool.requires === "admin" && roleContext.isAdmin)
-      );
-      
-      if (shouldBeVisible && !isVisibleInToolsHub) {
-        findings.push({
-          severity: "warning",
-          issue_code: "tools_hub_missing",
-          tool_id: tool.id,
-          tool_name: tool.name,
-          route: tool.route,
-          description: `Tool "${tool.name}" should be visible but is not in ToolsHub for current role`,
-          file_hint: "src/lib/toolRegistry.ts",
-          suggested_fix: `Check getVisibleTools() logic or tool.requires value`,
-        });
-      }
-      
-      // Check 2: Is the tool's route in nav for current role? (Platform tools should be under /platform/tools)
-      // Only check if it's a platform route that should be navigable
-      if (tool.route.startsWith("/platform/") && tool.id !== "tools-hub") {
-        // Platform tools are accessed via /platform/tools hub, not directly in nav
-        // But /platform/tools should be in nav for owners
-        const platformToolsInNav = navRoutes.includes("/platform/tools");
-        if (roleContext.isOwner && !platformToolsInNav) {
-          findings.push({
-            severity: "warning",
-            issue_code: "nav_missing",
-            tool_id: "platform-tools-hub",
-            tool_name: "Platform Tools Hub",
-            route: "/platform/tools",
-            description: "Platform Tools hub is not in sidebar nav for owner role",
-            file_hint: "src/hooks/useRoleNavigation.ts",
-            suggested_fix: `Ensure PLATFORM_NAV_ITEM is included in owner nav items`,
-          });
-        }
-      }
-      
-      // Check 3: Role consistency - does tool.requires match what it should be?
-      const policy = routePolicies.find(p => p.route === tool.route);
-      if (policy && policy.requires !== tool.requires) {
-        findings.push({
-          severity: "warning",
-          issue_code: "role_mismatch",
-          tool_id: tool.id,
-          tool_name: tool.name,
-          route: tool.route,
-          description: `Role mismatch: policy says "${policy.requires}" but tool.requires is "${tool.requires}"`,
-          file_hint: "src/lib/toolRegistry.ts",
-          suggested_fix: `Update tool.requires to match the route access policy`,
-        });
-      }
-    }
-    
-    // Check for malformed patterns in provided route source
-    let malformedScan = undefined;
+    // Scan source if provided
+    let sourceFindings: typeof sourceScanFindings = [];
     if (routeSource.trim()) {
-      const malformedFindings = scanRouteSource(routeSource);
-      malformedScan = {
-        source_provided: true,
-        findings: malformedFindings,
-      };
+      sourceFindings = scanSourceForMalformed(routeSource);
+      setSourceScanFindings(sourceFindings);
       
-      for (const mf of malformedFindings) {
-        findings.push({
-          severity: mf.severity,
+      // Add source scan findings to audit result
+      for (const sf of sourceFindings) {
+        result.findings.push({
+          severity: sf.severity as "critical" | "warning",
           issue_code: "malformed_route",
-          tool_id: "source-scan",
-          tool_name: "Route Source",
-          route: `line ${mf.line}`,
-          description: `Malformed pattern "${mf.pattern}" detected: ${mf.snippet}`,
+          source: "scan",
+          identifier: `line-${sf.line}`,
+          route: `line ${sf.line}`,
+          description: `Pattern "${sf.pattern}": ${sf.snippet}`,
           file_hint: "src/App.tsx",
-          suggested_fix: `Fix the malformed JSX at line ${mf.line}`,
+          suggested_fix: `Fix the malformed code at line ${sf.line}`,
         });
       }
-    } else {
-      malformedScan = {
-        source_provided: false,
-        findings: [],
-      };
+      
+      // Recalculate summary
+      result.summary.critical = result.findings.filter(f => f.severity === "critical").length;
+      result.summary.warning = result.findings.filter(f => f.severity === "warning").length;
     }
-    
-    // Deduplicate findings by issue_code + route
-    const seenKeys = new Set<string>();
-    const uniqueFindings = findings.filter(f => {
-      const key = `${f.issue_code}:${f.route}`;
-      if (seenKeys.has(key)) return false;
-      seenKeys.add(key);
-      return true;
-    });
-    
-    // Count findings by severity
-    const critical = uniqueFindings.filter(f => f.severity === "critical").length;
-    const warning = uniqueFindings.filter(f => f.severity === "warning").length;
-    
-    const result: AuditResult = {
-      timestamp: new Date().toISOString(),
-      current_path: location.pathname,
-      role_context: roleContext,
-      findings: uniqueFindings,
-      summary: {
-        critical,
-        warning,
-        passed: platformTools.length - uniqueFindings.length,
-        total_tools: platformTools.length,
-      },
-      checks: {
-        registry_routes: registryRoutes,
-        visible_tools: visibleTools.map(t => t.id),
-        nav_routes: navRoutes,
-        route_policies: routePolicies,
-      },
-      malformed_scan: malformedScan,
-    };
     
     setAuditResult(result);
     
     // Update issue counts in localStorage
     const newCounts = { ...issueCounts };
-    for (const finding of uniqueFindings) {
+    for (const finding of result.findings) {
       newCounts[finding.issue_code] = (newCounts[finding.issue_code] || 0) + 1;
     }
     setIssueCounts(newCounts);
     localStorage.setItem(ISSUE_COUNTS_KEY, JSON.stringify(newCounts));
     
     setIsRunning(false);
-    toast.success(`Audit complete: ${critical} critical, ${warning} warnings`);
+    toast.success(`Audit complete: ${result.summary.critical} critical, ${result.summary.warning} warnings`);
   };
 
   const resetCounters = () => {
@@ -285,6 +127,7 @@ export default function RouteNavAuditor() {
     const output = {
       ...auditResult,
       counters: issueCounts,
+      source_scan: sourceScanFindings.length > 0 ? sourceScanFindings : undefined,
     };
     navigator.clipboard.writeText(JSON.stringify(output, null, 2));
     toast.success("Audit JSON copied to clipboard");
@@ -319,7 +162,7 @@ export default function RouteNavAuditor() {
                 Route & Nav Auditor
               </CardTitle>
               <CardDescription className="mt-1">
-                Real-time audit using shared toolRegistry + routeConfig sources
+                Compares toolRegistry, routeGuards, and nav visibility
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -327,6 +170,12 @@ export default function RouteNavAuditor() {
                 <RefreshCw className={`h-4 w-4 mr-2 ${isRunning ? "animate-spin" : ""}`} />
                 {isRunning ? "Running..." : "Run Audit"}
               </Button>
+              {auditResult && (
+                <Button variant="outline" onClick={copyAuditJSON}>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Audit JSON
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -384,7 +233,7 @@ export default function RouteNavAuditor() {
             Malformed Route Detection
           </CardTitle>
           <CardDescription>
-            Paste App.tsx route source to detect element=null, stray {`} />`}, or TODO markers
+            Paste App.tsx route source to detect element=null, stray {`} />`}, TODO markers
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -406,20 +255,14 @@ export default function RouteNavAuditor() {
           <TabsList>
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="findings">Findings ({auditResult.findings.length})</TabsTrigger>
-            <TabsTrigger value="checks">Checks</TabsTrigger>
+            <TabsTrigger value="snapshots">Snapshots</TabsTrigger>
             <TabsTrigger value="json">Raw JSON</TabsTrigger>
           </TabsList>
           
           <TabsContent value="summary">
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Audit Summary</CardTitle>
-                  <Button variant="outline" size="sm" onClick={copyAuditJSON}>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Audit JSON
-                  </Button>
-                </div>
+                <CardTitle className="text-lg">Audit Summary</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-4 gap-4">
@@ -436,8 +279,8 @@ export default function RouteNavAuditor() {
                     <div className="text-sm text-muted-foreground">Passed</div>
                   </div>
                   <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-2xl font-bold">{auditResult.summary.total_tools}</div>
-                    <div className="text-sm text-muted-foreground">Total Tools</div>
+                    <div className="text-2xl font-bold">{auditResult.summary.total_checks}</div>
+                    <div className="text-sm text-muted-foreground">Total Checks</div>
                   </div>
                 </div>
                 
@@ -461,7 +304,7 @@ export default function RouteNavAuditor() {
                       <TableRow>
                         <TableHead className="w-24">Severity</TableHead>
                         <TableHead className="w-36">Issue Code</TableHead>
-                        <TableHead>Tool / Route</TableHead>
+                        <TableHead>Route / Location</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead className="w-24">Action</TableHead>
                       </TableRow>
@@ -471,36 +314,29 @@ export default function RouteNavAuditor() {
                         <TableRow key={idx}>
                           <TableCell>
                             {finding.severity === "critical" ? (
-                              <Badge variant="destructive" className="gap-1">
-                                <XCircle className="h-3 w-3" />
-                                Critical
-                              </Badge>
+                              <Badge variant="destructive">Critical</Badge>
                             ) : (
-                              <Badge variant="secondary" className="gap-1 bg-yellow-500/20 text-yellow-700">
-                                <AlertTriangle className="h-3 w-3" />
-                                Warning
-                              </Badge>
+                              <Badge variant="secondary">Warning</Badge>
                             )}
                           </TableCell>
                           <TableCell>
-                            <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                              {finding.issue_code}
-                            </code>
+                            <code className="text-xs">{finding.issue_code}</code>
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium">{finding.tool_name}</div>
-                            <code className="text-xs text-muted-foreground">{finding.route}</code>
+                            <div className="text-sm font-medium">{finding.identifier}</div>
+                            <div className="text-xs text-muted-foreground">{finding.route}</div>
                           </TableCell>
-                          <TableCell className="max-w-xs">
-                            <p className="text-sm">{finding.description}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{finding.file_hint}</p>
+                          <TableCell>
+                            <div className="text-sm">{finding.description}</div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              File: {finding.file_hint}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Button 
                               variant="ghost" 
                               size="sm"
                               onClick={() => copySuggestedFix(finding.suggested_fix)}
-                              title={finding.suggested_fix}
                             >
                               <Copy className="h-3 w-3" />
                             </Button>
@@ -510,105 +346,67 @@ export default function RouteNavAuditor() {
                     </TableBody>
                   </Table>
                 ) : (
-                  <p className="text-center text-muted-foreground py-8">No findings</p>
+                  <div className="text-center py-8 text-muted-foreground">
+                    No findings to display.
+                  </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
           
-          <TabsContent value="checks">
-            <div className="grid md:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Registry Routes ({auditResult.checks.registry_routes.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {auditResult.checks.registry_routes.map(route => (
-                      <code key={route} className="block text-xs">{route}</code>
+          <TabsContent value="snapshots">
+            <Card>
+              <CardContent className="pt-6 space-y-6">
+                <div>
+                  <h3 className="font-medium mb-2">Tool Registry ({auditResult.snapshots.tool_registry.length} tools)</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {auditResult.snapshots.tool_registry.map(t => (
+                      <Badge key={t.id} variant="outline" className="text-xs">
+                        {t.id} ({t.requires})
+                      </Badge>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Visible Tools ({auditResult.checks.visible_tools.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {auditResult.checks.visible_tools.map(id => (
-                      <code key={id} className="block text-xs">{id}</code>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">Route Guards ({auditResult.snapshots.route_guards.length} guards)</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {auditResult.snapshots.route_guards.map(g => (
+                      <Badge key={g.path} variant="outline" className="text-xs">
+                        {g.path} ({g.requires})
+                      </Badge>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Nav Routes ({auditResult.checks.nav_routes.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {auditResult.checks.nav_routes.map(route => (
-                      <code key={route} className="block text-xs">{route}</code>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">Visible Nav Routes ({auditResult.snapshots.nav_routes.length})</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {auditResult.snapshots.nav_routes.map(r => (
+                      <Badge key={r} variant="outline" className="text-xs">
+                        {r}
+                      </Badge>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Route Policies</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {auditResult.checks.route_policies.map(policy => (
-                      <div key={policy.route} className="flex items-center gap-2 text-xs">
-                        <Badge variant="outline" className="text-xs">
-                          {policy.requires}
-                        </Badge>
-                        <code>{policy.route}</code>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
           
           <TabsContent value="json">
             <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Raw Audit JSON</CardTitle>
-                  <Button variant="outline" size="sm" onClick={copyAuditJSON}>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-96">
-                  {JSON.stringify({ ...auditResult, counters: issueCounts }, null, 2)}
-                </pre>
+              <CardContent className="pt-6">
+                <Textarea 
+                  value={JSON.stringify({ ...auditResult, counters: issueCounts }, null, 2)} 
+                  readOnly 
+                  className="font-mono text-xs h-96"
+                  onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                />
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       )}
-
-      {/* Info */}
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertTitle>How This Tool Works</AlertTitle>
-        <AlertDescription className="text-sm">
-          <ul className="list-disc list-inside mt-2 space-y-1">
-            <li><strong>No hardcoded lists</strong> - derives everything from toolRegistry.ts</li>
-            <li><strong>Real visibility check</strong> - uses getVisibleTools() for current role</li>
-            <li><strong>Nav route check</strong> - uses getNavRoutesForRole() from useRoleNavigation</li>
-            <li><strong>Malformed detection</strong> - paste route source to scan for issues</li>
-            <li><strong>Recurring counter</strong> - tracks issues across runs in localStorage</li>
-          </ul>
-        </AlertDescription>
-      </Alert>
     </div>
   );
 }
