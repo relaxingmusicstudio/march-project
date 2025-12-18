@@ -9523,12 +9523,7 @@ export type Database = {
         }
         Returns: string
       }
-      call_ceo_scheduler:
-        | { Args: { p_action: string }; Returns: undefined }
-        | {
-            Args: { p_action: string; p_tenant_ids?: string[] }
-            Returns: undefined
-          }
+      call_ceo_scheduler: { Args: { p_action: string }; Returns: Json }
       check_budget_cap: {
         Args: { p_amount_cents?: number; p_category: string }
         Returns: Json

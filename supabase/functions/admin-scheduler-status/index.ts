@@ -47,6 +47,7 @@ interface AuditLog {
 // Map jobname substrings to scheduler action for audit log correlation
 function getActionFromJobname(jobname: string): string | null {
   const lower = jobname.toLowerCase();
+  // Handle both "ceo-scheduler-daily-briefs" and "ceo-daily-briefs" formats
   if (lower.includes("daily") || lower.includes("brief")) return "run_daily_briefs";
   if (lower.includes("cost") || lower.includes("rollup")) return "run_cost_rollup";
   if (lower.includes("outreach")) return "run_outreach_queue";
@@ -126,9 +127,9 @@ serve(async (req) => {
     // Query scheduler jobs via RPC (avoids PostgREST limitation on cron schema)
     const jobs: SchedulerJob[] = [];
     const defaultJobs: SchedulerJob[] = [
-      { jobid: 1, jobname: "ceo-daily-briefs", schedule: "0 6 * * *", active: true, last_run: null, last_status: null },
-      { jobid: 2, jobname: "ceo-cost-rollup", schedule: "0 */6 * * *", active: true, last_run: null, last_status: null },
-      { jobid: 3, jobname: "ceo-outreach-queue", schedule: "*/15 * * * *", active: true, last_run: null, last_status: null },
+      { jobid: 1, jobname: "ceo-scheduler-daily-briefs", schedule: "0 6 * * *", active: true, last_run: null, last_status: null },
+      { jobid: 2, jobname: "ceo-scheduler-cost-rollup", schedule: "0 */6 * * *", active: true, last_run: null, last_status: null },
+      { jobid: 3, jobname: "ceo-scheduler-outreach-queue", schedule: "*/15 * * * *", active: true, last_run: null, last_status: null },
     ];
 
     try {
@@ -160,12 +161,12 @@ serve(async (req) => {
       jobs.push(...defaultJobs);
     }
 
-    // Get recent audit logs for scheduler
+    // Get recent audit logs for scheduler (use 'timestamp' field, not 'created_at')
     const { data: auditLogs, error: auditError } = await serviceClient
       .from("platform_audit_log")
-      .select("id, action_type, entity_id, description, success, created_at, duration_ms")
+      .select("id, action_type, entity_id, description, success, timestamp, duration_ms")
       .eq("entity_type", "scheduler")
-      .order("created_at", { ascending: false })
+      .order("timestamp", { ascending: false })
       .limit(50);
 
     if (auditError) {
@@ -178,7 +179,7 @@ serve(async (req) => {
       entity_id: log.entity_id,
       description: log.description,
       success: log.success,
-      created_at: log.created_at,
+      created_at: log.timestamp, // Map timestamp to created_at for UI consistency
       duration_ms: log.duration_ms,
     }));
 
@@ -187,7 +188,7 @@ serve(async (req) => {
       const matchingAction = getActionFromJobname(job.jobname);
       
       if (matchingAction) {
-        // Find latest audit log for this action
+        // Find latest audit log for this action (entity_id matches action name)
         const latestLog = logs.find(l => l.entity_id === matchingAction);
         if (latestLog) {
           job.last_run = latestLog.created_at;

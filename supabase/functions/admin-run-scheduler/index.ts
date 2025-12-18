@@ -134,6 +134,7 @@ serve(async (req) => {
           response_snapshot: { status: schedulerResponse.status, result: schedulerResult },
           success: schedulerResponse.ok,
           duration_ms: Date.now() - startTime,
+          // Note: platform_audit_log uses 'timestamp' column which has default value
         });
       } catch (logError) {
         console.error("[admin-run-scheduler] Audit log insert failed (non-blocking)", { 
