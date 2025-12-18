@@ -782,69 +782,119 @@ export default function QATests() {
     const name = "Schema Sanity Check - Audit Log Columns";
 
     try {
-      // Check platform_audit_log columns by attempting to select them
-      const columnsToCheck = ["response_snapshot", "user_id", "timestamp", "request_snapshot"];
-      const columnResults: Record<string, boolean> = {};
-
-      for (const col of columnsToCheck) {
-        const { error } = await supabase
-          .from("platform_audit_log")
-          .select(col)
-          .limit(0);
-        
-        columnResults[col] = !error;
-      }
-
-      // Also check lead_profiles table exists
+      // Check lead_profiles table exists first
       const { error: profilesError } = await supabase
         .from("lead_profiles")
         .select("id")
         .limit(0);
 
       const leadProfilesExists = !profilesError;
+      const profilesErrorDetails = profilesError ? {
+        code: profilesError.code,
+        message: profilesError.message,
+        isRlsBlocked: profilesError.code === "42501",
+      } : null;
 
-      // Check normalization functions via RPC
-      const { error: fpError } = await supabase.rpc("compute_lead_fingerprint", {
+      // Check platform_audit_log critical columns
+      const criticalColumns = ["timestamp", "request_snapshot"];
+      const optionalColumns = ["response_snapshot", "user_id"];
+      
+      const columnResults: Record<string, { exists: boolean; rlsBlocked: boolean; error?: string }> = {};
+
+      // Check critical columns
+      for (const col of criticalColumns) {
+        const { error } = await supabase
+          .from("platform_audit_log")
+          .select(col)
+          .limit(0);
+        
+        columnResults[col] = {
+          exists: !error,
+          rlsBlocked: error?.code === "42501",
+          error: error?.message,
+        };
+      }
+
+      // Check optional columns (don't fail if missing or RLS blocked)
+      for (const col of optionalColumns) {
+        const { error } = await supabase
+          .from("platform_audit_log")
+          .select(col)
+          .limit(0);
+        
+        columnResults[col] = {
+          exists: !error,
+          rlsBlocked: error?.code === "42501",
+          error: error?.message,
+        };
+      }
+
+      // Check normalization functions via RPC with correct parameter names
+      const { data: fpResult, error: fpError } = await supabase.rpc("compute_lead_fingerprint", {
         p_email: "test@test.com",
         p_phone: "1234567890",
         p_company_name: "Test",
       });
 
-      const fingerprintRpcWorks = !fpError;
+      const fingerprintRpcWorks = !fpError && typeof fpResult === "string" && fpResult.length === 32;
+      const fpErrorDetails = fpError ? {
+        code: fpError.code,
+        message: fpError.message,
+        hint: fpError.code === "42883" 
+          ? "RPC signature mismatch - check function parameter names (p_email, p_phone, p_company_name)"
+          : undefined,
+      } : null;
 
-      // Critical columns for edge function
-      const hasTimestamp = columnResults["timestamp"];
-      const hasRequestSnapshot = columnResults["request_snapshot"];
+      // Critical checks
+      const hasTimestamp = columnResults["timestamp"]?.exists || columnResults["timestamp"]?.rlsBlocked;
+      const hasRequestSnapshot = columnResults["request_snapshot"]?.exists || columnResults["request_snapshot"]?.rlsBlocked;
       
-      // Optional columns (edge function handles missing gracefully)
-      const hasResponseSnapshot = columnResults["response_snapshot"];
-      const hasUserId = columnResults["user_id"];
+      // Optional columns - warn only, don't fail
+      const hasResponseSnapshot = columnResults["response_snapshot"]?.exists;
+      const hasUserId = columnResults["user_id"]?.exists;
+      const optionalWarnings: string[] = [];
 
-      const passed = hasTimestamp && hasRequestSnapshot && leadProfilesExists && fingerprintRpcWorks;
+      if (!hasResponseSnapshot && !columnResults["response_snapshot"]?.rlsBlocked) {
+        optionalWarnings.push("response_snapshot column missing (edge function will omit it)");
+      }
+      if (!hasUserId && !columnResults["user_id"]?.rlsBlocked) {
+        optionalWarnings.push("user_id column missing (edge function will omit it)");
+      }
+
+      const passed = leadProfilesExists && fingerprintRpcWorks && hasTimestamp && hasRequestSnapshot;
 
       return {
         name,
         status: passed ? "pass" : "fail",
         details: {
-          audit_columns: columnResults,
-          lead_profiles_exists: leadProfilesExists,
-          fingerprint_rpc_works: fingerprintRpcWorks,
-          fingerprint_rpc_error: fpError?.message,
-          critical_columns_present: hasTimestamp && hasRequestSnapshot,
-          optional_columns: {
-            response_snapshot: hasResponseSnapshot,
-            user_id: hasUserId,
+          lead_profiles: {
+            exists: leadProfilesExists,
+            error: profilesErrorDetails,
           },
-          hint: !hasResponseSnapshot || !hasUserId 
-            ? "Optional audit columns missing; edge function will omit them (OK)" 
-            : undefined,
+          fingerprint_rpc: {
+            works: fingerprintRpcWorks,
+            result_sample: fpResult ? `${String(fpResult).substring(0, 8)}...` : null,
+            error: fpErrorDetails,
+          },
+          audit_columns: columnResults,
+          critical_checks: {
+            lead_profiles_exists: leadProfilesExists,
+            fingerprint_rpc_works: fingerprintRpcWorks,
+            timestamp_column: hasTimestamp,
+            request_snapshot_column: hasRequestSnapshot,
+          },
+          optional_warnings: optionalWarnings.length > 0 ? optionalWarnings : undefined,
         },
         error: !passed
           ? !leadProfilesExists 
-            ? "lead_profiles table missing - run Batch 2.1 migration"
+            ? `lead_profiles table missing or inaccessible: ${profilesError?.message}`
             : !fingerprintRpcWorks
-              ? `Fingerprint RPC failed: ${fpError?.message}. Check if pgcrypto is enabled.`
-              : "Required audit columns missing - check platform_audit_log schema"
+              ? `Fingerprint RPC failed: ${fpError?.message}. ${fpError?.code === "42883" ? "Check function signature." : "Check if pgcrypto is enabled."}`
+              : !hasTimestamp
+                ? "timestamp column missing from platform_audit_log"
+                : !hasRequestSnapshot
+                  ? "request_snapshot column missing from platform_audit_log"
+                  : "Unknown schema issue"
           : undefined,
         duration_ms: Date.now() - start,
       };
