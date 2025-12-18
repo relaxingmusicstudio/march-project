@@ -62,6 +62,7 @@ import Access from "./pages/platform/Access";
 import ToolsHub from "./pages/platform/ToolsHub";
 import FeatureFlags from "./pages/platform/FeatureFlags";
 import SchemaSnapshot from "./pages/platform/SchemaSnapshot";
+import PlaceholderScan from "./pages/platform/PlaceholderScan";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -160,6 +161,7 @@ const App = () => (
                   <Route path="/platform/qa-tests" element={<ProtectedRoute><QATests /></ProtectedRoute>} />
                   <Route path="/platform/feature-flags" element={<ProtectedRoute><FeatureFlags /></ProtectedRoute>} />
                   <Route path="/platform/schema-snapshot" element={<ProtectedRoute><SchemaSnapshot /></ProtectedRoute>} />
+                  <Route path="/platform/placeholder-scan" element={<ProtectedRoute><PlaceholderScan /></ProtectedRoute>} />
                   
                   {/* Platform Tools - Owner required */}
                   <Route path="/platform/cloud-wizard" element={<ProtectedRoute requireOwner><CloudWizard /></ProtectedRoute>} />

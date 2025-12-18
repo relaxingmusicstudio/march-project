@@ -3,7 +3,7 @@
  * Adding new tools is as simple as adding to this registry
  */
 
-import { Shield, Database, Terminal, Cloud, UserCheck, TestTube, Building2, Clock, Flag, Table } from "lucide-react";
+import { Shield, Database, Terminal, Cloud, UserCheck, TestTube, Building2, Clock, Flag, Table, Search } from "lucide-react";
 
 export type AccessLevel = "authenticated" | "owner" | "admin";
 
@@ -126,6 +126,16 @@ export const platformTools: PlatformTool[] = [
     description: "Read-only view of table access and RPC availability",
     route: "/platform/schema-snapshot",
     icon: Table,
+    requires: "authenticated",
+    category: "diagnostics",
+    canRunInline: true,
+  },
+  {
+    id: "placeholder-scan",
+    name: "Placeholder Scanner",
+    description: "Detect placeholders, stubs, and false-done patterns in source files",
+    route: "/platform/placeholder-scan",
+    icon: Search,
     requires: "authenticated",
     category: "diagnostics",
     canRunInline: true,

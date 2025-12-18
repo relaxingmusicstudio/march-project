@@ -378,3 +378,6 @@ verify_jwt = false
 
 [functions.admin-scheduler-status]
 verify_jwt = true
+
+[functions.placeholder-scan]
+verify_jwt = false
