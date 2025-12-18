@@ -373,48 +373,57 @@ Phase: ${leadData.conversationPhase}`;
         },
       });
 
-      // Check for rate limit / quota errors in response
-      if (data?.error) {
-        const errorStr = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
-        
-        // Parse error for quota/rate limit info
-        let errorInfo: { code?: string; retryAfter?: number } = {};
+      // Helper to detect quota/rate limit errors
+      const detectQuotaError = (obj: any): { isQuota: boolean; retryAfter: number; code: string } => {
+        if (!obj) return { isQuota: false, retryAfter: 60, code: '' };
+        const str = typeof obj === 'string' ? obj : JSON.stringify(obj);
+        const isQuota = str.includes('QUOTA_EXCEEDED') || str.includes('rate_limit') || str.includes('429');
+        let retryAfter = 60;
+        let code = 'QUOTA_EXCEEDED';
         try {
-          errorInfo = typeof data.error === 'string' ? JSON.parse(data.error) : data.error;
-        } catch {
-          // Not JSON, check for keywords
-        }
+          const parsed = typeof obj === 'string' ? JSON.parse(obj) : obj;
+          if (parsed?.retryAfter) retryAfter = parsed.retryAfter;
+          if (parsed?.code) code = parsed.code;
+        } catch { /* ignore */ }
+        return { isQuota, retryAfter, code };
+      };
 
-        const isQuotaError = errorStr.includes('QUOTA_EXCEEDED') || 
-                            errorStr.includes('rate_limit') || 
-                            errorStr.includes('429');
+      // Check for rate limit in data.error (200 response with error field)
+      const dataQuota = detectQuotaError(data?.error);
+      
+      // Check for rate limit in invoke error (500 response)
+      const errorQuota = detectQuotaError(error?.message || error?.context?.body || error);
+
+      if (dataQuota.isQuota || errorQuota.isQuota) {
+        const retryAfter = dataQuota.isQuota ? dataQuota.retryAfter : errorQuota.retryAfter;
+        const code = dataQuota.isQuota ? dataQuota.code : errorQuota.code;
         
-        if (isQuotaError) {
-          const retryAfter = errorInfo.retryAfter || 60;
-          setRateLimitState({
-            isRateLimited: true,
-            retryAfterSeconds: retryAfter,
-            countdownSeconds: retryAfter,
-            lastErrorCode: errorInfo.code || 'QUOTA_EXCEEDED',
-            lastHttpStatus: 429,
-            timestamp: Date.now(),
-            networkRetries: 0,
-          });
-          
-          toast({
-            title: "Rate limit reached",
-            description: `Too many requests. Please wait ${retryAfter} seconds.`,
-            variant: "destructive",
-          });
-          
-          // Return the fallback response from the server if available
-          if (data.text) {
-            return data as AIResponse;
-          }
-          return null;
+        console.log(`[Chatbot] Rate limit detected: code=${code}, retryAfter=${retryAfter}s`);
+        
+        setRateLimitState({
+          isRateLimited: true,
+          retryAfterSeconds: retryAfter,
+          countdownSeconds: retryAfter,
+          lastErrorCode: code,
+          lastHttpStatus: 429,
+          timestamp: Date.now(),
+          networkRetries: 0,
+        });
+        
+        toast({
+          title: "Rate limit reached",
+          description: `Too many requests. Please wait ${retryAfter} seconds.`,
+          variant: "destructive",
+        });
+        
+        // Return the fallback response from the server if available
+        if (data?.text) {
+          return data as AIResponse;
         }
+        return null;
       }
 
+      // Non-quota error from invoke
       if (error) {
         throw error;
       }
