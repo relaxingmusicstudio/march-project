@@ -913,7 +913,14 @@ export default function QATests() {
           ? undefined 
           : `MISSING: Index '${expectedIndexName}' not found. Run migration to create it.`;
 
-      const passed = leadProfilesExists && fingerprintRpcWorks && hasTimestamp && hasRequestSnapshot;
+      // Add warning to optionalWarnings for display
+      if (indexWarning) {
+        optionalWarnings.push(indexWarning);
+      }
+
+      // If pg_indexes is visible (not RLS blocked) and index is missing, that's a real correctness failure
+      const indexCheckPassed = indexRlsBlocked || hasUniqueIndex;
+      const passed = leadProfilesExists && fingerprintRpcWorks && hasTimestamp && hasRequestSnapshot && indexCheckPassed;
 
       return {
         name,
@@ -953,7 +960,9 @@ export default function QATests() {
                 ? "timestamp column missing from platform_audit_log"
                 : !hasRequestSnapshot
                   ? "request_snapshot column missing from platform_audit_log"
-                  : "Unknown schema issue"
+                  : !indexCheckPassed
+                    ? `Unique partial index '${expectedIndexName}' missing. Run migration to create it.`
+                    : "Unknown schema issue"
           : undefined,
         duration_ms: Date.now() - start,
       };
