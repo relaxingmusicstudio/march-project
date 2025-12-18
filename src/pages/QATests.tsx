@@ -99,13 +99,16 @@ export default function QATests() {
     // TEST 5: Scheduler outreach queue query
     tests.push(await runOutreachQueueTest(tenantIdA));
 
-    // TEST 6: Cron auth rejection (no secret)
+    // TEST 6: Scheduler Health Check (should work without auth)
+    tests.push(await runSchedulerHealthTest());
+
+    // TEST 7: Cron auth rejection (no secret)
     tests.push(await runCronAuthTest());
 
-    // TEST 7: Webhook POST (real)
+    // TEST 8: Webhook POST (real)
     tests.push(await runWebhookInsertionTest(tenantIdA));
 
-    // TEST 8: Admin Scheduler Trigger (real)
+    // TEST 9: Admin Scheduler Trigger (real)
     tests.push(await runAdminSchedulerTest(tenantIdA));
 
     const output: TestOutput = {
@@ -396,9 +399,43 @@ export default function QATests() {
     }
   };
 
+  const runSchedulerHealthTest = async (): Promise<TestResult> => {
+    const start = Date.now();
+    const name = "TEST 6 - Scheduler Health Check";
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ceo-scheduler`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "health" }),
+      });
+      
+      const responseBody = await response.json().catch(() => ({}));
+      const passed = response.ok && (responseBody.status === "ok" || responseBody.ok === true);
+      
+      return {
+        name,
+        status: passed ? "pass" : "fail",
+        details: { 
+          response_status: response.status,
+          body: responseBody,
+        },
+        error: passed ? undefined : `Health check failed: status=${response.status}`,
+        duration_ms: Date.now() - start,
+      };
+    } catch (err) {
+      return { 
+        name, 
+        status: "error", 
+        details: { hint: "Check if ceo-scheduler edge function is deployed" }, 
+        error: err instanceof Error ? err.message : String(err), 
+        duration_ms: Date.now() - start 
+      };
+    }
+  };
+
   const runCronAuthTest = async (): Promise<TestResult> => {
     const start = Date.now();
-    const name = "TEST 6 - Cron Auth Rejection (No Secret)";
+    const name = "TEST 7 - Cron Auth Rejection (No Secret)";
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ceo-scheduler`, {
         method: "POST",
@@ -406,7 +443,16 @@ export default function QATests() {
         body: JSON.stringify({ action: "check_job_status" }),
       });
       const passed = response.status === 401 || response.status === 403;
-      return { name, status: passed ? "pass" : "fail", details: { response_status: response.status }, error: passed ? undefined : `Expected 401/403`, duration_ms: Date.now() - start };
+      return { 
+        name, 
+        status: passed ? "pass" : "fail", 
+        details: { 
+          response_status: response.status,
+          hint: passed ? "Privileged actions correctly require auth" : "Check INTERNAL_SCHEDULER_SECRET config"
+        }, 
+        error: passed ? undefined : `Expected 401/403, got ${response.status}`, 
+        duration_ms: Date.now() - start 
+      };
     } catch (err) {
       return { name, status: "error", details: {}, error: err instanceof Error ? err.message : String(err), duration_ms: Date.now() - start };
     }
@@ -414,7 +460,7 @@ export default function QATests() {
 
   const runWebhookInsertionTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
-    const name = "TEST 7 - Webhook POST (Real)";
+    const name = "TEST 8 - Webhook POST (Real)";
     const qa_nonce = `qa_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
     
     try {
@@ -490,7 +536,7 @@ export default function QATests() {
 
   const runAdminSchedulerTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
-    const name = "TEST 8 - Admin Scheduler Trigger (Real)";
+    const name = "TEST 9 - Admin Scheduler Trigger (Real)";
     
     try {
       const { data: sessionData } = await supabase.auth.getSession();

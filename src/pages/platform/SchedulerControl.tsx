@@ -44,9 +44,11 @@ export default function SchedulerControl() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [secretConfigured, setSecretConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [runningAction, setRunningAction] = useState<string | null>(null);
   const [healthStatus, setHealthStatus] = useState<"unknown" | "healthy" | "error">("unknown");
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     if (isAdmin) {
@@ -54,8 +56,12 @@ export default function SchedulerControl() {
     }
   }, [isAdmin]);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     
     try {
@@ -96,11 +102,13 @@ export default function SchedulerControl() {
       setSecretConfigured(data.secret_configured);
       setJobs(data.jobs || []);
       setAuditLogs(data.audit_logs || []);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error("Failed to load scheduler data", err);
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -167,7 +175,7 @@ export default function SchedulerControl() {
 
       if (response.ok) {
         toast.success(`${action} triggered successfully`);
-        setTimeout(loadData, 1000);
+        setTimeout(() => loadData(true), 1000);
       } else {
         toast.error(result.error || "Action failed");
       }
@@ -243,10 +251,15 @@ export default function SchedulerControl() {
           <p className="text-muted-foreground mt-1">
             Monitor and control automated scheduler jobs
           </p>
+          {lastUpdated && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Last updated: {lastUpdated.toLocaleTimeString()}
+            </p>
+          )}
         </div>
-        <Button variant="outline" onClick={loadData} disabled={loading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
+        <Button variant="outline" onClick={() => loadData(true)} disabled={loading || refreshing}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
 

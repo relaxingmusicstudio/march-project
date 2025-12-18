@@ -114,24 +114,35 @@ serve(async (req) => {
 
     const schedulerResult = await schedulerResponse.json();
 
-    // Log to platform_audit_log
-    const serviceClient = createClient(
-      supabaseUrl,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
-      { auth: { persistSession: false } },
-    );
+    // Log to platform_audit_log (safely - don't let logging failure block response)
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (serviceRoleKey) {
+      try {
+        const serviceClient = createClient(
+          supabaseUrl,
+          serviceRoleKey,
+          { auth: { persistSession: false } },
+        );
 
-    await serviceClient.from("platform_audit_log").insert({
-      user_id: user.id,
-      action_type: "admin_scheduler_trigger",
-      entity_type: "scheduler",
-      entity_id: action,
-      description: `Admin triggered scheduler action: ${action}`,
-      request_snapshot: { action, tenant_ids },
-      response_snapshot: { status: schedulerResponse.status, result: schedulerResult },
-      success: schedulerResponse.ok,
-      duration_ms: Date.now() - startTime,
-    });
+        await serviceClient.from("platform_audit_log").insert({
+          user_id: user.id,
+          action_type: "admin_scheduler_trigger",
+          entity_type: "scheduler",
+          entity_id: action,
+          description: `Admin triggered scheduler action: ${action}`,
+          request_snapshot: { action, tenant_ids },
+          response_snapshot: { status: schedulerResponse.status, result: schedulerResult },
+          success: schedulerResponse.ok,
+          duration_ms: Date.now() - startTime,
+        });
+      } catch (logError) {
+        console.error("[admin-run-scheduler] Audit log insert failed (non-blocking)", { 
+          error: logError instanceof Error ? logError.message : String(logError) 
+        });
+      }
+    } else {
+      console.warn("[admin-run-scheduler] SERVICE_ROLE_KEY not set, skipping audit log");
+    }
 
     if (!schedulerResponse.ok) {
       console.error("[admin-run-scheduler] Scheduler call failed", { 
