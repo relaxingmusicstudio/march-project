@@ -138,66 +138,18 @@ function validateInput(body: NormalizeRequest, rawBody: string): ValidationResul
 }
 
 // ==================== CORS HANDLING ====================
-function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOriginsStr = Deno.env.get("ALLOWED_ORIGINS") || "";
-  const allowedOrigins = allowedOriginsStr
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
+// Simple permissive CORS headers - always allow cross-origin requests
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret, x-request-timestamp, x-request-nonce",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
+};
 
-  const isDev =
-    Deno.env.get("DENO_ENV") === "development" ||
-    Deno.env.get("NODE_ENV") === "development";
-
-  let allowOrigin: string | null = null;
-  let varyOrigin = false;
-
-  if (allowedOrigins.length > 0) {
-    // Explicit allowlist configured
-    if (
-      origin &&
-      (allowedOrigins.includes(origin) || allowedOrigins.includes("*"))
-    ) {
-      allowOrigin = origin;
-      varyOrigin = true;
-    }
-    // else: do NOT set allow-origin (blocked)
-  } else if (isDev) {
-    // Development with no allowlist: echo origin for consistent behavior
-    if (origin) {
-      allowOrigin = origin;
-      varyOrigin = true;
-    } else {
-      allowOrigin = "*";
-    }
-  } else {
-    // Production with no allowlist:
-    // - If Origin exists: do NOT set allow-origin (blocked)
-    // - If Origin missing: do NOT set allow-origin (CORS irrelevant to server-to-server)
-    allowOrigin = null;
-  }
-
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type, x-internal-secret, x-request-timestamp, x-request-nonce",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-
-  if (allowOrigin) {
-    headers["Access-Control-Allow-Origin"] = allowOrigin;
-  }
-
-  if (varyOrigin) {
-    headers["Vary"] = "Origin";
-  }
-
-  return headers;
-}
-
-function jsonResponse(data: unknown, status: number, corsHeaders: Record<string, string>): Response {
+function jsonResponse(data: unknown, status: number, headers: Record<string, string>): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...headers, "Content-Type": "application/json" },
   });
 }
 
@@ -339,11 +291,9 @@ function safeLog(message: string, data: Record<string, unknown>): void {
 
 // ==================== MAIN HANDLER ====================
 serve(async (req: Request): Promise<Response> => {
-  const origin = req.headers.get("Origin");
-  const corsHeaders = getCorsHeaders(origin);
-  
+  // Handle CORS preflight immediately
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
   const startTime = Date.now();
