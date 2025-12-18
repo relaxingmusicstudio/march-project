@@ -1569,6 +1569,46 @@ export default function QATests() {
   };
 
   // TEST 15: Atomic Normalize RPC (via edge function only - RPC is service_role only)
+  // Contract validation helpers (no external deps)
+  const isString = (v: unknown): v is string => typeof v === "string";
+  const isNumber = (v: unknown): v is number => typeof v === "number" && !isNaN(v);
+  const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+  const isUuidLike = (v: unknown): boolean => 
+    isString(v) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const isObject = (v: unknown): v is Record<string, unknown> => 
+    typeof v === "object" && v !== null && !Array.isArray(v);
+
+  interface ContractValidation {
+    valid: boolean;
+    missing: string[];
+    typeErrors: string[];
+  }
+
+  const validateSuccessContract = (body: Record<string, unknown>): ContractValidation => {
+    const missing: string[] = [];
+    const typeErrors: string[] = [];
+
+    // Required keys
+    const requiredKeys = ["ok", "rpc_used", "tenant_id", "status", "fingerprint", "lead_id", "lead_profile_id", "segment", "normalized", "duration_ms"];
+    for (const key of requiredKeys) {
+      if (!(key in body)) missing.push(key);
+    }
+
+    // Type checks (only if key exists)
+    if ("ok" in body && body.ok !== true) typeErrors.push("ok must be true");
+    if ("rpc_used" in body && body.rpc_used !== true) typeErrors.push("rpc_used must be true");
+    if ("tenant_id" in body && !isString(body.tenant_id)) typeErrors.push("tenant_id must be string");
+    if ("status" in body && !["created", "deduped"].includes(body.status as string)) typeErrors.push("status must be created|deduped");
+    if ("fingerprint" in body && !isString(body.fingerprint)) typeErrors.push("fingerprint must be string");
+    if ("lead_id" in body && !isUuidLike(body.lead_id)) typeErrors.push("lead_id must be UUID");
+    if ("lead_profile_id" in body && !isUuidLike(body.lead_profile_id)) typeErrors.push("lead_profile_id must be UUID");
+    if ("segment" in body && !isString(body.segment)) typeErrors.push("segment must be string");
+    if ("normalized" in body && !isObject(body.normalized)) typeErrors.push("normalized must be object");
+    if ("duration_ms" in body && !isNumber(body.duration_ms)) typeErrors.push("duration_ms must be number");
+
+    return { valid: missing.length === 0 && typeErrors.length === 0, missing, typeErrors };
+  };
+
   const runAtomicNormalizeRpcTest = async (tenantId: string): Promise<TestResult> => {
     const start = Date.now();
     const name = "TEST 15 - Atomic Normalize RPC";
@@ -1628,7 +1668,30 @@ export default function QATests() {
         };
       }
 
-      // Check rpc_used flag
+      // CONTRACT VALIDATION: Both responses must match full success contract
+      const contract1 = validateSuccessContract(result1.body);
+      const contract2 = validateSuccessContract(result2.body);
+
+      if (!contract1.valid || !contract2.valid) {
+        return {
+          name,
+          status: "fail",
+          details: { 
+            contract1_valid: contract1.valid,
+            contract1_missing: contract1.missing,
+            contract1_typeErrors: contract1.typeErrors,
+            contract2_valid: contract2.valid,
+            contract2_missing: contract2.missing,
+            contract2_typeErrors: contract2.typeErrors,
+            result1_body: result1.body,
+            result2_body: result2.body,
+          },
+          error: `Contract validation failed: ${[...contract1.missing, ...contract1.typeErrors, ...contract2.missing, ...contract2.typeErrors].join(", ")}`,
+          duration_ms: Date.now() - start,
+        };
+      }
+
+      // Check rpc_used flag (now guaranteed by contract validation)
       const rpc1Used = result1.body.rpc_used === true;
       const rpc2Used = result2.body.rpc_used === true;
 
@@ -1639,6 +1702,11 @@ export default function QATests() {
       const leadId1 = result1.body.lead_id;
       const leadId2 = result2.body.lead_id;
       const leadIdsStable = leadId1 && leadId2 && leadId1 === leadId2;
+
+      // Verify lead_profile_id exists
+      const profileId1 = result1.body.lead_profile_id;
+      const profileId2 = result2.body.lead_profile_id;
+      const profileIdsStable = profileId1 && profileId2 && profileId1 === profileId2;
 
       // Verify only ONE primary profile exists (RLS-tolerant)
       const { data: profiles, error: profileError } = await supabase
@@ -1669,6 +1737,7 @@ export default function QATests() {
         validStatuses && 
         fingerprintsMatch && 
         leadIdsStable &&
+        profileIdsStable &&
         rpc1Used && 
         rpc2Used &&
         leadId1 != null;
@@ -1683,7 +1752,9 @@ export default function QATests() {
         name,
         status: passed ? "pass" : "fail",
         details: {
+          contract_valid: { result1: contract1.valid, result2: contract2.valid },
           rpc_used: { result1: rpc1Used, result2: rpc2Used },
+          duration_ms: { result1: result1.body.duration_ms, result2: result2.body.duration_ms },
           result1_status: result1.body.status,
           result2_status: result2.body.status,
           fingerprint,
@@ -1691,6 +1762,9 @@ export default function QATests() {
           lead_id_result1: leadId1,
           lead_id_result2: leadId2,
           lead_ids_stable: leadIdsStable,
+          lead_profile_id_result1: profileId1,
+          lead_profile_id_result2: profileId2,
+          profile_ids_stable: profileIdsStable,
           db_check: dbCheckStatus,
           db_lead_id: dbLeadId,
           db_lead_id_matches: dbCheckBlocked ? "unknown" : dbLeadId === leadId1,
@@ -1701,6 +1775,8 @@ export default function QATests() {
         error: !passed
           ? !rpc1Used || !rpc2Used
             ? "Edge function response missing rpc_used:true"
+            : !profileIdsStable
+            ? `Lead profile IDs not stable: ${profileId1} vs ${profileId2}`
             : !fingerprintsMatch
             ? "Fingerprints do not match between concurrent calls"
             : !leadIdsStable

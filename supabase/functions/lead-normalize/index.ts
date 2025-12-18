@@ -201,6 +201,64 @@ function jsonResponse(data: unknown, status: number, corsHeaders: Record<string,
   });
 }
 
+// ==================== RESPONSE CONTRACT HELPERS ====================
+// These ensure every response includes rpc_used + duration_ms for stable contract
+
+interface ErrorResponseParams {
+  error: string;
+  error_code?: string;
+  tenant_id?: string | null;
+  fingerprint?: string;
+}
+
+function makeErrorResponse(
+  params: ErrorResponseParams,
+  status: number,
+  corsHeaders: Record<string, string>,
+  startTime: number
+): Response {
+  const response = {
+    ok: false,
+    rpc_used: true,
+    tenant_id: params.tenant_id ?? null,
+    error: params.error,
+    ...(params.error_code && { error_code: params.error_code }),
+    ...(params.fingerprint && { fingerprint: params.fingerprint.substring(0, 6) }),
+    duration_ms: Date.now() - startTime,
+  };
+  return jsonResponse(response, status, corsHeaders);
+}
+
+interface SuccessResponseParams {
+  status: "created" | "deduped";
+  tenant_id: string;
+  lead_id: string;
+  lead_profile_id: string;
+  fingerprint: string;
+  segment: string;
+  normalized: { email: string | null; phone: string | null };
+}
+
+function makeSuccessResponse(
+  params: SuccessResponseParams,
+  corsHeaders: Record<string, string>,
+  startTime: number
+): Response {
+  const response = {
+    ok: true,
+    rpc_used: true,
+    tenant_id: params.tenant_id,
+    status: params.status,
+    fingerprint: params.fingerprint,
+    lead_id: params.lead_id,
+    lead_profile_id: params.lead_profile_id,
+    segment: params.segment,
+    normalized: params.normalized,
+    duration_ms: Date.now() - startTime,
+  };
+  return jsonResponse(response, 200, corsHeaders);
+}
+
 // ==================== AUDIT HELPERS ====================
 let auditColumnsCache: AuditColumns | null = null;
 
@@ -298,7 +356,7 @@ serve(async (req: Request): Promise<Response> => {
 
     if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
       console.error("[lead-normalize] Missing Supabase config");
-      return jsonResponse({ error: "Server configuration error" }, 500, corsHeaders);
+      return makeErrorResponse({ error: "server_config_error" }, 500, corsHeaders, startTime);
     }
 
     // ==================== AUTH ====================
@@ -326,7 +384,7 @@ serve(async (req: Request): Promise<Response> => {
         
         if (isNaN(ts) || Math.abs(now - ts) > fiveMinutes) {
           safeLog("Rejected: timestamp outside window", { ts, now, diff: Math.abs(now - ts) });
-          return jsonResponse({ error: "Request timestamp expired or invalid" }, 400, corsHeaders);
+          return makeErrorResponse({ error: "timestamp_expired" }, 400, corsHeaders, startTime);
         }
       }
       
@@ -343,7 +401,7 @@ serve(async (req: Request): Promise<Response> => {
         
         if (nonceError && nonceError.code === "23505") {
           safeLog("Rejected: nonce replay detected", { nonce: requestNonce.substring(0, 8) });
-          return jsonResponse({ error: "Replay detected" }, 409, corsHeaders);
+          return makeErrorResponse({ error: "replay_detected" }, 409, corsHeaders, startTime);
         }
       }
       
@@ -367,7 +425,7 @@ serve(async (req: Request): Promise<Response> => {
       
       if (authError || !user) {
         safeLog("JWT auth failed", { error: authError?.message });
-        return jsonResponse({ error: "Unauthorized", details: authError?.message }, 401, corsHeaders);
+        return makeErrorResponse({ error: "unauthorized" }, 401, corsHeaders, startTime);
       }
 
       // Check roles
@@ -378,14 +436,14 @@ serve(async (req: Request): Promise<Response> => {
 
       if (rolesError) {
         safeLog("Role lookup failed", { error: rolesError.message });
-        return jsonResponse({ error: "Failed to verify permissions" }, 500, corsHeaders);
+        return makeErrorResponse({ error: "permission_check_failed" }, 500, corsHeaders, startTime);
       }
 
       const allowedRoles = ["admin", "owner", "platform_admin"];
       const hasRole = roles?.some((r: { role: string }) => allowedRoles.includes(r.role));
       if (!hasRole) {
         safeLog("Insufficient role", { user_id: user.id });
-        return jsonResponse({ error: "Insufficient permissions", required: allowedRoles }, 403, corsHeaders);
+        return makeErrorResponse({ error: "insufficient_permissions" }, 403, corsHeaders, startTime);
       }
 
       isAuthorized = true;
@@ -396,13 +454,13 @@ serve(async (req: Request): Promise<Response> => {
 
     if (!isAuthorized) {
       rateLimitKey = clientIp;
-      return jsonResponse({ error: "Unauthorized", hint: "Provide Bearer token or X-Internal-Secret" }, 401, corsHeaders);
+      return makeErrorResponse({ error: "unauthorized" }, 401, corsHeaders, startTime);
     }
 
     // ==================== RATE LIMITING ====================
     if (!checkRateLimit(rateLimitKey)) {
       safeLog("Rate limited", { key: rateLimitKey.substring(0, 8) });
-      return jsonResponse({ error: "Rate limited" }, 429, corsHeaders);
+      return makeErrorResponse({ error: "rate_limited" }, 429, corsHeaders, startTime);
     }
 
     // ==================== PARSE & VALIDATE INPUT ====================
@@ -412,12 +470,12 @@ serve(async (req: Request): Promise<Response> => {
     try {
       body = JSON.parse(rawBody);
     } catch {
-      return jsonResponse({ error: "Invalid JSON body" }, 400, corsHeaders);
+      return makeErrorResponse({ error: "invalid_json" }, 400, corsHeaders, startTime);
     }
     
     const validation = validateInput(body, rawBody);
     if (!validation.valid) {
-      return jsonResponse({ error: validation.error }, 400, corsHeaders);
+      return makeErrorResponse({ error: "bad_request", error_code: validation.error }, 400, corsHeaders, startTime);
     }
 
     const { lead } = body;
@@ -438,7 +496,7 @@ serve(async (req: Request): Promise<Response> => {
 
     if (tenantError || !tenant) {
       safeLog("Invalid tenant", { tenant_id: body.tenant_id });
-      return jsonResponse({ error: "Invalid tenant_id" }, 400, corsHeaders);
+      return makeErrorResponse({ error: "invalid_tenant", tenant_id: body.tenant_id }, 400, corsHeaders, startTime);
     }
 
     // Call atomic normalize RPC (handles dedupe + create in one transaction)
@@ -455,7 +513,7 @@ serve(async (req: Request): Promise<Response> => {
 
     if (rpcError) {
       safeLog("Atomic normalize RPC failed", { error: rpcError.message, code: rpcError.code });
-      return jsonResponse({ error: "Normalization failed", details: rpcError.message }, 500, corsHeaders);
+      return makeErrorResponse({ error: "normalize_failed", error_code: rpcError.code, tenant_id: body.tenant_id }, 500, corsHeaders, startTime);
     }
 
     // Type the RPC result
@@ -476,10 +534,12 @@ serve(async (req: Request): Promise<Response> => {
         error: result.error, 
         fingerprint_prefix: result.fingerprint?.substring(0, 6) 
       });
-      return jsonResponse({ 
-        error: result.error || "Normalization failed", 
-        code: result.error_code 
-      }, 500, corsHeaders);
+      return makeErrorResponse({ 
+        error: result.error || "normalize_failed", 
+        error_code: result.error_code,
+        tenant_id: body.tenant_id,
+        fingerprint: result.fingerprint
+      }, 500, corsHeaders, startTime);
     }
 
     const { status, lead_id: leadId, lead_profile_id: leadProfileId, fingerprint, segment, normalized } = result;
@@ -499,33 +559,27 @@ serve(async (req: Request): Promise<Response> => {
       user_id: isSystemCall ? null : userId,
     }, auditColumns);
 
-    const durationMs = Date.now() - startTime;
     safeLog("Success", {
       status,
       tenant_id: body.tenant_id,
       fingerprint_prefix: fingerprint?.substring(0, 6),
       segment,
-      duration_ms: durationMs,
+      duration_ms: Date.now() - startTime,
     });
 
-    const response: NormalizeResponse & { rpc_used: boolean } = {
-      ok: true,
+    return makeSuccessResponse({
       status: status!,
       tenant_id: body.tenant_id,
       lead_id: leadId!,
       lead_profile_id: leadProfileId!,
       fingerprint: fingerprint!,
-      segment: segment as "b2b" | "b2c" | "unknown",
+      segment: segment as string,
       normalized: normalized || { email: null, phone: null },
-      duration_ms: durationMs,
-      rpc_used: true,
-    };
-
-    return jsonResponse(response, 200, corsHeaders);
+    }, corsHeaders, startTime);
 
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error("[lead-normalize] Unhandled error:", errorMsg);
-    return jsonResponse({ error: "Internal server error" }, 500, getCorsHeaders(null));
+    return makeErrorResponse({ error: "internal_error" }, 500, corsHeaders, startTime);
   }
 });
