@@ -2,12 +2,17 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * Lead Normalize Edge Function (Hardened)
+ * Lead Normalize Edge Function (Production Hardened)
  * 
  * Normalizes, deduplicates, and segments incoming leads.
  * Creates/updates lead_profiles with deterministic fingerprinting.
  * 
  * Auth: Bearer JWT (admin/owner) OR X-Internal-Secret for system calls
+ * 
+ * RPC Function Signatures (must match exactly):
+ * - normalize_email(raw_email text) -> text
+ * - normalize_phone(raw_phone text) -> text
+ * - compute_lead_fingerprint(p_email text, p_phone text, p_company_name text) -> text
  */
 
 const corsHeaders = {
@@ -34,6 +39,76 @@ interface NormalizeRequest {
     source?: string;
     raw?: Record<string, unknown>;
   };
+}
+
+// Cache for audit log column check
+let auditColumnsCache: { response_snapshot: boolean; user_id: boolean } | null = null;
+
+// deno-lint-ignore no-explicit-any
+async function checkAuditColumns(supabase: any): Promise<{ response_snapshot: boolean; user_id: boolean }> {
+  if (auditColumnsCache) return auditColumnsCache;
+  
+  try {
+    // Query platform_audit_log to check for column existence by selecting them
+    // If columns don't exist, we'll get an error
+    const { error: respError } = await supabase
+      .from("platform_audit_log")
+      .select("response_snapshot")
+      .limit(0);
+    
+    const { error: userError } = await supabase
+      .from("platform_audit_log")
+      .select("user_id")
+      .limit(0);
+    
+    auditColumnsCache = {
+      response_snapshot: !respError,
+      user_id: !userError,
+    };
+    return auditColumnsCache;
+  } catch {
+    return { response_snapshot: false, user_id: false };
+  }
+}
+
+async function safeAuditInsert(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  auditData: Record<string, unknown>,
+  auditColumns: { response_snapshot: boolean; user_id: boolean }
+): Promise<void> {
+  try {
+    // deno-lint-ignore no-explicit-any
+    const insertData: any = {
+      tenant_id: auditData.tenant_id,
+      timestamp: auditData.timestamp,
+      agent_name: auditData.agent_name,
+      action_type: auditData.action_type,
+      entity_type: auditData.entity_type,
+      entity_id: auditData.entity_id,
+      description: auditData.description,
+      request_snapshot: auditData.request_snapshot,
+      success: auditData.success,
+    };
+    
+    // Only include response_snapshot if column exists
+    if (auditColumns.response_snapshot && auditData.response_snapshot !== undefined) {
+      insertData.response_snapshot = auditData.response_snapshot;
+    }
+    
+    // Only include user_id if column exists
+    if (auditColumns.user_id && auditData.user_id !== undefined) {
+      insertData.user_id = auditData.user_id;
+    }
+    
+    const { error } = await supabase.from("platform_audit_log").insert(insertData);
+    
+    if (error) {
+      console.warn("[lead-normalize] Audit insert failed (non-blocking)", error.message);
+    }
+  } catch (err) {
+    console.warn("[lead-normalize] Audit insert exception (non-blocking)", err instanceof Error ? err.message : String(err));
+  }
 }
 
 serve(async (req) => {
@@ -63,17 +138,11 @@ serve(async (req) => {
     let isSystemCall = false;
 
     // Check internal secret first (for system-to-system calls)
-    if (internalSecret && internalSecretHeader) {
-      // Simple comparison for internal secret (length check + value check)
-      const secretMatch = internalSecretHeader.length === internalSecret.length &&
-        internalSecretHeader === internalSecret;
-      
-      if (secretMatch) {
-        isAuthorized = true;
-        userId = "system";
-        isSystemCall = true;
-        console.log("[lead-normalize] Authorized via internal secret");
-      }
+    if (internalSecret && internalSecretHeader === internalSecret) {
+      isAuthorized = true;
+      userId = "system";
+      isSystemCall = true;
+      console.log("[lead-normalize] Authorized via internal secret");
     }
 
     // Check JWT auth using ANON client (not service role)
@@ -104,7 +173,7 @@ serve(async (req) => {
         return jsonResponse({ error: "Failed to verify permissions" }, 500);
       }
 
-      const hasRole = roles?.some(r => ["admin", "owner", "platform_admin"].includes(r.role));
+      const hasRole = roles?.some((r: { role: string }) => ["admin", "owner", "platform_admin"].includes(r.role));
       if (!hasRole) {
         console.warn("[lead-normalize] Insufficient role", { user_id: user.id, roles });
         return jsonResponse({ error: "Insufficient permissions", required: ["admin", "owner"] }, 403);
@@ -136,6 +205,9 @@ serve(async (req) => {
       auth: { persistSession: false },
     });
 
+    // Check which audit columns exist (cached)
+    const auditColumns = await checkAuditColumns(supabase);
+
     // Validate tenant exists
     const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
@@ -148,7 +220,8 @@ serve(async (req) => {
       return jsonResponse({ error: "Invalid tenant_id" }, 400);
     }
 
-    // Compute fingerprint using SQL function (RPC argument names match function params)
+    // Compute fingerprint using SQL function
+    // RPC argument names: p_email, p_phone, p_company_name (match function signature)
     const { data: fpResult, error: fpError } = await supabase.rpc("compute_lead_fingerprint", {
       p_email: lead.email || null,
       p_phone: lead.phone || null,
@@ -166,7 +239,8 @@ serve(async (req) => {
 
     const fingerprint = fpResult as string;
 
-    // Get normalized values (RPC argument names: raw_email, raw_phone)
+    // Get normalized values
+    // RPC argument names: raw_email, raw_phone (match function signatures)
     const { data: normEmail, error: emailError } = await supabase.rpc("normalize_email", { 
       raw_email: lead.email || null 
     });
@@ -234,7 +308,8 @@ serve(async (req) => {
       };
 
       // Build update object with only changed fields
-      const updateFields: Record<string, unknown> = {
+      // deno-lint-ignore no-explicit-any
+      const updateFields: Record<string, any> = {
         enrichment_data: newEnrichment,
       };
 
@@ -263,8 +338,8 @@ serve(async (req) => {
         return jsonResponse({ error: "Failed to update existing profile", details: updateError.message }, 500);
       }
 
-      // Log audit entry
-      await supabase.from("platform_audit_log").insert({
+      // Log audit entry (non-blocking)
+      await safeAuditInsert(supabase, {
         tenant_id: body.tenant_id,
         timestamp: new Date().toISOString(),
         agent_name: "lead-normalize",
@@ -276,7 +351,7 @@ serve(async (req) => {
         response_snapshot: { status: "deduped", lead_profile_id: leadProfileId, fingerprint },
         success: true,
         user_id: isSystemCall ? null : userId,
-      });
+      }, auditColumns);
 
     } else {
       // CREATE PATH: New lead + profile
@@ -337,8 +412,8 @@ serve(async (req) => {
 
       leadProfileId = newProfile.id;
 
-      // Log audit entry
-      await supabase.from("platform_audit_log").insert({
+      // Log audit entry (non-blocking)
+      await safeAuditInsert(supabase, {
         tenant_id: body.tenant_id,
         timestamp: new Date().toISOString(),
         agent_name: "lead-normalize",
@@ -350,7 +425,7 @@ serve(async (req) => {
         response_snapshot: { status: "created", lead_id: leadId, lead_profile_id: leadProfileId, fingerprint },
         success: true,
         user_id: isSystemCall ? null : userId,
-      });
+      }, auditColumns);
     }
 
     const durationMs = Date.now() - startTime;

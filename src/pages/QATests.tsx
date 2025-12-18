@@ -114,11 +114,28 @@ export default function QATests() {
     // TEST 10: PG_NET Reconciliation Proof
     tests.push(await runReconciliationProofTest());
 
-    // TEST 11: Lead Normalization
-    tests.push(await runLeadNormalizationTest(tenantIdA));
+    // Schema sanity check before lead normalization tests
+    const schemaCheck = await runSchemaSanityCheck();
+    tests.push(schemaCheck);
 
-    // TEST 12: Dedup Proof
-    tests.push(await runDedupProofTest(tenantIdA));
+    // TEST 11 & 12: Only run if schema is valid
+    if (schemaCheck.status === "pass") {
+      tests.push(await runLeadNormalizationTest(tenantIdA));
+      tests.push(await runDedupProofTest(tenantIdA));
+    } else {
+      tests.push({
+        name: "TEST 11 - Lead Normalization",
+        status: "error",
+        details: { skipped: true, reason: "Schema sanity check failed" },
+        duration_ms: 0,
+      });
+      tests.push({
+        name: "TEST 12 - Dedup Proof",
+        status: "error",
+        details: { skipped: true, reason: "Schema sanity check failed" },
+        duration_ms: 0,
+      });
+    }
 
     const output: TestOutput = {
       timestamp: new Date().toISOString(),
@@ -753,6 +770,89 @@ export default function QATests() {
         name,
         status: "error",
         details: {},
+        error: err instanceof Error ? err.message : String(err),
+        duration_ms: Date.now() - start,
+      };
+    }
+  };
+
+  // Schema Sanity Check - verify audit log columns exist before lead normalization tests
+  const runSchemaSanityCheck = async (): Promise<TestResult> => {
+    const start = Date.now();
+    const name = "Schema Sanity Check - Audit Log Columns";
+
+    try {
+      // Check platform_audit_log columns by attempting to select them
+      const columnsToCheck = ["response_snapshot", "user_id", "timestamp", "request_snapshot"];
+      const columnResults: Record<string, boolean> = {};
+
+      for (const col of columnsToCheck) {
+        const { error } = await supabase
+          .from("platform_audit_log")
+          .select(col)
+          .limit(0);
+        
+        columnResults[col] = !error;
+      }
+
+      // Also check lead_profiles table exists
+      const { error: profilesError } = await supabase
+        .from("lead_profiles")
+        .select("id")
+        .limit(0);
+
+      const leadProfilesExists = !profilesError;
+
+      // Check normalization functions via RPC
+      const { error: fpError } = await supabase.rpc("compute_lead_fingerprint", {
+        p_email: "test@test.com",
+        p_phone: "1234567890",
+        p_company_name: "Test",
+      });
+
+      const fingerprintRpcWorks = !fpError;
+
+      // Critical columns for edge function
+      const hasTimestamp = columnResults["timestamp"];
+      const hasRequestSnapshot = columnResults["request_snapshot"];
+      
+      // Optional columns (edge function handles missing gracefully)
+      const hasResponseSnapshot = columnResults["response_snapshot"];
+      const hasUserId = columnResults["user_id"];
+
+      const passed = hasTimestamp && hasRequestSnapshot && leadProfilesExists && fingerprintRpcWorks;
+
+      return {
+        name,
+        status: passed ? "pass" : "fail",
+        details: {
+          audit_columns: columnResults,
+          lead_profiles_exists: leadProfilesExists,
+          fingerprint_rpc_works: fingerprintRpcWorks,
+          fingerprint_rpc_error: fpError?.message,
+          critical_columns_present: hasTimestamp && hasRequestSnapshot,
+          optional_columns: {
+            response_snapshot: hasResponseSnapshot,
+            user_id: hasUserId,
+          },
+          hint: !hasResponseSnapshot || !hasUserId 
+            ? "Optional audit columns missing; edge function will omit them (OK)" 
+            : undefined,
+        },
+        error: !passed
+          ? !leadProfilesExists 
+            ? "lead_profiles table missing - run Batch 2.1 migration"
+            : !fingerprintRpcWorks
+              ? `Fingerprint RPC failed: ${fpError?.message}. Check if pgcrypto is enabled.`
+              : "Required audit columns missing - check platform_audit_log schema"
+          : undefined,
+        duration_ms: Date.now() - start,
+      };
+    } catch (err) {
+      return {
+        name,
+        status: "error",
+        details: { exception: err instanceof Error ? err.stack : String(err) },
         error: err instanceof Error ? err.message : String(err),
         duration_ms: Date.now() - start,
       };
