@@ -1,4 +1,4 @@
-/**
+﻿/**
  * CEO Home - Unified Command Center
  * 
  * THE single landing page after login.
@@ -260,7 +260,7 @@ export default function CEOHome() {
                     icon={TrendingUp}
                     primaryMetric={metrics?.growth.visitors ?? 0}
                     primaryLabel="new visitors"
-                    secondaryMetric={metrics?.growth.delta !== "—" ? `Funnel ${metrics?.growth.delta}` : undefined}
+                    secondaryMetric={metrics?.growth.delta !== "â€”" ? `Funnel ${metrics?.growth.delta}` : undefined}
                     cta="See insights"
                     state={metrics?.growth.state ?? "inactive"}
                     navigateTo="/app/analytics"
@@ -329,3 +329,4 @@ function getTimeOfDay(): string {
   if (hour < 17) return "afternoon";
   return "evening";
 }
+

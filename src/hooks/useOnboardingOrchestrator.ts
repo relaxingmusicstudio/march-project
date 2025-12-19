@@ -1,4 +1,4 @@
-/**
+﻿/**
  * useOnboardingOrchestrator - Manages in-dashboard onboarding flow
  * 
  * Responsibilities:
@@ -57,6 +57,7 @@ export function useOnboardingOrchestrator(
   options?: UseOnboardingOrchestratorOptions
 ): UseOnboardingOrchestratorReturn {
   const { user } = useAuth();
+  const tenantId = user?.user_metadata?.tenant_id;
   const [currentStep, setCurrentStep] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,27 +76,14 @@ export function useOnboardingOrchestrator(
     setIsLoading(true);
     
     try {
-      // Update business_profile with onboarding data
+      // Update business_profile with onboarding data (tenant-scoped)
+      if (!tenantId) throw new Error("Missing tenantId");
+
       const { error: profileError } = await supabase
         .from("business_profile")
-        .upsert({
-          business_name: data.businessName,
-          industry: data.industry,
-          pain_points: data.biggestChallenge ? [data.biggestChallenge] : [],
-          onboarding_completed_at: new Date().toISOString(),
-          onboarding_progress: {
-            primaryGoal: data.primaryGoal,
-            completedAt: new Date().toISOString(),
-          },
-        }, {
-          onConflict: 'id'
-        });
-
-      if (profileError) {
-        // If no profile exists, create one
-        const { error: insertError } = await supabase
-          .from("business_profile")
-          .insert({
+        .upsert(
+          {
+            tenant_id: tenantId,
             business_name: data.businessName,
             industry: data.industry,
             pain_points: data.biggestChallenge ? [data.biggestChallenge] : [],
@@ -104,11 +92,12 @@ export function useOnboardingOrchestrator(
               primaryGoal: data.primaryGoal,
               completedAt: new Date().toISOString(),
             },
-          });
+          },
+          { onConflict: "tenant_id" }
+        );
 
-        if (insertError) {
-          throw insertError;
-        }
+      if (profileError) {
+        throw profileError;
       }
 
       // Update local state - NO RELOAD
@@ -162,3 +151,4 @@ export function useOnboardingOrchestrator(
 }
 
 export default useOnboardingOrchestrator;
+

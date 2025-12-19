@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Hook to check if user has completed onboarding
  * Used for #5: Conversation-first for NEW users only
  */
@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 export function useOnboardingStatus() {
   const { user, isLoading: authLoading } = useAuth();
+  const tenantId = user?.user_metadata?.tenant_id;
   const [isOnboardingComplete, setIsOnboardingComplete] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -24,7 +25,7 @@ export function useOnboardingStatus() {
       const { data: profile } = await supabase
         .from("business_profile")
         .select("onboarding_completed_at")
-        .limit(1)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
 
       // User has completed onboarding if they have a profile with completed timestamp
@@ -56,3 +57,4 @@ export function useOnboardingStatus() {
     refetch,
   };
 }
+

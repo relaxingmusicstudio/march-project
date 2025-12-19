@@ -1,105 +1,116 @@
-import { useState, useEffect, useCallback } from "react";
-import { User, Session } from "@supabase/supabase-js";
+import { useState, useEffect, useCallback, useRef } from "react";
+import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
 type AppRole = "admin" | "moderator" | "user";
 
+/**
+ * useAuth — STABLE VERSION
+ * - No PowerShell artifacts
+ * - No direct profiles table queries (avoids 406 loop)
+ * - Tenant resolved via RPC
+ */
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
-  // Check if user has admin role
-  const checkAdminRole = useCallback(async (userId: string) => {
-    try {
-      const { data, error } = await supabase.rpc("has_role", {
-        _user_id: userId,
-        _role: "admin" as AppRole,
-      });
-      
-      if (error) {
-        console.error("Error checking admin role:", error);
-        return false;
-      }
-      
-      return data === true;
-    } catch (err) {
-      console.error("Failed to check admin role:", err);
-      return false;
+  const tenantPromise = useRef<Promise<string | null> | null>(null);
+
+  const resolveTenant = useCallback(async (sess: Session | null) => {
+    if (!sess?.user) {
+      setTenantId(null);
+      return null;
     }
+
+    const existing = (sess.user.user_metadata as any)?.tenant_id;
+    if (existing) {
+      setTenantId(existing);
+      setUser(sess.user);
+      return existing;
+    }
+
+    if (tenantPromise.current) return tenantPromise.current;
+
+    tenantPromise.current = (async () => {
+      const { data, error } = await supabase.rpc("get_user_tenant_id");
+      if (error) {
+        console.error("get_user_tenant_id failed", error);
+        return null;
+      }
+
+      const tid = String(data);
+      setTenantId(tid);
+
+      const patchedUser: User = {
+        ...sess.user,
+        user_metadata: {
+          ...(sess.user.user_metadata ?? {}),
+          tenant_id: tid,
+        },
+      };
+
+      setUser(patchedUser);
+      tenantPromise.current = null;
+      return tid;
+    })();
+
+    return tenantPromise.current;
   }, []);
 
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setIsLoading(false);
+  const checkAdminRole = useCallback(async (userId: string) => {
+    const { data, error } = await supabase.rpc("has_role", {
+      _user_id: userId,
+      _role: "admin" as AppRole,
+    });
 
-        // Check admin role with setTimeout to avoid deadlock
-        if (session?.user) {
-          setTimeout(() => {
-            checkAdminRole(session.user.id).then(setIsAdmin);
-          }, 0);
-        } else {
-          setIsAdmin(false);
-        }
-      }
-    );
+    if (error) {
+      console.warn("has_role error", error);
+      return false;
+    }
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    return data === true;
+  }, []);
+
+  const applySession = useCallback(
+    async (sess: Session | null) => {
+      setSession(sess);
+      setUser(sess?.user ?? null);
       setIsLoading(false);
 
-      if (session?.user) {
-        checkAdminRole(session.user.id).then(setIsAdmin);
+      if (!sess?.user) {
+        setIsAdmin(false);
+        setTenantId(null);
+        return;
       }
+
+      await resolveTenant(sess);
+      checkAdminRole(sess.user.id).then(setIsAdmin);
+    },
+    [resolveTenant, checkAdminRole]
+  );
+
+  useEffect(() => {
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange((_e, sess) => {
+        applySession(sess);
+      });
+
+    supabase.auth.getSession().then(({ data }) => {
+      applySession(data.session ?? null);
     });
 
     return () => subscription.unsubscribe();
-  }, [checkAdminRole]);
-
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { data, error };
-  }, []);
-
-  const signUp = useCallback(async (email: string, password: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-      },
-    });
-    return { data, error };
-  }, []);
-
-  const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (!error) {
-      setIsAdmin(false);
-    }
-    return { error };
-  }, []);
+  }, [applySession]);
 
   return {
     user,
     session,
-    isLoading,
+    tenantId,
     isAdmin,
+    isLoading,
     isAuthenticated: !!session,
-    signIn,
-    signUp,
-    signOut,
   };
 };
