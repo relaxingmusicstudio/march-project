@@ -1,138 +1,121 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-interface BeforeInstallPromptEvent extends Event {
+type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
 
-export function usePWA() {
+type UsePWAResult = {
+  isInstallable: boolean;
+  isInstalled: boolean;
+  isDev: boolean;
+  promptInstall: () => Promise<"accepted" | "dismissed" | "unavailable">;
+  // Optional helpers some UIs expect
+  swRegistered: boolean;
+};
+
+export function usePWA(): UsePWAResult {
+  const isDev = import.meta.env.DEV;
+
   const [isInstallable, setIsInstallable] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [swRegistered, setSwRegistered] = useState(false);
 
+  const deferredPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
+
+  // Detect installed (works for many browsers)
   useEffect(() => {
-    // Check if already installed
     const checkInstalled = () => {
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-      const isIOSStandalone = (window.navigator as any).standalone === true;
-      setIsInstalled(isStandalone || isIOSStandalone);
+      const standalone =
+        // iOS Safari
+        (window.navigator as any).standalone === true ||
+        // Chromium
+        window.matchMedia?.("(display-mode: standalone)")?.matches === true;
+
+      setIsInstalled(!!standalone);
     };
 
     checkInstalled();
+    window.addEventListener("focus", checkInstalled);
+    return () => window.removeEventListener("focus", checkInstalled);
+  }, []);
 
-    // Listen for beforeinstallprompt
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+  // DEV MODE: disable SW + never allow install prompt (but return stable object)
+  useEffect(() => {
+    if (!isDev) return;
+
+    setIsInstallable(false);
+    deferredPromptRef.current = null;
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => reg.unregister());
+      });
+    }
+
+    setSwRegistered(false);
+  }, [isDev]);
+
+  // PROD MODE: register SW and listen for install prompt event
+  useEffect(() => {
+    if (isDev) return;
+
+    const onBeforeInstallPrompt = (e: Event) => {
+      // Prevent mini-infobar
+      e.preventDefault?.();
+      deferredPromptRef.current = e as BeforeInstallPromptEvent;
       setIsInstallable(true);
     };
 
-    // Listen for app installed
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setIsInstallable(false);
-      setDeferredPrompt(null);
-    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
 
-    // Listen for online/offline status
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Register service worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((registration) => {
-          console.log('[PWA] Service worker registered:', registration.scope);
-        })
-        .catch((error) => {
-          console.error('[PWA] Service worker registration failed:', error);
-        });
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("/sw.js")
+          .then(() => {
+            setSwRegistered(true);
+            console.log("[PWA] Service worker registered");
+          })
+          .catch((err) => {
+            setSwRegistered(false);
+            console.warn("[PWA] Service worker registration failed:", err);
+          });
+      });
     }
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     };
-  }, []);
+  }, [isDev]);
 
-  const install = async () => {
-    if (!deferredPrompt) return false;
+  const promptInstall = useCallback(async () => {
+    if (isDev) return "unavailable";
+    const evt = deferredPromptRef.current;
+    if (!evt) return "unavailable";
 
     try {
-      await deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      
-      if (outcome === 'accepted') {
+      await evt.prompt();
+      const choice = await evt.userChoice;
+      if (choice?.outcome === "accepted") {
         setIsInstallable(false);
-        setDeferredPrompt(null);
-        return true;
+        deferredPromptRef.current = null;
+        return "accepted";
       }
-      return false;
-    } catch (error) {
-      console.error('[PWA] Install failed:', error);
-      return false;
+      return "dismissed";
+    } catch {
+      return "unavailable";
     }
-  };
+  }, [isDev]);
 
-  const requestNotificationPermission = async () => {
-    if (!('Notification' in window)) {
-      console.log('[PWA] Notifications not supported');
-      return false;
-    }
-
-    if (Notification.permission === 'granted') {
-      return true;
-    }
-
-    if (Notification.permission !== 'denied') {
-      const permission = await Notification.requestPermission();
-      return permission === 'granted';
-    }
-
-    return false;
-  };
-
-  const showNotification = async (title: string, options?: NotificationOptions) => {
-    const hasPermission = await requestNotificationPermission();
-    
-    if (!hasPermission) {
-      console.log('[PWA] Notification permission denied');
-      return null;
-    }
-
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      // Use service worker to show notification
-      const registration = await navigator.serviceWorker.ready;
-      return registration.showNotification(title, {
-        icon: '/favicon.png',
-        badge: '/favicon.png',
-        ...options
-      });
-    } else {
-      // Fallback to regular notification
-      return new Notification(title, {
-        icon: '/favicon.png',
-        ...options
-      });
-    }
-  };
-
-  return {
-    isInstallable,
-    isInstalled,
-    isOnline,
-    install,
-    requestNotificationPermission,
-    showNotification,
-    notificationPermission: typeof Notification !== 'undefined' ? Notification.permission : 'denied'
-  };
+  return useMemo(
+    () => ({
+      isInstallable,
+      isInstalled,
+      isDev,
+      promptInstall,
+      swRegistered,
+    }),
+    [isInstallable, isInstalled, isDev, promptInstall, swRegistered]
+  );
 }
