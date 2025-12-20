@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+锘縤mport React, { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,7 @@ export default function Integrations() {
         setStatus("Saved");
         setApiKey("");
       } else {
-        setTestResult(`Success G求 ${data.provider ?? provider} G求 ${data.latencyMs ?? 0}ms`);
+        setTestResult(`Success - ${data.provider ?? provider} - ${data.latencyMs ?? 0}ms`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
@@ -81,7 +81,7 @@ export default function Integrations() {
       });
       if (error) throw new Error(error.message);
       if (!data?.ok) throw new Error(data?.error || "Gateway failed");
-      setLlmResult(`Gateway ok G求 ${data.provider} G求 ${data.output ?? data.sampleText ?? "ok"}`);
+      setLlmResult(`Gateway ok - ${data.provider} - ${data.output ?? data.sampleText ?? "ok"}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Gateway error";
       setLlmResult(`Error: ${message}`);
@@ -217,3 +217,5 @@ function IntegrationForm({
     </div>
   );
 }
+
+
