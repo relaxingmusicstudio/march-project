@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build
-        run: npm run build
+        run: VITE_MOCK_AUTH=true npm run build
       - name: Install Playwright
         run: npx playwright install --with-deps
       - name: Run e2e tests
