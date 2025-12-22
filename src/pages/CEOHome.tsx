@@ -6,7 +6,7 @@
  * - [TODO-P2] Mount CEO agent chat + onboarding panels once Phase 1 stable
  */
 
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -14,16 +14,31 @@ import { useOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { getOnboardingData } from "@/lib/onboarding";
 import { useCEOAgent } from "@/hooks/useCEOAgent";
 import { CEOPlan, computeOnboardingHash, loadCEOPlan, saveCEOPlan } from "@/lib/ceoPlan";
-import { useEffect, useMemo, useState } from "react";
+import {
+  ChecklistItem,
+  ChecklistState,
+  DoNextState,
+  getPlanChecklist,
+  loadChecklistState,
+  loadDoNextState,
+  parsePlanToChecklist,
+  saveChecklistState,
+  saveDoNextState,
+} from "@/lib/ceoChecklist";
 
 export default function CEOHome() {
-  const { email, role, signOut } = useAuth();
+  const { email, role, signOut, userId } = useAuth();
   const { status, isOnboardingComplete } = useOnboardingStatus();
   const navigate = useNavigate();
-  const context = getOnboardingData(undefined, email);
+  const context = getOnboardingData(userId, email);
   const { askCEO, isLoading: agentLoading } = useCEOAgent();
+
   const [plan, setPlan] = useState<CEOPlan | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [checklistState, setChecklistState] = useState<ChecklistState>({ completedIds: [], updatedAt: null });
+  const [actionPlan, setActionPlan] = useState<DoNextState | null>(null);
+  const [doNextLoading, setDoNextLoading] = useState(false);
 
   const hasContext =
     !!context.businessName ||
@@ -32,12 +47,21 @@ export default function CEOHome() {
     !!context.primaryGoal ||
     !!context.offerPricing;
 
-  const onboardingHash = useMemo(() => computeOnboardingHash(undefined, email), [email, context]);
+  const onboardingHash = useMemo(() => computeOnboardingHash(userId, email), [userId, email, context]);
 
   useEffect(() => {
-    const existing = loadCEOPlan(undefined, email);
-    setPlan(existing);
-  }, [email]);
+    const existingPlan = loadCEOPlan(userId, email);
+    setPlan(existingPlan);
+    setChecklist(getPlanChecklist(userId, email));
+    setChecklistState(loadChecklistState(userId, email));
+    setActionPlan(loadDoNextState(userId, email));
+  }, [userId, email]);
+
+  useEffect(() => {
+    if (plan?.planMarkdown) {
+      setChecklist(parsePlanToChecklist(plan.planMarkdown));
+    }
+  }, [plan]);
 
   const handleGeneratePlan = async () => {
     setPlanLoading(true);
@@ -55,13 +79,55 @@ export default function CEOHome() {
         updatedAt: new Date().toISOString(),
         onboardingSnapshotHash: onboardingHash,
       };
-      saveCEOPlan(next, undefined, email);
+      saveCEOPlan(next, userId, email);
       setPlan(next);
+      const parsed = parsePlanToChecklist(next.planMarkdown);
+      setChecklist(parsed);
+      saveChecklistState({ completedIds: [], updatedAt: new Date().toISOString() }, userId, email);
+      setChecklistState({ completedIds: [], updatedAt: new Date().toISOString() });
     }
     setPlanLoading(false);
   };
 
   const planOutOfDate = plan && plan.onboardingSnapshotHash !== onboardingHash;
+
+  const toggleChecklist = (id: string) => {
+    const completed = new Set(checklistState.completedIds);
+    if (completed.has(id)) {
+      completed.delete(id);
+    } else {
+      completed.add(id);
+    }
+    const nextState: ChecklistState = { completedIds: Array.from(completed), updatedAt: new Date().toISOString() };
+    setChecklistState(nextState);
+    saveChecklistState(nextState, userId, email);
+  };
+
+  const incompleteItems = checklist.filter((item) => !checklistState.completedIds.includes(item.id));
+  const todaysTop3 = incompleteItems.slice(0, 3);
+  const nextTask = incompleteItems[0];
+
+  const handleDoNext = async () => {
+    if (!nextTask) return;
+    setDoNextLoading(true);
+    const resp = await askCEO(
+      `Provide a short action plan for this task: ${nextTask.text}. Return markdown with 3 bullet steps and expected outcome.`,
+      "7d",
+      [],
+      undefined,
+      "ceo_do_next"
+    );
+    if (resp?.response) {
+      const next: DoNextState = {
+        taskId: nextTask.id,
+        responseMarkdown: resp.response,
+        updatedAt: new Date().toISOString(),
+      };
+      setActionPlan(next);
+      saveDoNextState(next, userId, email);
+    }
+    setDoNextLoading(false);
+  };
 
   return (
     <div data-testid="dashboard-home" style={{ padding: 24, fontFamily: "system-ui" }}>
@@ -199,6 +265,77 @@ export default function CEOHome() {
           )}
           {!plan && (
             <div style={{ opacity: 0.7 }}>No plan generated yet. Use your onboarding data to draft a CEO action plan.</div>
+          )}
+        </div>
+      )}
+
+      {isOnboardingComplete && plan && (
+        <div
+          style={{
+            padding: 16,
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.1)",
+            background: "rgba(0,0,0,0.02)",
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Execution Checklist</div>
+          <div style={{ marginBottom: 8, fontWeight: 700 }}>Today’s Top 3</div>
+          {todaysTop3.length === 0 ? (
+            <div style={{ opacity: 0.7, marginBottom: 12 }}>All caught up for today.</div>
+          ) : (
+            <ul style={{ marginBottom: 12, paddingLeft: 18 }}>
+              {todaysTop3.map((item) => (
+                <li key={item.id}>{item.text}</li>
+              ))}
+            </ul>
+          )}
+          <div style={{ marginBottom: 8, fontWeight: 700 }}>Full checklist</div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {checklist.length === 0 && <div style={{ opacity: 0.7 }}>No checklist items parsed from the plan.</div>}
+            {checklist.map((item) => (
+              <label key={item.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={checklistState.completedIds.includes(item.id)}
+                  onChange={() => toggleChecklist(item.id)}
+                />
+                <span>{item.text}</span>
+                {item.section && <span style={{ opacity: 0.6, fontSize: 12 }}>({item.section})</span>}
+              </label>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={handleDoNext}
+              disabled={!nextTask || doNextLoading || agentLoading}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid rgba(0,0,0,0.15)",
+                cursor: nextTask ? "pointer" : "not-allowed",
+                fontWeight: 700,
+                opacity: !nextTask || doNextLoading || agentLoading ? 0.6 : 1,
+              }}
+            >
+              {nextTask ? "Do Next" : "All tasks complete"}
+            </button>
+          </div>
+          {actionPlan && (
+            <div
+              style={{
+                border: "1px solid rgba(0,0,0,0.08)",
+                borderRadius: 8,
+                padding: 12,
+                background: "white",
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.5,
+                fontFamily: "Inter, system-ui, sans-serif",
+                marginTop: 12,
+              }}
+            >
+              {actionPlan.responseMarkdown}
+            </div>
           )}
         </div>
       )}
