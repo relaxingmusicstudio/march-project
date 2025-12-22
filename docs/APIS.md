@@ -1,5 +1,13 @@
 ## APIs and Where to Configure Them
 
+## Setup Wizard flow
+- Go to `/app/setup` (owner-only; works in mock mode).
+- Copy `.env.local` template for mock runs.
+- Copy Vercel env template for server secrets (no values are shown).
+- Test Supabase connectivity (mock returns OK).
+- Run LLM smoke (Gemini via llm-gateway; mock returns OK).
+- Send Notify test (notify-gateway; mock returns mock-sent).
+
 ### Gemini / OpenAI
 - Purpose: LLM responses via `llm-gateway`.
 - Configure secrets server-side (Supabase Edge Functions): `GEMINI_API_KEY`, `OPENAI_API_KEY`, `LLM_ALLOW_DEMO_KEYS`, `LLM_LIVE_CALLS_DEFAULT`.

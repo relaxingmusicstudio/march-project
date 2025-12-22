@@ -30,6 +30,7 @@ import {
   Building2,
   Wrench,
   ClipboardCheck,
+  ListChecks,
 } from "lucide-react";
 
 export interface NavItem {
@@ -88,6 +89,12 @@ export const OWNER_NAV_ITEMS: NavItem[] = [
     href: "/app/ops",
     icon: ClipboardCheck,
     description: "Proof gate & runbooks",
+  },
+  {
+    label: "Setup Wizard",
+    href: "/app/setup",
+    icon: ListChecks,
+    description: "Guided env + gateway setup",
   },
   {
     label: "LLM Smoke",

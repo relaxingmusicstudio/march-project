@@ -70,6 +70,7 @@ import RouteNavAuditor from "./pages/platform/RouteNavAuditor";
 import OpsCenter from "./pages/platform/OpsCenter";
 import VibesInspector from "./pages/platform/VibesInspector";
 import OpsHub from "./pages/OpsHub";
+import SetupWizard from "./pages/SetupWizard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -154,6 +155,7 @@ const App = () => (
                     <Route path="automation" element={<ProtectedRoute requireOwner><AdminAutomation /></ProtectedRoute>} />
                     <Route path="integrations" element={<ProtectedRoute requireOwner><Integrations /></ProtectedRoute>} />
                     <Route path="llm-smoke" element={<ProtectedRoute requireOwner><LLMSmoke /></ProtectedRoute>} />
+                    <Route path="setup" element={<ProtectedRoute requireOwner><SetupWizard /></ProtectedRoute>} />
                     <Route path="ops" element={<ProtectedRoute requireOwner><OpsHub /></ProtectedRoute>} />
                     <Route path="pipelines/plastic-surgeon" element={<ProtectedRoute requireOwner><PlasticSurgeonPipeline /></ProtectedRoute>} />
                     

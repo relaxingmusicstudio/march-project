@@ -39,6 +39,7 @@ const vercelChecklist = [
   "Do NOT put provider keys in VITE_*; use server-side env only",
   "Supabase Edge Functions secrets: TWILIO_*, RESEND_API_KEY, EMAIL_FROM, LLM_*",
   "Set VITE_MOCK_AUTH=true locally for mock runs",
+  "Setup Wizard available at /app/setup for guided steps",
 ];
 
 console.log("Ops Doctor");

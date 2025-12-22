@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { envSchema } from "@/lib/envSchema";
 
 type ChecklistState = Record<string, boolean>;
 
@@ -83,14 +84,6 @@ const commandList = [
   { label: "E2E (mock)", command: "VITE_MOCK_AUTH=true npm run test:e2e" },
 ];
 
-const apiStatus = [
-  { name: "Supabase", detail: "URL + anon key required; keep service keys server-side only." },
-  { name: "Gemini", detail: "Calls routed via llm-gateway. Demo keys stay server-side." },
-  { name: "Resend", detail: "Email via notify-gateway. Needs verified domain." },
-  { name: "Twilio", detail: "SMS via notify-gateway. Requires A2P/toll-free + from number." },
-  { name: "Stripe", detail: "Payments not in bundle. Use server-side keys only." },
-];
-
 const isMockMode = () =>
   import.meta.env.VITE_MOCK_AUTH === "true" ||
   (typeof window !== "undefined" && window.localStorage.getItem("VITE_MOCK_AUTH") === "true");
@@ -122,12 +115,13 @@ export default function OpsHub() {
   };
 
   const copy = async (cmd: string) => {
+    if (!navigator?.clipboard?.writeText) return;
     try {
       await navigator.clipboard.writeText(cmd);
       setCopied(cmd);
       setTimeout(() => setCopied(null), 1500);
-    } catch (err) {
-      console.error("Copy failed", err);
+    } catch (_err) {
+      // ignore clipboard permission errors in headless
     }
   };
 
@@ -197,15 +191,19 @@ export default function OpsHub() {
           <CardDescription>Presence only; no secrets are shown.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
-          {apiStatus.map((item) => (
-            <div key={item.name} className="rounded border p-3 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{item.name}</span>
-                <Badge variant="outline">{mock ? "Mock-ready" : "Check env"}</Badge>
+          {envSchema
+            .filter((env) => env.scope === "server" || env.scope === "client")
+            .filter((env) => env.requiredFor !== "mock")
+            .map((item) => (
+              <div key={item.name} className="rounded border p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{item.name}</span>
+                  <Badge variant="outline">{mock ? "Mock-ready" : "Check env"}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{item.description}</p>
+                <p className="text-xs text-muted-foreground">Used by: {item.usedBy.join(", ")}</p>
               </div>
-              <p className="text-sm text-muted-foreground">{item.detail}</p>
-            </div>
-          ))}
+            ))}
         </CardContent>
       </Card>
 
