@@ -71,7 +71,8 @@ export const useCEOAgent = () => {
     query: string, 
     timeRange: string = "7d",
     conversationHistory: ChatMessage[] = [],
-    visitorId?: string
+    visitorId?: string,
+    intent?: string
   ): Promise<CEOAgentResponse | null> => {
     setIsLoading(true);
     setError(null);
@@ -79,7 +80,7 @@ export const useCEOAgent = () => {
 
     try {
       const { data, error: invokeError } = await supabase.functions.invoke("ceo-agent", {
-        body: { query, timeRange, conversationHistory, visitorId, onboardingContext },
+        body: { query, timeRange, conversationHistory, visitorId, intent, onboardingContext },
       });
 
       if (invokeError) throw invokeError;
