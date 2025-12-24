@@ -14,6 +14,9 @@ try {
   // Optional: npm ci (kept for consistency)
   run("npm ci");
 
+  // Preflight (policy self-tests + docs presence) before build/tests
+  run("npm run preflight", withMockEnv);
+
   // Build + tests in mock mode
   run("npm run build", withMockEnv);
   run("npm run test:e2e", withMockEnv);

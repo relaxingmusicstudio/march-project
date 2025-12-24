@@ -19,6 +19,7 @@
 
 ## Proof Gate commands (run before PR/merge)
 - `npm ci`
+- `VITE_MOCK_AUTH=true npm run preflight`
 - `VITE_MOCK_AUTH=true npm run build`
 - `VITE_MOCK_AUTH=true npm run test:e2e`
 - `VITE_MOCK_AUTH=true npm run ops:doctor`

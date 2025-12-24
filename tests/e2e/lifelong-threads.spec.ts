@@ -36,7 +36,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("ops hub loads with proof gate and checklist", async ({ page }) => {
+test("lifelong threads render summary and paged entries", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/auth");
   await page.getByLabel(/email/i).fill("ceo@example.com");
@@ -52,10 +52,13 @@ test("ops hub loads with proof gate and checklist", async ({ page }) => {
     await page.goto("/app/ops");
   }
 
-  await expect(page.getByTestId("ops-home")).toBeVisible();
-  await expect(page.getByTestId("ops-policy-drift")).toBeVisible();
-  await expect(page.getByTestId("ops-proofgate")).toBeVisible();
-  await expect(page.getByTestId("ops-api-checklist")).toBeVisible();
+  await expect(page.getByTestId("threads-kernel")).toBeVisible();
+  await page.getByTestId("threads-create").click();
+  await page.getByTestId("threads-entry-input").fill("Pilot thread entry");
+  await page.getByTestId("threads-append").click();
+
+  await expect(page.getByTestId("threads-summary")).toContainText("Entries: 1");
+  await expect(page.getByTestId("threads-page")).toContainText("Pilot thread entry");
 
   expect(errors, errors.join("\n")).toEqual([]);
 });

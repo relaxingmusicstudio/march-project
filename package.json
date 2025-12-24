@@ -9,8 +9,11 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test": "node scripts/threads-selftest.cjs",
     "test:e2e": "playwright test",
+    "test:unit": "vitest run --config vitest.config.ts",
     "ops:doctor": "node scripts/ops-doctor.cjs",
+    "preflight": "node scripts/preflight.cjs",
     "proofgate": "node scripts/proofgate.cjs",
     "release:gate": "node scripts/release-gate.cjs",
     "pr:open": "node scripts/pr-open.cjs",
@@ -89,6 +92,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
-    "vite": "^5.4.19"
+    "vite": "^5.4.19",
+    "vitest": "^1.6.0"
   }
 }

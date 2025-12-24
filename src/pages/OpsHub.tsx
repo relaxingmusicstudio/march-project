@@ -17,6 +17,25 @@ import {
   MaintenanceReportBundle,
   recordFobHistoryEntry,
 } from "@/lib/maintenanceFob";
+import {
+  ThreadAuthorType,
+  ThreadEntry,
+  ThreadScope,
+  ThreadSnapshotSummaryFields,
+  ThreadStoreState,
+  appendThreadEntry,
+  buildThreadSnapshot,
+  createThread,
+  createThreadStoreState,
+  getLatestSnapshot,
+  getThreadEntriesPage,
+  getThreadSummary,
+  saveThreadSnapshot,
+} from "@/lib/lifelongThreads";
+import { loadThreadStoreState, saveThreadStoreState } from "@/lib/lifelongThreadsStorage";
+import { CIV_CONSTITUTION } from "@/lib/policy/constitution";
+import { REQUIRED_INVARIANTS } from "@/lib/policy/invariants";
+import { computeDriftScore } from "@/lib/policy/driftScore";
 
 type ChecklistState = Record<string, boolean>;
 
@@ -102,7 +121,18 @@ const isMockMode = () =>
 
 export default function OpsHub() {
   const { userId, email } = useAuth();
+  const ownerKey = userId || email || "anonymous";
   const mock = useMemo(() => isMockMode(), []);
+  const driftScore = useMemo(
+    () =>
+      computeDriftScore({
+        invariantViolationsCount: 0,
+        prohibitedTargetHitsCount: 0,
+        missingIntentCount: 0,
+        missingApprovalCount: 0,
+      }),
+    []
+  );
   const [checklist, setChecklist] = useState<ChecklistState>({});
   const [copied, setCopied] = useState<string | null>(null);
   const [fobHistory, setFobHistory] = useState<FailureOutputPacket[]>([]);
@@ -115,11 +145,45 @@ export default function OpsHub() {
   const [fobLogsText, setFobLogsText] = useState("");
   const [fobCopied, setFobCopied] = useState(false);
   const [report, setReport] = useState<MaintenanceReportBundle | null>(null);
+  const [threadStore, setThreadStore] = useState<ThreadStoreState>(() => createThreadStoreState());
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [threadEntryText, setThreadEntryText] = useState("Initial thread note");
+  const [threadSummary, setThreadSummary] = useState<ThreadSnapshotSummaryFields | null>(null);
+  const [threadPageEntries, setThreadPageEntries] = useState<ThreadEntry[]>([]);
+  const [threadCursor, setThreadCursor] = useState<string | null>(null);
 
   const selectedFob = useMemo(() => {
     if (fobHistory.length === 0) return null;
     return fobHistory.find((f) => f.id === selectedFobId) ?? fobHistory[0];
   }, [fobHistory, selectedFobId]);
+
+  const refreshThreadView = (nextStore: ThreadStoreState, threadId: string | null, cursor: string | null) => {
+    if (!threadId) {
+      setThreadSummary(null);
+      setThreadPageEntries([]);
+      setThreadCursor(null);
+      return;
+    }
+
+    const snapshot = getLatestSnapshot(nextStore.snapshots, threadId);
+    setThreadSummary(getThreadSummary(threadId, nextStore.entries, snapshot));
+
+    const page = getThreadEntriesPage(nextStore, {
+      thread_id: threadId,
+      requester: { owner_id: ownerKey },
+      limit: 3,
+      cursor,
+    });
+
+    if (!page.ok) {
+      setThreadPageEntries([]);
+      setThreadCursor(null);
+      return;
+    }
+
+    setThreadPageEntries(page.entries);
+    setThreadCursor(page.nextCursor);
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -149,6 +213,20 @@ export default function OpsHub() {
     setFobHistory(loaded);
     setSelectedFobId(loaded[0]?.id ?? null);
   }, [userId, email, mock]);
+
+  useEffect(() => {
+    const loaded = loadThreadStoreState(userId, email);
+    setThreadStore(loaded);
+    setActiveThreadId(loaded.threads[0]?.thread_id ?? null);
+  }, [userId, email]);
+
+  useEffect(() => {
+    saveThreadStoreState(threadStore, userId, email);
+  }, [threadStore, userId, email]);
+
+  useEffect(() => {
+    refreshThreadView(threadStore, activeThreadId, null);
+  }, [threadStore, activeThreadId, ownerKey]);
 
   const toggle = (id: string, value: boolean) => {
     setChecklist((prev) => ({ ...prev, [id]: value }));
@@ -202,6 +280,46 @@ export default function OpsHub() {
   const handleGenerateReport = () => {
     const next = generateMaintenanceReport({ userId, email, fobHistory });
     setReport(next);
+  };
+
+  const handleCreateThread = () => {
+    const result = createThread(threadStore, {
+      owner_id: ownerKey,
+      scope: ThreadScope.PRIVATE,
+    });
+    const snapshot = buildThreadSnapshot(result.thread.thread_id, result.state.entries, result.thread.created_at);
+    const nextState = saveThreadSnapshot(result.state, snapshot);
+    setThreadStore(nextState);
+    setActiveThreadId(result.thread.thread_id);
+    refreshThreadView(nextState, result.thread.thread_id, null);
+  };
+
+  const handleAppendThreadEntry = () => {
+    if (!activeThreadId) return;
+    const trimmed = threadEntryText.trim();
+    if (!trimmed) return;
+    const result = appendThreadEntry(threadStore, {
+      thread_id: activeThreadId,
+      author_type: ThreadAuthorType.USER,
+      content_text: trimmed,
+    });
+    const snapshot = buildThreadSnapshot(activeThreadId, result.state.entries);
+    const nextState = saveThreadSnapshot(result.state, snapshot);
+    setThreadStore(nextState);
+    refreshThreadView(nextState, activeThreadId, null);
+  };
+
+  const handleLoadOlderEntries = () => {
+    if (!activeThreadId || !threadCursor) return;
+    const page = getThreadEntriesPage(threadStore, {
+      thread_id: activeThreadId,
+      requester: { owner_id: ownerKey },
+      limit: 3,
+      cursor: threadCursor,
+    });
+    if (!page.ok) return;
+    setThreadPageEntries(page.entries);
+    setThreadCursor(page.nextCursor);
   };
 
   return (
@@ -264,6 +382,86 @@ export default function OpsHub() {
           </CardContent>
         </Card>
       </div>
+
+      <Card data-testid="ops-policy-drift">
+        <CardHeader>
+          <CardTitle>Policy / Drift</CardTitle>
+          <CardDescription>Read-only constitution + invariants + drift signal.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="space-y-1">
+            <div className="font-medium">Purpose</div>
+            <div className="text-muted-foreground">{CIV_CONSTITUTION.purpose}</div>
+          </div>
+          <div className="space-y-1">
+            <div className="font-medium">Invariants</div>
+            <div className="flex flex-wrap gap-2">
+              {REQUIRED_INVARIANTS.map((inv) => (
+                <code key={inv.id} className="rounded bg-muted px-2 py-1 text-xs">
+                  {inv.id}
+                </code>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-medium">Drift score</span>
+            <Badge variant="outline">{driftScore.toFixed(2)}</Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="threads-kernel">
+        <CardHeader>
+          <CardTitle>Lifelong Threads</CardTitle>
+          <CardDescription>Private, append-only thread core with paged retrieval.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={handleCreateThread} data-testid="threads-create">
+              Create Thread
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleAppendThreadEntry}
+              disabled={!activeThreadId || threadEntryText.trim().length === 0}
+              data-testid="threads-append"
+            >
+              Append Entry
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleLoadOlderEntries}
+              disabled={!threadCursor}
+              data-testid="threads-load-older"
+            >
+              Load Older
+            </Button>
+          </div>
+          <Input
+            value={threadEntryText}
+            onChange={(event) => setThreadEntryText(event.target.value)}
+            placeholder="Add a deterministic thread note"
+            data-testid="threads-entry-input"
+          />
+          <div className="text-xs text-muted-foreground">Thread: {activeThreadId ?? "none"}</div>
+          <div data-testid="threads-summary">
+            Entries: {threadSummary?.entry_count ?? 0} | Last updated: {threadSummary?.last_updated ?? "n/a"}
+          </div>
+          <div className="space-y-2" data-testid="threads-page">
+            {threadPageEntries.length === 0 ? (
+              <div className="text-xs text-muted-foreground">No entries yet.</div>
+            ) : (
+              threadPageEntries.map((entry) => (
+                <div key={entry.entry_id} className="rounded border border-muted px-3 py-2 text-xs">
+                  <div className="font-medium">{entry.author_type}</div>
+                  <div className="text-muted-foreground">{entry.content_text}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card data-testid="ops-api-checklist">
         <CardHeader>

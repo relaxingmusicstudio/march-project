@@ -1,5 +1,8 @@
 import { getOnboardingData } from "./onboarding";
 import { loadCEOPlan } from "./ceoPlan";
+import type { DecisionOutcome } from "./decisionOutcome";
+import { executed, halted, transformed } from "./decisionOutcome";
+import { ensureOutcome } from "./loopGuard";
 
 export type ChecklistItem = {
   id: string;
@@ -84,6 +87,7 @@ export type DoNextState = {
   agentIntent?: string;
   checklistItemText?: string;
   rawResponse?: string;
+  decisionOutcome: DecisionOutcome;
 };
 
 export const loadDoNextState = (userId?: string | null, email?: string | null): DoNextState | null => {
@@ -92,10 +96,16 @@ export const loadDoNextState = (userId?: string | null, email?: string | null): 
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as DoNextState;
+    const responseMarkdown = parsed.responseMarkdown || parsed.rawResponse || "";
+    const parsedJson = parsed.parsedJson ?? parseDoNextPayload(responseMarkdown);
+    const decisionOutcome = resolveDecisionOutcome(parsed.decisionOutcome, responseMarkdown, parsedJson);
+    const agentIntent = parsed.agentIntent || "ceo_do_next";
     return {
       ...parsed,
-      responseMarkdown: parsed.responseMarkdown || parsed.rawResponse || "",
-      parsedJson: parsed.parsedJson ?? parseDoNextPayload(parsed.responseMarkdown || parsed.rawResponse || ""),
+      responseMarkdown,
+      parsedJson,
+      decisionOutcome,
+      agentIntent,
     };
   } catch {
     return null;
@@ -142,6 +152,7 @@ export type DoNextHistoryEntry = {
   agentIntent: string;
   rawResponse: string;
   parsedJson: DoNextPayload | null;
+  decisionOutcome: DecisionOutcome;
 };
 
 const isNonEmptyString = (value: unknown): value is string =>
@@ -155,6 +166,22 @@ const coerceMinutes = (value: unknown): number | undefined => {
   }
   return undefined;
 };
+
+const buildDoNextOutcome = (rawResponse: string, payload: DoNextPayload | null): DecisionOutcome => {
+  if (payload) {
+    return executed(payload.title || "Do Next executed", { payload, rawResponse });
+  }
+  if (rawResponse.trim().length > 0) {
+    return transformed("Do Next captured", { markdown: rawResponse });
+  }
+  return halted("MISSING_RESPONSE", { receivedType: typeof rawResponse, receivedKeys: [] });
+};
+
+const resolveDecisionOutcome = (
+  outcome: DecisionOutcome | null | undefined,
+  rawResponse: string,
+  payload: DoNextPayload | null
+): DecisionOutcome => ensureOutcome(outcome ?? buildDoNextOutcome(rawResponse, payload), "INVALID_OUTCOME");
 
 const normalizeDoNextPayload = (value: any): DoNextPayload | null => {
   if (!value || typeof value !== "object") return null;
@@ -225,10 +252,16 @@ export const loadDoNextHistory = (userId?: string | null, email?: string | null)
     const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as DoNextHistoryEntry[];
-    return parsed.map((entry) => ({
-      ...entry,
-      parsedJson: entry.parsedJson ?? parseDoNextPayload(entry.rawResponse),
-    }));
+    return parsed.map((entry) => {
+      const rawResponse = entry.rawResponse || "";
+      const parsedJson = entry.parsedJson ?? parseDoNextPayload(rawResponse);
+      return {
+        ...entry,
+        parsedJson,
+        decisionOutcome: resolveDecisionOutcome(entry.decisionOutcome, rawResponse, parsedJson),
+        agentIntent: entry.agentIntent || "ceo_do_next",
+      };
+    });
   } catch {
     return [];
   }

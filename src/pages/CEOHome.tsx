@@ -17,6 +17,7 @@ import { CEOPlan, computeOnboardingHash, loadCEOPlan, saveCEOPlan } from "@/lib/
 import {
   ChecklistItem,
   ChecklistState,
+  DoNextPayload,
   DoNextState,
   DoNextHistoryEntry,
   getPlanChecklist,
@@ -29,6 +30,16 @@ import {
   saveDoNextState,
   recordDoNextHistoryEntry,
 } from "@/lib/ceoChecklist";
+import { deferred, executed, halted, summarizeOutcome, transformed } from "@/lib/decisionOutcome";
+import { ensureOutcome } from "@/lib/loopGuard";
+import {
+  appendLedger,
+  computeIdentityKey,
+  getTrustLevel,
+  policyPreflight,
+  type ActionSpec,
+  type Intent,
+} from "@/lib/spine";
 import {
   computePlanHash,
   DailyBriefState,
@@ -76,6 +87,7 @@ export default function CEOHome() {
     !!context.offerPricing;
 
   const onboardingHash = useMemo(() => computeOnboardingHash(userId, email), [userId, email, context]);
+  const identityKey = useMemo(() => computeIdentityKey(userId, email), [userId, email]);
   const allowPlanSections = isOnboardingComplete || isMockMode;
   const planHash = useMemo(() => computePlanHash(plan?.planMarkdown || ""), [plan?.planMarkdown]);
   const briefNeedsRefresh =
@@ -130,28 +142,33 @@ export default function CEOHome() {
 
   const handleGeneratePlan = async () => {
     setPlanLoading(true);
-    const resp = await askCEO(
-      "Generate a concise CEO plan using the provided onboarding context. Return markdown with sections: Goals, Offers, ICP, Lead Sources, Next 7 Days.",
-      "30d",
-      [],
-      undefined,
-      "generate_ceo_plan"
-    );
-    if (resp?.response) {
-      const next: CEOPlan = {
-        planMarkdown: resp.response,
-        createdAt: plan?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        onboardingSnapshotHash: onboardingHash,
-      };
-      saveCEOPlan(next, userId, email);
-      setPlan(next);
-      const parsed = parsePlanToChecklist(next.planMarkdown);
-      setChecklist(parsed);
-      saveChecklistState({ completedIds: [], updatedAt: new Date().toISOString() }, userId, email);
-      setChecklistState({ completedIds: [], updatedAt: new Date().toISOString() });
+    try {
+      const resp = await askCEO(
+        "Generate a concise CEO plan using the provided onboarding context. Return markdown with sections: Goals, Offers, ICP, Lead Sources, Next 7 Days.",
+        "30d",
+        [],
+        undefined,
+        "generate_ceo_plan"
+      );
+      if (resp?.response) {
+        const next: CEOPlan = {
+          planMarkdown: resp.response,
+          createdAt: plan?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          onboardingSnapshotHash: onboardingHash,
+        };
+        saveCEOPlan(next, userId, email);
+        setPlan(next);
+        const parsed = parsePlanToChecklist(next.planMarkdown);
+        setChecklist(parsed);
+        saveChecklistState({ completedIds: [], updatedAt: new Date().toISOString() }, userId, email);
+        setChecklistState({ completedIds: [], updatedAt: new Date().toISOString() });
+      }
+    } catch {
+      // keep existing plan if generation fails
+    } finally {
+      setPlanLoading(false);
     }
-    setPlanLoading(false);
   };
 
   const planOutOfDate = plan && plan.onboardingSnapshotHash !== onboardingHash;
@@ -180,6 +197,16 @@ export default function CEOHome() {
   const todaysTop3 = incompleteItems.slice(0, 3);
   const nextTask = incompleteItems[0];
 
+  const buildDoNextOutcome = (raw: string, payload: DoNextPayload | null) => {
+    if (payload) {
+      return executed(payload.title || "Do Next executed", { payload, rawResponse: raw });
+    }
+    if (raw.trim().length > 0) {
+      return transformed("Do Next captured", { markdown: raw });
+    }
+    return halted("MISSING_RESPONSE", { receivedType: typeof raw, receivedKeys: [] });
+  };
+
   const handleDoNext = async () => {
     if (systemMode !== SystemMode.EXECUTION) {
       setModeBlockReason(
@@ -192,109 +219,227 @@ export default function CEOHome() {
     if (!nextTask) return;
     setDoNextLoading(true);
     const agentIntent = "ceo_do_next";
-    let rawResponse = "";
+    const intent: Intent = {
+      intent_id: `intent-${agentIntent}-${nextTask.id}`,
+      intent_type: "ops",
+      intent_reason: `Execute checklist item: ${nextTask.text}`,
+      expected_metric: "checklist_progress",
+    };
+    const actionSpec: ActionSpec = {
+      action_type: agentIntent,
+      params: { checklistItemId: nextTask.id },
+      irreversible_level: 0,
+      requires_confirmation: false,
+      cooldown_ms: 0,
+    };
+    const requiredEnvKeys = ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"];
+    const missingRequired = requiredEnvKeys.filter((key) => {
+      const value = (import.meta.env as Record<string, string | undefined>)[key];
+      return !value || value.trim().length === 0;
+    });
+    const trustLevel = getTrustLevel(identityKey, { mockMode: isMockMode });
+    const preflight = policyPreflight(intent, actionSpec, trustLevel, {
+      isMockMode,
+      missingRequired,
+    });
 
-    if (!isMockMode) {
-      const resp = await askCEO(
-        `You are PipelinePRO's CEO execution coach. For the task "${nextTask.text}", return a JSON block wrapped in \`\`\`json ... \`\`\` with fields: title, objective, steps[{label, expectedOutcome, estimatedMinutes}], successCriteria[], blockers[], escalationPrompt. If you cannot format JSON, fall back to concise markdown bullets with expected outcomes.`,
-        "7d",
-        [],
-        undefined,
-        agentIntent
+    if (preflight.decision !== "ALLOW") {
+      const outcome =
+        preflight.decision === "BLOCK"
+          ? halted("preflight_blocked", { reasons: preflight.reasons })
+          : deferred("preflight_friction", { friction: preflight.frictionSteps });
+      const evidenceRefs = [preflight.decision === "BLOCK" ? "preflight:block" : "preflight:friction"];
+      try {
+        appendLedger({
+          timestamp: "",
+          identity: identityKey,
+          intent,
+          actionSpec,
+          preflight,
+          outcome,
+          evidenceRefs,
+        });
+      } catch {
+        // ignore ledger persistence issues
+      }
+      const reasonText = preflight.reasons.join("; ") || "preflight_blocked";
+      const frictionText = preflight.frictionSteps.join(", ") || "confirmation required";
+      setModeBlockReason(
+        preflight.decision === "BLOCK" ? `Do Next blocked: ${reasonText}` : `Do Next requires: ${frictionText}`
       );
-      rawResponse = resp?.response ?? "";
+      setDoNextLoading(false);
+      return;
     }
 
-    if (!rawResponse) {
-      rawResponse = buildMockDoNextResponse(nextTask.text);
+    setModeBlockReason(null);
+    let nextState: DoNextState | null = null;
+    let historyEntry: DoNextHistoryEntry | null = null;
+
+    try {
+      let rawResponse = "";
+      if (!isMockMode) {
+        const resp = await askCEO(
+          `You are PipelinePRO's CEO execution coach. For the task "${nextTask.text}", return a JSON block wrapped in \`\`\`json ... \`\`\` with fields: title, objective, steps[{label, expectedOutcome, estimatedMinutes}], successCriteria[], blockers[], escalationPrompt. If you cannot format JSON, fall back to concise markdown bullets with expected outcomes.`,
+          "7d",
+          [],
+          undefined,
+          agentIntent
+        );
+        rawResponse = resp?.response ?? "";
+      }
+
+      if (!rawResponse) {
+        rawResponse = buildMockDoNextResponse(nextTask.text);
+      }
+
+      const parsedPayload = parseDoNextPayload(rawResponse);
+      const outcome = ensureOutcome(buildDoNextOutcome(rawResponse, parsedPayload), "Do Next outcome invalid");
+      const outcomeSummary = summarizeOutcome(outcome);
+      nextState = {
+        taskId: nextTask.id,
+        responseMarkdown: rawResponse || outcomeSummary,
+        parsedJson: parsedPayload,
+        updatedAt: new Date().toISOString(),
+        agentIntent,
+        checklistItemText: nextTask.text,
+        rawResponse,
+        decisionOutcome: outcome,
+      };
+      historyEntry = {
+        createdAt: nextState.updatedAt,
+        checklistItemId: nextTask.id,
+        checklistItemText: nextTask.text,
+        agentIntent,
+        rawResponse,
+        parsedJson: parsedPayload,
+        decisionOutcome: outcome,
+      };
+    } catch {
+      const rawResponse = "";
+      const parsedPayload = null;
+      const outcome = ensureOutcome(buildDoNextOutcome(rawResponse, parsedPayload), "Do Next execution failed");
+      const outcomeSummary = summarizeOutcome(outcome);
+      nextState = {
+        taskId: nextTask.id,
+        responseMarkdown: outcomeSummary,
+        parsedJson: parsedPayload,
+        updatedAt: new Date().toISOString(),
+        agentIntent,
+        checklistItemText: nextTask.text,
+        rawResponse,
+        decisionOutcome: outcome,
+      };
+      historyEntry = {
+        createdAt: nextState.updatedAt,
+        checklistItemId: nextTask.id,
+        checklistItemText: nextTask.text,
+        agentIntent,
+        rawResponse,
+        parsedJson: parsedPayload,
+        decisionOutcome: outcome,
+      };
+    } finally {
+      if (nextState && historyEntry) {
+        setActionPlan(nextState);
+        try {
+          saveDoNextState(nextState, userId, email);
+        } catch {
+          // keep in-memory state even if persistence fails
+        }
+
+        try {
+          const nextHistory = recordDoNextHistoryEntry(historyEntry, userId, email);
+          setDoNextHistory(nextHistory);
+          setSelectedHistoryKey(`${historyEntry.checklistItemId}-${historyEntry.createdAt}`);
+          setHistoryOpen(true);
+        } catch {
+          // ignore history persistence errors
+        }
+
+        const evidenceRefs: string[] = [];
+        if (nextState.parsedJson) evidenceRefs.push("do-next:payload");
+        if (nextState.rawResponse) evidenceRefs.push("do-next:raw");
+        if (isMockMode) evidenceRefs.push("mode:mock");
+
+        try {
+          appendLedger({
+            timestamp: "",
+            identity: identityKey,
+            intent,
+            actionSpec,
+            preflight,
+            outcome: nextState.decisionOutcome,
+            evidenceRefs,
+          });
+        } catch {
+          // ignore ledger persistence issues
+        }
+      }
+      setDoNextLoading(false);
     }
-
-    const parsedPayload = parseDoNextPayload(rawResponse);
-    const next: DoNextState = {
-      taskId: nextTask.id,
-      responseMarkdown: rawResponse,
-      parsedJson: parsedPayload,
-      updatedAt: new Date().toISOString(),
-      agentIntent,
-      checklistItemText: nextTask.text,
-      rawResponse,
-    };
-
-    setActionPlan(next);
-    saveDoNextState(next, userId, email);
-
-    const historyEntry: DoNextHistoryEntry = {
-      createdAt: next.updatedAt,
-      checklistItemId: nextTask.id,
-      checklistItemText: nextTask.text,
-      agentIntent,
-      rawResponse,
-      parsedJson: parsedPayload,
-    };
-
-    const nextHistory = recordDoNextHistoryEntry(historyEntry, userId, email);
-    setDoNextHistory(nextHistory);
-    setSelectedHistoryKey(`${historyEntry.checklistItemId}-${historyEntry.createdAt}`);
-    setHistoryOpen(true);
-    setDoNextLoading(false);
   };
 
   const handleGenerateDailyBrief = async () => {
     if (dailyBriefLoading) return;
     setDailyBriefLoading(true);
+    try {
+      const planSummary = plan?.planMarkdown ? plan.planMarkdown.slice(0, 800) : "No CEO plan has been generated.";
+      const checklistProgress = { completed: checklistState.completedIds.length, total: checklist.length };
+      const lastEntry = actionPlan || (doNextHistory.length > 0 ? doNextHistory[0] : null);
+      const lastDoNextContext = lastEntry
+        ? {
+            taskId: (lastEntry as any).taskId || (lastEntry as any).checklistItemId,
+            text: (lastEntry as any).checklistItemText || (lastEntry as any).taskId || nextTask?.text || "",
+            summary:
+              (lastEntry as any).parsedJson?.steps?.map((s: any) => `${s.label}: ${s.expectedOutcome}`).join("; ") ||
+              (lastEntry as any).responseMarkdown ||
+              (lastEntry as any).rawResponse ||
+              "",
+          }
+        : null;
 
-    const planSummary = plan?.planMarkdown ? plan.planMarkdown.slice(0, 800) : "No CEO plan has been generated.";
-    const checklistProgress = { completed: checklistState.completedIds.length, total: checklist.length };
-    const lastEntry = actionPlan || (doNextHistory.length > 0 ? doNextHistory[0] : null);
-    const lastDoNextContext = lastEntry
-      ? {
-          taskId: (lastEntry as any).taskId || (lastEntry as any).checklistItemId,
-          text: (lastEntry as any).checklistItemText || (lastEntry as any).taskId || nextTask?.text || "",
-          summary:
-            (lastEntry as any).parsedJson?.steps?.map((s: any) => `${s.label}: ${s.expectedOutcome}`).join("; ") ||
-            (lastEntry as any).responseMarkdown ||
-            (lastEntry as any).rawResponse ||
-            "",
-        }
-      : null;
+      let rawResponse = "";
+      if (!isMockMode) {
+        const resp = await getDailyBrief?.({
+          onboarding: context,
+          planSummary,
+          checklistProgress,
+          lastDoNext: lastDoNextContext,
+        });
+        rawResponse = resp?.response ?? "";
+      }
 
-    let rawResponse = "";
-    if (!isMockMode) {
-      const resp = await getDailyBrief?.({
-        onboarding: context,
-        planSummary,
-        checklistProgress,
-        lastDoNext: lastDoNextContext,
-      });
-      rawResponse = resp?.response ?? "";
+      if (!rawResponse) {
+        rawResponse = buildMockDailyBrief(planSummary, checklistProgress, lastDoNextContext);
+      }
+
+      const parsed = parseDailyBriefPayload(rawResponse);
+      const next: DailyBriefState = {
+        payload: parsed,
+        rawResponse,
+        createdAt: new Date().toISOString(),
+        onboardingHash,
+        planHash,
+      };
+      setDailyBrief(next);
+      saveDailyBrief(next, userId, email);
+    } catch {
+      // keep previous daily brief on failure
+    } finally {
+      setDailyBriefLoading(false);
     }
-
-    if (!rawResponse) {
-      rawResponse = buildMockDailyBrief(planSummary, checklistProgress, lastDoNextContext);
-    }
-
-    const parsed = parseDailyBriefPayload(rawResponse);
-    const next: DailyBriefState = {
-      payload: parsed,
-      rawResponse,
-      createdAt: new Date().toISOString(),
-      onboardingHash,
-      planHash,
-    };
-    setDailyBrief(next);
-    saveDailyBrief(next, userId, email);
-    setDailyBriefLoading(false);
   };
 
   const handleSelectHistory = (entry: DoNextHistoryEntry) => {
     const selected: DoNextState = {
       taskId: entry.checklistItemId,
-      responseMarkdown: entry.rawResponse,
+      responseMarkdown: entry.rawResponse || entry.decisionOutcome.summary,
       parsedJson: entry.parsedJson,
       updatedAt: entry.createdAt,
       agentIntent: entry.agentIntent,
       checklistItemText: entry.checklistItemText,
       rawResponse: entry.rawResponse,
+      decisionOutcome: entry.decisionOutcome,
     };
     setActionPlan(selected);
     setSelectedHistoryKey(`${entry.checklistItemId}-${entry.createdAt}`);
