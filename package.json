@@ -16,6 +16,7 @@
     "preflight": "node scripts/preflight.cjs",
     "proofgate": "node scripts/proofgate.cjs",
     "release:gate": "node scripts/release-gate.cjs",
+    "vercel:build-selftest": "node scripts/vercel-build-selftest.cjs",
     "pr:open": "node scripts/pr-open.cjs",
     "pr:merge": "node scripts/pr-merge.cjs"
   },
