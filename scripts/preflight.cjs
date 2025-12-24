@@ -27,6 +27,8 @@ const requiredDocs = [
   "docs/CIV_CONSTITUTION.md",
   "docs/FAILURE_MODES.md",
   "docs/MAINTENANCE_REPORT_SCHEMA.md",
+  "docs/EVOLUTION_CONTRACT.md",
+  "docs/RISK_REGISTER.md",
 ];
 
 const isMockMode = () => String(process.env.VITE_MOCK_AUTH || "").toLowerCase() === "true";
@@ -67,6 +69,17 @@ const buildReadinessSummary = () => {
   const status = mode === "MOCK" ? "WARN" : missingRequired.length > 0 ? "FAIL" : "PASS";
   const humanApprovalRequired = status === "PASS" ? "NO" : "YES";
   const nextActions = [];
+  const warnings = [];
+
+  const reachabilityChannel = process.env.PPP_PREFLIGHT_CHANNEL;
+  const phoneType = process.env.PPP_PREFLIGHT_PHONE_TYPE;
+  if (reachabilityChannel === "sms" && (phoneType === "landline" || phoneType === "unknown")) {
+    warnings.push("SMS blocked for landline/unknown phone type.");
+  }
+
+  if (mode === "REAL" && process.env.PPP_PREFLIGHT_MISSING_RESPONSE_ID === "true") {
+    warnings.push("Outbound action missing provider response_id will SAFE_HOLD.");
+  }
 
   missingRequired.forEach((name) => nextActions.push(`Set ${name}`));
   if (mode === "MOCK") {
@@ -78,6 +91,7 @@ const buildReadinessSummary = () => {
   if (nextActions.length === 0) {
     nextActions.push("Proceed with pilot run");
   }
+  warnings.forEach((warning) => nextActions.push(`Warning: ${warning}`));
 
   return {
     status,

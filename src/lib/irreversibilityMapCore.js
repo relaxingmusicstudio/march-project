@@ -60,6 +60,7 @@ export const IRREVERSIBILITY_MAP = Object.freeze({
   governance_rule_change: ACTION_IMPACT.IRREVERSIBLE,
   data_permanence_promotion: ACTION_IMPACT.IRREVERSIBLE,
   automation_escalation: ACTION_IMPACT.IRREVERSIBLE,
+  lead_opt_out: ACTION_IMPACT.IRREVERSIBLE,
 });
 
 export const IRREVERSIBILITY_POINTS = Object.freeze([
@@ -101,6 +102,14 @@ export const IRREVERSIBILITY_POINTS = Object.freeze([
     affected_scope: IRREVERSIBILITY_SCOPE.ECOSYSTEM,
     reversibility: IRREVERSIBILITY_REVERSIBILITY.NONE,
     required_approvals: IRREVERSIBILITY_APPROVAL.MULTI_HUMAN,
+    fallback_behavior: IRREVERSIBILITY_FALLBACK.SAFE_HOLD,
+  }),
+  Object.freeze({
+    point_id: "lead_opt_out",
+    description: "Permanent do-not-contact opt-out for a lead.",
+    affected_scope: IRREVERSIBILITY_SCOPE.USER,
+    reversibility: IRREVERSIBILITY_REVERSIBILITY.NONE,
+    required_approvals: IRREVERSIBILITY_APPROVAL.HUMAN,
     fallback_behavior: IRREVERSIBILITY_FALLBACK.SAFE_HOLD,
   }),
 ]);

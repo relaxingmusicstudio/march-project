@@ -30,16 +30,11 @@ import {
   saveDoNextState,
   recordDoNextHistoryEntry,
 } from "@/lib/ceoChecklist";
-import { deferred, executed, halted, summarizeOutcome, transformed } from "@/lib/decisionOutcome";
+import { executed, halted, summarizeOutcome, transformed } from "@/lib/decisionOutcome";
 import { ensureOutcome } from "@/lib/loopGuard";
-import {
-  appendLedger,
-  computeIdentityKey,
-  getTrustLevel,
-  policyPreflight,
-  type ActionSpec,
-  type Intent,
-} from "@/lib/spine";
+import { computeIdentityKey } from "@/lib/spine";
+import { runPipelineStep, type PipelineResult } from "@/lib/revenueKernel/pipeline";
+import { computeActionId, type ActionSpec } from "@/types/actions";
 import {
   computePlanHash,
   DailyBriefState,
@@ -69,6 +64,7 @@ export default function CEOHome() {
   const [actionPlan, setActionPlan] = useState<DoNextState | null>(null);
   const [doNextLoading, setDoNextLoading] = useState(false);
   const [doNextHistory, setDoNextHistory] = useState<DoNextHistoryEntry[]>([]);
+  const [lastPipelineResult, setLastPipelineResult] = useState<PipelineResult | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedHistoryKey, setSelectedHistoryKey] = useState<string | null>(null);
   const [isMockMode, setIsMockMode] = useState(
@@ -219,57 +215,24 @@ export default function CEOHome() {
     if (!nextTask) return;
     setDoNextLoading(true);
     const agentIntent = "ceo_do_next";
-    const intent: Intent = {
-      intent_id: `intent-${agentIntent}-${nextTask.id}`,
-      intent_type: "ops",
-      intent_reason: `Execute checklist item: ${nextTask.text}`,
+    const intentId = `intent-${agentIntent}-${nextTask.id}`;
+    const baseAction: Omit<ActionSpec, "action_id"> = {
+      action_type: "task",
+      description: `Complete checklist item: ${nextTask.text}`,
+      intent_id: intentId,
       expected_metric: "checklist_progress",
+      risk_level: "low",
+      irreversible: false,
+      payload: {
+        title: nextTask.text,
+        source: "ceo_do_next",
+        checklistItemId: nextTask.id,
+      },
     };
     const actionSpec: ActionSpec = {
-      action_type: agentIntent,
-      params: { checklistItemId: nextTask.id },
-      irreversible_level: 0,
-      requires_confirmation: false,
-      cooldown_ms: 0,
+      ...baseAction,
+      action_id: computeActionId(baseAction),
     };
-    const requiredEnvKeys = ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"];
-    const missingRequired = requiredEnvKeys.filter((key) => {
-      const value = (import.meta.env as Record<string, string | undefined>)[key];
-      return !value || value.trim().length === 0;
-    });
-    const trustLevel = getTrustLevel(identityKey, { mockMode: isMockMode });
-    const preflight = policyPreflight(intent, actionSpec, trustLevel, {
-      isMockMode,
-      missingRequired,
-    });
-
-    if (preflight.decision !== "ALLOW") {
-      const outcome =
-        preflight.decision === "BLOCK"
-          ? halted("preflight_blocked", { reasons: preflight.reasons })
-          : deferred("preflight_friction", { friction: preflight.frictionSteps });
-      const evidenceRefs = [preflight.decision === "BLOCK" ? "preflight:block" : "preflight:friction"];
-      try {
-        appendLedger({
-          timestamp: "",
-          identity: identityKey,
-          intent,
-          actionSpec,
-          preflight,
-          outcome,
-          evidenceRefs,
-        });
-      } catch {
-        // ignore ledger persistence issues
-      }
-      const reasonText = preflight.reasons.join("; ") || "preflight_blocked";
-      const frictionText = preflight.frictionSteps.join(", ") || "confirmation required";
-      setModeBlockReason(
-        preflight.decision === "BLOCK" ? `Do Next blocked: ${reasonText}` : `Do Next requires: ${frictionText}`
-      );
-      setDoNextLoading(false);
-      return;
-    }
 
     setModeBlockReason(null);
     let nextState: DoNextState | null = null;
@@ -356,23 +319,15 @@ export default function CEOHome() {
           // ignore history persistence errors
         }
 
-        const evidenceRefs: string[] = [];
-        if (nextState.parsedJson) evidenceRefs.push("do-next:payload");
-        if (nextState.rawResponse) evidenceRefs.push("do-next:raw");
-        if (isMockMode) evidenceRefs.push("mode:mock");
-
         try {
-          appendLedger({
-            timestamp: "",
-            identity: identityKey,
-            intent,
-            actionSpec,
-            preflight,
-            outcome: nextState.decisionOutcome,
-            evidenceRefs,
+          const result = await runPipelineStep({
+            action: actionSpec,
+            identity: { userId, email },
+            provider: "ceo_agent",
           });
+          setLastPipelineResult(result);
         } catch {
-          // ignore ledger persistence issues
+          // ignore pipeline failures
         }
       }
       setDoNextLoading(false);
@@ -904,6 +859,31 @@ export default function CEOHome() {
                   {actionPlan.responseMarkdown}
                 </div>
               )}
+            </div>
+          )}
+          {lastPipelineResult && (
+            <div
+              style={{
+                border: "1px solid rgba(0,0,0,0.08)",
+                borderRadius: 8,
+                padding: 12,
+                background: "white",
+                marginTop: 12,
+              }}
+              data-testid="do-next-action-pipeline"
+            >
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Action Pipeline</div>
+              <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                <div>
+                  <span style={{ fontWeight: 700 }}>Status:</span> {lastPipelineResult.outcome.type}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 700 }}>Evidence:</span> {lastPipelineResult.proof.evidence_ref.status}
+                  {lastPipelineResult.proof.evidence_ref.request_hash
+                    ? ` - ${lastPipelineResult.proof.evidence_ref.request_hash}`
+                    : ""}
+                </div>
+              </div>
             </div>
           )}
 

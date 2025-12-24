@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+import { computeIdentityKey } from "@/lib/spine";
+import { mergeLeads, recordMergeEvent } from "@/lib/revenueKernel/leadMerge";
 import { supabase } from "@/integrations/supabase/client";
+import { buildReachabilityProfile } from "@/lib/revenueKernel/reachability";
 import { format } from "date-fns";
 
 type LeadStatus =
@@ -98,7 +101,46 @@ export default function PlasticSurgeonPipeline() {
   }, [leads, consults, feedback, adSpend, mock]);
 
   const upsertLead = async (lead: Lead) => {
-    setLeads((prev) => [...prev, lead]);
+    if (mock) {
+      setLeads((prev) => {
+        const identityKey = computeIdentityKey(userId, null);
+        const incoming = {
+          id: lead.id,
+          name: lead.name,
+          email: lead.email,
+          phone: lead.phone,
+          created_at: lead.createdAt,
+          data: { clinic: lead.clinic, city: lead.city, notes: lead.notes, ig: lead.ig },
+        };
+        const { merged, mergeEvent } = mergeLeads(
+          prev.map((item) => ({
+            id: item.id,
+            name: item.name,
+            email: item.email,
+            phone: item.phone,
+            created_at: item.createdAt,
+            data: { clinic: item.clinic, city: item.city, notes: item.notes, ig: item.ig },
+          })),
+          incoming,
+          lead.createdAt
+        );
+        if (!mergeEvent) {
+          return [...prev, lead];
+        }
+        recordMergeEvent(identityKey, mergeEvent);
+        return prev.map((item) => {
+          if (item.id !== merged.id) return item;
+          return {
+            ...item,
+            name: merged.name || item.name,
+            email: merged.email || item.email,
+            phone: merged.phone || item.phone,
+          };
+        });
+      });
+    } else {
+      setLeads((prev) => [...prev, lead]);
+    }
     if (!mock && userId) {
       await supabase.from("leads").insert({
         id: lead.id,
@@ -169,6 +211,16 @@ export default function PlasticSurgeonPipeline() {
   const [questionBudget, setQuestionBudget] = useState("What is your budget for this procedure?");
   const [questionTimeline, setQuestionTimeline] = useState("When are you looking to schedule?");
   const [questionLocation, setQuestionLocation] = useState("Where will you travel from?");
+  const reachabilityProfile = useMemo(() => {
+    if (leads.length === 0) return null;
+    const lead = leads[0];
+    return buildReachabilityProfile({
+      phones: lead.phone ? [{ e164: lead.phone, type: "unknown", verified: false }] : [],
+      email: lead.email,
+      consent_status: "unknown",
+      do_not_contact: false,
+    });
+  }, [leads]);
 
   if (!isAuthenticated) return null;
 
@@ -229,9 +281,9 @@ export default function PlasticSurgeonPipeline() {
 
                 <div className="space-y-3">
                   <div className="text-sm text-muted-foreground">Pipeline stages: Lead Source → Enrichment → Outreach → Qualification → Booked → Showed → Won/Lost</div>
-                  <div className="space-y-2">
-                    {leads.map((lead) => (
-                      <div
+                <div className="space-y-2">
+                  {leads.map((lead) => (
+                    <div
                         key={lead.id}
                         data-testid="lead-row"
                         className="border rounded-md p-3 flex items-center justify-between"
@@ -248,6 +300,17 @@ export default function PlasticSurgeonPipeline() {
                       </div>
                     ))}
                   </div>
+                  {reachabilityProfile && (
+                    <div
+                      className="mt-4 rounded-md border p-3 text-sm"
+                      data-testid="reachability-panel"
+                    >
+                      <div className="font-semibold">Reachability</div>
+                      <div>Best channel: {reachabilityProfile.best_channel}</div>
+                      <div>Fallbacks: {reachabilityProfile.fallback_order.join(", ")}</div>
+                      <div>Consent: {reachabilityProfile.consent_status}</div>
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>
