@@ -15,6 +15,7 @@ import Footer from "@/components/Footer";
 import ExitIntentPopup from "@/components/ExitIntentPopup";
 import PlaybookSection from "@/components/PlaybookSection";
 import { useScrollTracking } from "@/hooks/useScrollTracking";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const Index = () => {
   // Initialize scroll and section tracking
@@ -56,7 +57,15 @@ const Index = () => {
           </section>
         </article>
         <Footer />
-        <Chatbot />
+        <ErrorBoundary
+          fallback={
+            <div className="fixed bottom-24 right-6 z-50 max-w-[calc(100vw-3rem)] rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 shadow-lg">
+              Chat crashed - reload to retry.
+            </div>
+          }
+        >
+          <Chatbot />
+        </ErrorBoundary>
         <StickyFooter />
         <ExitIntentPopup />
       </main>

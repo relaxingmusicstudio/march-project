@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MessageCircle, X, Send, User, Loader2, Check, AlertTriangle, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseRestConfigured, supabaseRestRequest } from "@/lib/supabase/rest";
 import { useToast } from "@/hooks/use-toast";
 import { useVisitor } from "@/contexts/useVisitor";
 
@@ -48,6 +49,7 @@ type RateLimitState = {
 
 const ALEX_AVATAR = "/alex-avatar.png";
 const MAX_NETWORK_RETRIES = 2;
+const CHAT_AUTH_MESSAGE = "Chat is temporarily unavailable (backend not authorized).";
 
 const Chatbot = () => {
   const { toast } = useToast();
@@ -90,6 +92,7 @@ const Chatbot = () => {
     networkRetries: 0,
   });
   const [networkError, setNetworkError] = useState<string | null>(null);
+  const [chatAuthUnavailable, setChatAuthUnavailable] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastActivityRef = useRef<number>(Date.now());
@@ -184,6 +187,12 @@ const Chatbot = () => {
     }
   }, [networkError]);
 
+  useEffect(() => {
+    if (!isSupabaseRestConfigured()) {
+      setChatAuthUnavailable(true);
+    }
+  }, []);
+
   const trackActivity = () => {
     lastActivityRef.current = Date.now();
   };
@@ -195,6 +204,8 @@ const Chatbot = () => {
     outcome?: string,
     aiAnalysis?: Record<string, unknown> | null
   ) => {
+    if (chatAuthUnavailable) return;
+
     try {
       const visitorGHLData = getGHLData();
       const durationSeconds = Math.floor((Date.now() - conversationStartRef.current) / 1000);
@@ -214,23 +225,40 @@ const Chatbot = () => {
 
       if (conversationId) {
         // Update existing conversation
-        await supabase
-          .from('conversations')
-          .update(conversationData)
-          .eq('id', conversationId);
+        const updateResult = await supabaseRestRequest<unknown>("conversations", {
+          method: "PATCH",
+          body: conversationData,
+          query: { id: `eq.${conversationId}` },
+        });
+        if (updateResult.unauthorized) {
+          setChatAuthUnavailable(true);
+          return;
+        }
+        if (!updateResult.ok) {
+          console.error("Error updating conversation:", updateResult.error);
+        }
       } else {
         // Create new conversation
-        const { data, error } = await supabase
-          .from('conversations')
-          .insert({
+        const insertResult = await supabaseRestRequest<Array<{ id: string }>>("conversations", {
+          method: "POST",
+          body: {
             ...conversationData,
             created_at: new Date().toISOString(),
-          })
-          .select('id')
-          .single();
-        
-        if (!error && data) {
-          setConversationId(data.id);
+          },
+          query: { select: "id" },
+          prefer: "return=representation",
+        });
+        if (insertResult.unauthorized) {
+          setChatAuthUnavailable(true);
+          return;
+        }
+        if (!insertResult.ok) {
+          console.error("Error creating conversation:", insertResult.error);
+          return;
+        }
+        const newId = insertResult.data?.[0]?.id;
+        if (newId) {
+          setConversationId(newId);
         }
       }
     } catch (error) {
@@ -308,6 +336,9 @@ Phase: ${leadData.conversationPhase}`;
   const addTypingDelay = () => new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
 
   const initializeChat = async () => {
+    if (chatAuthUnavailable) {
+      return;
+    }
     setMessages([]);
     setConversationHistory([]);
     setIsTyping(true);
@@ -528,6 +559,7 @@ Phase: ${leadData.conversationPhase}`;
   };
 
   const handleOptionClick = async (option: string) => {
+    if (chatAuthUnavailable) return;
     trackActivity();
     
     const lastMessage = messages[messages.length - 1];
@@ -615,7 +647,7 @@ Phase: ${leadData.conversationPhase}`;
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isSubmitting || isTyping) return;
+    if (!inputValue.trim() || isSubmitting || isTyping || chatAuthUnavailable) return;
     trackActivity();
     trackChatbotEngage();
 
@@ -844,6 +876,8 @@ Traffic Source: ${visitorGHLData.utm_source || visitorGHLData.referrer_source ||
     }
   };
 
+  const isChatDisabled = chatAuthUnavailable || isSubmitting || isTyping || rateLimitState.isRateLimited;
+
   return (
     <>
       {/* Floating chat button */}
@@ -894,6 +928,15 @@ Traffic Source: ${visitorGHLData.utm_source || visitorGHLData.referrer_source ||
           </button>
         </div>
 
+        {chatAuthUnavailable && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30">
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium">{CHAT_AUTH_MESSAGE}</span>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="h-80 overflow-y-auto p-4 space-y-4">
           {messages.map((message) => (
@@ -938,7 +981,7 @@ Traffic Source: ${visitorGHLData.utm_source || visitorGHLData.referrer_source ||
                         <button
                           key={index}
                           onClick={() => handleOptionClick(option)}
-                          disabled={isSubmitting || isTyping || rateLimitState.isRateLimited}
+                          disabled={isChatDisabled}
                           className={`px-3 py-1.5 text-sm rounded-full transition-all disabled:opacity-50 flex items-center gap-1.5 ${
                             isDone
                               ? "bg-accent text-accent-foreground hover:bg-accent/90"
@@ -1075,22 +1118,30 @@ Traffic Source: ${visitorGHLData.utm_source || visitorGHLData.referrer_source ||
               type="text"
               value={inputValue}
               onChange={handleInputChange}
-              onKeyDown={(e) => e.key === "Enter" && !rateLimitState.isRateLimited && handleSendMessage()}
+              onKeyDown={(e) => e.key === "Enter" && !isChatDisabled && handleSendMessage()}
               placeholder={
-                rateLimitState.isRateLimited 
+                chatAuthUnavailable
+                  ? "Chat unavailable"
+                  : rateLimitState.isRateLimited 
                   ? `Wait ${rateLimitState.countdownSeconds}s...` 
                   : isPhoneInputPhase() 
                     ? "XXX-XXX-XXXX" 
                     : "Type a message..."
               }
-              disabled={isSubmitting || isTyping || rateLimitState.isRateLimited}
+              disabled={isChatDisabled}
               className="flex-1 h-10 px-4 rounded-full border-2 border-border bg-background text-foreground focus:border-accent focus:ring-0 outline-none transition-all disabled:opacity-50"
             />
             <button
               onClick={handleSendMessage}
-              disabled={isSubmitting || isTyping || !inputValue.trim() || rateLimitState.isRateLimited}
+              disabled={isChatDisabled || !inputValue.trim()}
               className="w-10 h-10 rounded-full bg-accent text-accent-foreground flex items-center justify-center hover:bg-accent/90 transition-colors disabled:opacity-50"
-              title={rateLimitState.isRateLimited ? `Rate limited - wait ${rateLimitState.countdownSeconds}s` : 'Send message'}
+              title={
+                chatAuthUnavailable
+                  ? "Chat unavailable"
+                  : rateLimitState.isRateLimited
+                  ? `Rate limited - wait ${rateLimitState.countdownSeconds}s`
+                  : "Send message"
+              }
             >
               <Send className="w-4 h-4" />
             </button>

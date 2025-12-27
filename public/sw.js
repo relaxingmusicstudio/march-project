@@ -5,6 +5,16 @@ const STATIC_ASSETS = [
   '/favicon.png',
   '/alex-avatar.png'
 ];
+const DEV_HOSTS = new Set(['localhost', '127.0.0.1']);
+let cachePutLogged = false;
+
+const logCachePutError = (error) => {
+  if (cachePutLogged) return;
+  if (DEV_HOSTS.has(self.location.hostname)) {
+    console.warn('[SW] cache.put failed', error);
+    cachePutLogged = true;
+  }
+};
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
@@ -43,12 +53,21 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
+  const requestUrl = new URL(event.request.url);
+  const isHttp = requestUrl.protocol === 'http:' || requestUrl.protocol === 'https:';
+  if (!isHttp) return;
+  if (requestUrl.origin !== self.location.origin) return;
+
   // Skip Supabase/API requests
-  if (event.request.url.includes('/functions/') || 
-      event.request.url.includes('/rest/') ||
-      event.request.url.includes('/auth/')) {
+  if (
+    requestUrl.pathname.includes('/functions/') || 
+    requestUrl.pathname.includes('/rest/') ||
+    requestUrl.pathname.includes('/auth/')
+  ) {
     return;
   }
+
+  const shouldCache = event.request.destination !== 'document';
 
   event.respondWith(
     fetch(event.request)
@@ -57,10 +76,13 @@ self.addEventListener('fetch', (event) => {
         const responseClone = response.clone();
         
         // Cache successful responses
-        if (response.status === 200) {
+        if (response.status === 200 && shouldCache) {
           caches.open(CACHE_NAME)
             .then((cache) => {
               cache.put(event.request, responseClone);
+            })
+            .catch((error) => {
+              logCachePutError(error);
             });
         }
         

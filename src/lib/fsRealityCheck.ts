@@ -149,7 +149,7 @@ export async function runFSRealityCheck(): Promise<FSRealityCheckResult> {
     build_timestamp: (import.meta.env.VITE_BUILD_TIMESTAMP as string) ?? "(missing)",
     commit_sha: (import.meta.env.VITE_COMMIT_SHA as string) ?? "(missing)",
     supabase_url_present: !!import.meta.env.VITE_SUPABASE_URL,
-    supabase_key_present: !!import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    supabase_key_present: !!(import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY),
   };
   
   // Check build output
