@@ -15,7 +15,7 @@ import {
 import { createId, nowIso } from "./utils";
 import { ApprovalGate, BudgetTracker, evaluateSafetyGate } from "./safety";
 import { getAgentProfile } from "./agents";
-import type { AgentRuntimeContext, RuntimeGovernanceDecision } from "./runtimeGovernance";
+import type { AgentRuntimeContext, RuntimeGovernanceDecision } from "./runtimeTypes";
 import { assertUnsafeTestBypass } from "./runtimeGuards";
 import { assertCostContext } from "./costUtils";
 import {
@@ -126,6 +126,11 @@ export type ToolInvokeContext = {
   identityKey: string;
   agentContext: AgentRuntimeContext;
   initiator?: "agent" | "human" | "system";
+  enforceGovernance?: (
+    identityKey: string,
+    context: AgentRuntimeContext,
+    initiator?: "agent" | "human" | "system"
+  ) => Promise<RuntimeGovernanceDecision>;
   conflictProposals?: AgentProposal[];
   activeProposalId?: string;
   disagreementTopic?: string;
@@ -534,10 +539,8 @@ export const invokeTool = async <Input, Output>(
       })
     : null;
 
-  let governanceDecision: RuntimeGovernanceDecision | null = null;
-  if (!context.__unsafeSkipGovernanceForTests) {
-    const { enforceRuntimeGovernance } = await import("./runtimeGovernance");
-    governanceDecision = await enforceRuntimeGovernance(
+  if (context.enforceGovernance && !context.__unsafeSkipGovernanceForTests) {
+    const governanceDecision = await context.enforceGovernance(
       context.identityKey,
       enforcedContext,
       context.initiator ?? "agent"

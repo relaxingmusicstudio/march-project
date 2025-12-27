@@ -14,12 +14,32 @@ import {
 import { createMemoryStore, retrieveMemory, writeMemory } from "./memory";
 import { createBudgetTracker, evaluateSafetyGate } from "./safety";
 import { createToolUsageStore, recommendTool } from "./adaptation";
-import { createGovernedTool, invokeTool, ToolDefinition } from "./tooling";
+import { createGovernedTool, invokeTool, type ToolDefinition, type ToolInvokeContext } from "./tooling";
 import { DEFAULT_AGENT_IDS, getAgentProfile } from "./agents";
 import { DEFAULT_GOAL_IDS } from "./goals";
 import { createId } from "./utils";
+import type {
+  EvaluationCoverage,
+  EvaluationSummary,
+  EvaluationRun,
+  EvaluationLedger,
+  TaskRotationIssue,
+  TaskRotationReport,
+} from "./evaluationTypes";
+export type {
+  EvaluationCoverage,
+  EvaluationSummary,
+  EvaluationRun,
+  EvaluationLedger,
+  TaskRotationIssue,
+  TaskRotationReport,
+} from "./evaluationTypes";
 
 const FIXED_NOW = "2025-01-01T00:00:00.000Z";
+
+type EvaluationRunOptions = {
+  enforceGovernance?: ToolInvokeContext["enforceGovernance"];
+};
 
 const parseVersion = (value: string): number => {
   const match = value.match(/(\d+)/);
@@ -215,7 +235,7 @@ const runMemoryScope = (task: EvaluationTask): EvaluationResult => {
   });
 };
 
-const runToolValidation = async (task: EvaluationTask): Promise<EvaluationResult> => {
+const runToolValidation = async (task: EvaluationTask, options?: EvaluationRunOptions): Promise<EvaluationResult> => {
   const input = task.input as { invalidInput: Record<string, unknown> };
   const agentProfile = getAgentProfile(DEFAULT_AGENT_IDS.evaluation);
   if (!agentProfile) {
@@ -256,6 +276,7 @@ const runToolValidation = async (task: EvaluationTask): Promise<EvaluationResult
     budget: createBudgetTracker({ maxCostCents: 10, maxTokens: 100, maxSideEffects: 0 }),
     identityKey: "eval:system",
     initiator: "system",
+    enforceGovernance: options?.enforceGovernance,
     agentContext: {
       agentId: agentProfile.agentId,
       actionDomain: "system",
@@ -334,7 +355,10 @@ const runContractValidation = (task: EvaluationTask): EvaluationResult => {
   });
 };
 
-export const runEvaluationTask = async (task: EvaluationTask): Promise<EvaluationResult> => {
+export const runEvaluationTask = async (
+  task: EvaluationTask,
+  options?: EvaluationRunOptions
+): Promise<EvaluationResult> => {
   const parsed = EvaluationTaskSchema.safeParse(task);
   if (!parsed.success) {
     return toEvaluationResult({
@@ -350,7 +374,7 @@ export const runEvaluationTask = async (task: EvaluationTask): Promise<Evaluatio
     case "memory_scope":
       return runMemoryScope(task);
     case "tool_validation":
-      return runToolValidation(task);
+      return runToolValidation(task, options);
     case "tool_adaptation":
       return runToolAdaptation(task);
     case "contract_validation":
@@ -362,11 +386,6 @@ export const runEvaluationTask = async (task: EvaluationTask): Promise<Evaluatio
         details: "unsupported_task_type",
       });
   }
-};
-
-export type EvaluationCoverage = {
-  domains: Record<EvaluationDomain, number>;
-  failureClasses: Record<FailureClass, number>;
 };
 
 export const buildCoverageReport = (tasks: EvaluationTask[]): EvaluationCoverage => {
@@ -395,16 +414,6 @@ export const buildCoverageReport = (tasks: EvaluationTask[]): EvaluationCoverage
   });
 
   return { domains, failureClasses };
-};
-
-export type TaskRotationIssue = {
-  taskId: string;
-  issue: string;
-};
-
-export type TaskRotationReport = {
-  ok: boolean;
-  issues: TaskRotationIssue[];
 };
 
 export const validateTaskRotation = (tasks: EvaluationTask[]): TaskRotationReport => {
@@ -442,25 +451,15 @@ export const validateTaskRotation = (tasks: EvaluationTask[]): TaskRotationRepor
   return { ok: issues.length === 0, issues };
 };
 
-export type EvaluationSummary = {
-  runId: string;
-  total: number;
-  passed: number;
-  failed: number;
-  passRate: number;
-  results: EvaluationResult[];
-  startedAt: string;
-  completedAt: string;
-  coverage: EvaluationCoverage;
-  rotation: TaskRotationReport;
-};
-
-export const runEvaluationSuite = async (tasks: EvaluationTask[] = EVALUATION_TASKS): Promise<EvaluationSummary> => {
+export const runEvaluationSuite = async (
+  tasks: EvaluationTask[] = EVALUATION_TASKS,
+  options?: EvaluationRunOptions
+): Promise<EvaluationSummary> => {
   const results: EvaluationResult[] = [];
   const startedAt = new Date().toISOString();
 
   for (const task of tasks) {
-    const result = await runEvaluationTask(task);
+    const result = await runEvaluationTask(task, options);
     results.push(result);
   }
 
@@ -481,18 +480,6 @@ export const runEvaluationSuite = async (tasks: EvaluationTask[] = EVALUATION_TA
     coverage,
     rotation,
   };
-};
-
-export type EvaluationRun = {
-  runId: string;
-  tasks: EvaluationTask[];
-  summary: EvaluationSummary;
-};
-
-export type EvaluationLedger = {
-  record: (run: EvaluationRun) => void;
-  list: () => EvaluationRun[];
-  latest: () => EvaluationRun | null;
 };
 
 export const createEvaluationLedger = (): EvaluationLedger => {

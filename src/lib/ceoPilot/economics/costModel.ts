@@ -1,6 +1,6 @@
 import type { ActionSpec, CostCategory } from "../../../types/actions";
 import type { ToolCall } from "../contracts";
-import type { AgentRuntimeContext } from "../runtimeGovernance";
+import type { AgentRuntimeContext } from "../runtimeTypes";
 
 export type CostAttribution = {
   costUnits: number;

@@ -1,4 +1,4 @@
-import { EvaluationRun } from "./evaluation";
+import type { EvaluationRun } from "./evaluationTypes";
 import {
   DebtRecord,
   DebtRecordSchema,

@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { DecisionCardRenderer } from "@/components/ceo/DecisionCardRenderer";
 import { PageShell } from "@/components/PageShell";
+import { wrapWithModification } from "@/lib/decisionSchema";
 import {
   CheckCircle2,
   XCircle,
@@ -183,7 +184,6 @@ export default function DecisionsDashboard() {
       
       // GOVERNANCE: Preserve decision_card format on modify
       // Use wrapWithModification to properly update decision_card.human_modification
-      const { wrapWithModification } = await import('@/lib/decisionSchema');
       const updatedPayload = wrapWithModification(existingPayload, modificationText);
       
       // For ceo_action_queue, update 'payload' column; for action_queue, update 'action_payload'

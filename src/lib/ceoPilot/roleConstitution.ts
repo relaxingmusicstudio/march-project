@@ -13,7 +13,7 @@ import {
   recordRoleConstitutionAudit,
 } from "./runtimeState";
 import { createId, nowIso } from "./utils";
-import type { AgentRuntimeContext } from "./runtimeGovernance";
+import type { AgentRuntimeContext } from "./runtimeTypes";
 
 export type RoleConstitutionInput = {
   identityKey: string;

@@ -3,7 +3,7 @@ import { TaskOutcomeRecord } from "./contracts";
 import { deriveTaskClass } from "./costUtils";
 import { recordTaskOutcome } from "./runtimeState";
 import { hashString, nowIso, stableStringify, createId } from "./utils";
-import type { AgentRuntimeContext } from "./runtimeGovernance";
+import type { AgentRuntimeContext } from "./runtimeTypes";
 
 export type OutcomeInput = {
   identityKey: string;

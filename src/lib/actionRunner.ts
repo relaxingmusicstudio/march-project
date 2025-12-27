@@ -1,7 +1,7 @@
 import type { ExecutionRecord, ActionSpec } from "../types/actions";
 import type { PolicyContext } from "./policyEngine";
 import { stableStringify } from "../types/actions";
-import type { AgentRuntimeContext } from "./ceoPilot/runtimeGovernance";
+import type { AgentRuntimeContext } from "./ceoPilot/runtimeTypes";
 import { enforceRuntimeGovernance } from "./ceoPilot/runtimeGovernance";
 import { assertUnsafeTestBypass } from "./ceoPilot/runtimeGuards";
 import { recordRuntimeOutcome } from "./ceoPilot/outcomes";

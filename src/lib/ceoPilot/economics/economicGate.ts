@@ -2,7 +2,7 @@ import type { EconomicAuditRecord, EconomicBudgetState } from "../contracts";
 import { getAgentProfile } from "../agents";
 import { loadRolePolicies } from "../runtimeState";
 import { nowIso } from "../utils";
-import type { AgentRuntimeContext } from "../runtimeGovernance";
+import type { AgentRuntimeContext } from "../runtimeTypes";
 import { ensureContextEconomics } from "./costModel";
 import {
   consumeEconomicBudget,
