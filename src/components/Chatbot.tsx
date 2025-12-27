@@ -50,6 +50,46 @@ type RateLimitState = {
 const ALEX_AVATAR = "/alex-avatar.png";
 const MAX_NETWORK_RETRIES = 2;
 const CHAT_AUTH_MESSAGE = "Chat is temporarily unavailable (backend not authorized).";
+const AUTH_ERROR_STATUSES = new Set([401, 403]);
+const AUTH_ERROR_PATTERNS = ["unauthorized", "jwt", "invalid api key", "invalid api-key"];
+
+const getAuthStatus = (error: unknown): number | null => {
+  if (!error) return null;
+  if (typeof error === "number") {
+    return AUTH_ERROR_STATUSES.has(error) ? error : null;
+  }
+  if (typeof error === "string") {
+    const lowered = error.toLowerCase();
+    if (AUTH_ERROR_PATTERNS.some((pattern) => lowered.includes(pattern))) {
+      return 401;
+    }
+    return null;
+  }
+  if (typeof error === "object") {
+    const status = (error as { status?: number }).status ?? (error as { context?: { status?: number } }).context?.status;
+    if (status && AUTH_ERROR_STATUSES.has(status)) {
+      return status;
+    }
+    const message = (error as { message?: string }).message;
+    if (message) {
+      const lowered = message.toLowerCase();
+      if (AUTH_ERROR_PATTERNS.some((pattern) => lowered.includes(pattern))) {
+        return 401;
+      }
+    }
+  }
+  return null;
+};
+
+const isAuthError = (error: unknown): boolean => getAuthStatus(error) !== null;
+
+const logChatError = (message: string, error?: unknown) => {
+  if (import.meta.env.DEV) {
+    console.error(message, error);
+    return;
+  }
+  console.warn(message);
+};
 
 const Chatbot = () => {
   const { toast } = useToast();
@@ -235,7 +275,7 @@ const Chatbot = () => {
           return;
         }
         if (!updateResult.ok) {
-          console.error("Error updating conversation:", updateResult.error);
+          logChatError("Error updating conversation:", updateResult.error);
         }
       } else {
         // Create new conversation
@@ -253,7 +293,7 @@ const Chatbot = () => {
           return;
         }
         if (!insertResult.ok) {
-          console.error("Error creating conversation:", insertResult.error);
+          logChatError("Error creating conversation:", insertResult.error);
           return;
         }
         const newId = insertResult.data?.[0]?.id;
@@ -262,7 +302,7 @@ const Chatbot = () => {
         }
       }
     } catch (error) {
-      console.error("Error saving conversation:", error);
+      logChatError("Error saving conversation:", error);
     }
   };
 
@@ -301,7 +341,7 @@ Phase: ${leadData.conversationPhase}`;
         },
       });
     } catch (error) {
-      console.error("Error saving partial lead:", error);
+      logChatError("Error saving partial lead:", error);
     }
   };
   savePartialLeadRef.current = savePartialLead;
@@ -370,8 +410,9 @@ Phase: ${leadData.conversationPhase}`;
   initializeChatRef.current = initializeChat;
 
   const logUserInput = async (content: string) => {
+    if (chatAuthUnavailable) return;
     try {
-      await supabase.functions.invoke('user-input-logger', {
+      const { error } = await supabase.functions.invoke('user-input-logger', {
         body: {
           action: 'log_input',
           source: 'chatbot',
@@ -381,14 +422,25 @@ Phase: ${leadData.conversationPhase}`;
           metadata: { session_id: sessionId, conversation_id: conversationId },
         },
       });
+      if (error) {
+        if (isAuthError(error)) {
+          setChatAuthUnavailable(true);
+          return;
+        }
+        logChatError("Failed to log chatbot input:", error);
+      }
     } catch (error) {
-      console.error('Failed to log chatbot input:', error);
+      if (isAuthError(error)) {
+        setChatAuthUnavailable(true);
+        return;
+      }
+      logChatError("Failed to log chatbot input:", error);
     }
   };
 
   const sendToAlex = async (newMessages: Array<{ role: string; content: string }>): Promise<AIResponse | null> => {
     // Don't send if rate limited
-    if (rateLimitState.isRateLimited) {
+    if (rateLimitState.isRateLimited || chatAuthUnavailable) {
       return null;
     }
 
@@ -407,6 +459,12 @@ Phase: ${leadData.conversationPhase}`;
           leadData: leadData,
         },
       });
+
+      const authStatus = getAuthStatus(error) ?? getAuthStatus(data?.error);
+      if (authStatus) {
+        setChatAuthUnavailable(true);
+        return null;
+      }
 
       // Helper to detect quota/rate limit errors
       const detectQuotaError = (obj: unknown): { isQuota: boolean; retryAfter: number; code: string } => {
@@ -489,7 +547,11 @@ Phase: ${leadData.conversationPhase}`;
       
       return responseData;
     } catch (error: unknown) {
-      console.error("Error calling alex-chat:", error);
+      if (isAuthError(error)) {
+        setChatAuthUnavailable(true);
+        return null;
+      }
+      logChatError("Error calling alex-chat:", error);
       
       // Handle network errors (Failed to fetch)
       const errorMessage = (error as { message?: string })?.message ?? String(error);
@@ -737,7 +799,7 @@ Phase: ${leadData.conversationPhase}`;
           console.log("AI Analysis complete:", aiAnalysis);
         }
       } catch (analysisErr) {
-        console.error("AI analysis failed, continuing without:", analysisErr);
+        logChatError("AI analysis failed, continuing without:", analysisErr);
       }
 
       const qualificationNotes = `
@@ -861,7 +923,7 @@ Traffic Source: ${visitorGHLData.utm_source || visitorGHLData.referrer_source ||
         description: `Lead scored at ${aiAnalysis?.lead_score || 'N/A'}/100 - ${aiAnalysis?.lead_temperature || 'warm'} lead!`,
       });
     } catch (error) {
-      console.error("Error submitting lead:", error);
+      logChatError("Error submitting lead:", error);
       toast({ title: "Oops!", description: "Something went wrong.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);

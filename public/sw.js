@@ -54,6 +54,8 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const requestUrl = new URL(event.request.url);
+  const isExtensionScheme = requestUrl.protocol === 'chrome-extension:' || requestUrl.protocol === 'devtools:';
+  if (isExtensionScheme) return;
   const isHttp = requestUrl.protocol === 'http:' || requestUrl.protocol === 'https:';
   if (!isHttp) return;
   if (requestUrl.origin !== self.location.origin) return;
