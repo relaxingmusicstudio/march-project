@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MessageCircle, X, Send, User, Loader2, Check, AlertTriangle, WifiOff } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { isSupabaseRestConfigured } from "@/lib/supabase/rest";
 import { Kernel } from "@/kernel/run";
 import { useToast } from "@/hooks/use-toast";
@@ -90,6 +89,57 @@ const logChatError = (message: string, error?: unknown) => {
     return;
   }
   console.warn(message);
+};
+
+const invokeKernelFunction = async <T,>(
+  functionName: string,
+  payload: Record<string, unknown>
+): Promise<{ data: T | null; error: { message: string; status?: number; code?: string } | null }> => {
+  try {
+    const response = await fetch("/api/alex-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ function: functionName, body: payload }),
+    });
+    const raw = await response.text();
+    let parsed: { ok?: boolean; data?: T; error?: string; code?: string } | null = null;
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw) as { ok?: boolean; data?: T; error?: string; code?: string };
+      } catch {
+        parsed = null;
+      }
+    }
+    if (!response.ok) {
+      return {
+        data: null,
+        error: {
+          message: parsed?.error ?? response.statusText ?? "Request failed",
+          status: response.status,
+          code: parsed?.code,
+        },
+      };
+    }
+    if (parsed && parsed.ok === false) {
+      return {
+        data: null,
+        error: {
+          message: parsed.error ?? "Request failed",
+          status: response.status,
+          code: parsed.code,
+        },
+      };
+    }
+    return { data: parsed?.data ?? null, error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: {
+        message: error instanceof Error ? error.message : "Network error",
+      },
+    };
+  }
 };
 
 const isSupabaseFunctionsConfigured = (): boolean => {
@@ -314,22 +364,20 @@ Interests: ${leadData.interests.join(", ")}
 Potential Monthly Loss: $${leadData.potentialLoss}
 Phase: ${leadData.conversationPhase}`;
 
-      await supabase.functions.invoke('contact-form', {
-        body: {
-          name: leadData.name,
-          email: leadData.email,
-          phone: leadData.phone,
-          message: qualificationNotes,
-          businessType: leadData.trade,
-          businessTypeOther: leadData.businessName,
-          teamSize: leadData.teamSize,
-          callVolume: leadData.callVolume,
-          aiTimeline: leadData.aiTimeline,
-          interests: leadData.interests,
-          isGoodFit: leadData.isQualified,
-          fitReason: "Partial_Capture",
-          notes: leadData.notes.join(" | "),
-        },
+      await invokeKernelFunction("contact-form", {
+        name: leadData.name,
+        email: leadData.email,
+        phone: leadData.phone,
+        message: qualificationNotes,
+        businessType: leadData.trade,
+        businessTypeOther: leadData.businessName,
+        teamSize: leadData.teamSize,
+        callVolume: leadData.callVolume,
+        aiTimeline: leadData.aiTimeline,
+        interests: leadData.interests,
+        isGoodFit: leadData.isQualified,
+        fitReason: "Partial_Capture",
+        notes: leadData.notes.join(" | "),
       });
     } catch (error) {
       logChatError("Error saving partial lead:", error);
@@ -407,15 +455,13 @@ Phase: ${leadData.conversationPhase}`;
       return;
     }
     try {
-      const { error } = await supabase.functions.invoke('user-input-logger', {
-        body: {
-          action: 'log_input',
-          source: 'chatbot',
-          input_type: 'text',
-          content,
-          classify: true,
-          metadata: { session_id: sessionId, conversation_id: conversationId },
-        },
+      const { error } = await invokeKernelFunction("user-input-logger", {
+        action: "log_input",
+        source: "chatbot",
+        input_type: "text",
+        content,
+        classify: true,
+        metadata: { session_id: sessionId, conversation_id: conversationId },
       });
       if (error) {
         if (isAuthError(error)) {
@@ -452,11 +498,9 @@ Phase: ${leadData.conversationPhase}`;
         await logUserInput(userMessage.content);
       }
       
-      const { data, error } = await supabase.functions.invoke('alex-chat', {
-        body: {
-          messages: allMessages,
-          leadData: leadData,
-        },
+      const { data, error } = await invokeKernelFunction<AIResponse>("alex-chat", {
+        messages: allMessages,
+        leadData: leadData,
       });
 
       const authStatus = getAuthStatus(error) ?? getAuthStatus(data?.error);
@@ -764,32 +808,30 @@ Phase: ${leadData.conversationPhase}`;
       let aiAnalysis = null;
       
       try {
-        const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-lead', {
-          body: {
-            conversationHistory: conversationHistory,
-            leadData: leadData,
-            visitorData: {
-              visitorId: visitorGHLData.visitor_id,
-              isReturningVisitor: visitorGHLData.is_returning_visitor === 'YES',
-              visitCount: parseInt(visitorGHLData.visit_count) || 1,
-              firstVisitAt: visitorGHLData.first_visit_date,
-              utmSource: visitorGHLData.utm_source,
-              utmMedium: visitorGHLData.utm_medium,
-              utmCampaign: visitorGHLData.utm_campaign,
-              referrer: visitorGHLData.referrer_source,
-              engagementScore: parseInt(visitorGHLData.engagement_score) || 0,
-              behavioralIntent: visitorGHLData.behavioral_intent,
-              scrollDepth: parseInt(visitorGHLData.scroll_depth) || 0,
-              timeOnPage: visitorGHLData.time_on_site,
-              pagesViewed: visitorGHLData.pages_viewed?.split(', ')?.length || 1,
-              calculatorUsed: visitorGHLData.calculator_used === 'YES',
-              demoWatched: visitorGHLData.demo_watched === 'YES',
-              demoWatchTime: parseInt(visitorGHLData.demo_watch_time) || 0,
-              chatbotEngaged: visitorGHLData.chatbot_engaged === 'YES',
-              ctaClicks: visitorGHLData.cta_clicks?.split(', ').filter(Boolean) || [],
-              sectionsViewed: visitorGHLData.sections_viewed?.split(', ').filter(Boolean) || [],
-              interestSignals: visitorGHLData.interest_signals?.split(', ').filter(Boolean) || [],
-            },
+        const { data: analysisData, error: analysisError } = await invokeKernelFunction("analyze-lead", {
+          conversationHistory: conversationHistory,
+          leadData: leadData,
+          visitorData: {
+            visitorId: visitorGHLData.visitor_id,
+            isReturningVisitor: visitorGHLData.is_returning_visitor === 'YES',
+            visitCount: parseInt(visitorGHLData.visit_count) || 1,
+            firstVisitAt: visitorGHLData.first_visit_date,
+            utmSource: visitorGHLData.utm_source,
+            utmMedium: visitorGHLData.utm_medium,
+            utmCampaign: visitorGHLData.utm_campaign,
+            referrer: visitorGHLData.referrer_source,
+            engagementScore: parseInt(visitorGHLData.engagement_score) || 0,
+            behavioralIntent: visitorGHLData.behavioral_intent,
+            scrollDepth: parseInt(visitorGHLData.scroll_depth) || 0,
+            timeOnPage: visitorGHLData.time_on_site,
+            pagesViewed: visitorGHLData.pages_viewed?.split(', ')?.length || 1,
+            calculatorUsed: visitorGHLData.calculator_used === 'YES',
+            demoWatched: visitorGHLData.demo_watched === 'YES',
+            demoWatchTime: parseInt(visitorGHLData.demo_watch_time) || 0,
+            chatbotEngaged: visitorGHLData.chatbot_engaged === 'YES',
+            ctaClicks: visitorGHLData.cta_clicks?.split(', ').filter(Boolean) || [],
+            sectionsViewed: visitorGHLData.sections_viewed?.split(', ').filter(Boolean) || [],
+            interestSignals: visitorGHLData.interest_signals?.split(', ').filter(Boolean) || [],
           },
         });
         
@@ -844,74 +886,72 @@ Demo Watched: ${visitorGHLData.demo_watched}
 CTA Clicks: ${visitorGHLData.cta_clicks}
 Traffic Source: ${visitorGHLData.utm_source || visitorGHLData.referrer_source || 'Direct'}`;
 
-      await supabase.functions.invoke('contact-form', {
-        body: {
-          name: leadData.name,
-          email: leadData.email,
-          phone: leadData.phone,
-          message: qualificationNotes,
-          businessType: leadData.trade,
-          businessTypeOther: leadData.businessName,
-          businessName: leadData.businessName,
-          teamSize: leadData.teamSize,
-          callVolume: leadData.callVolume,
-          aiTimeline: leadData.aiTimeline,
-          interests: leadData.interests,
-          potentialLoss: String(leadData.potentialLoss),
-          isGoodFit: true,
-          fitReason: "Chatbot_Qualified",
-          notes: leadData.notes.join(" | "),
-          formName: "Chatbot - Alex (AI Scored)",
-          // AI Analysis fields
-          aiLeadScore: aiAnalysis?.lead_score,
-          aiLeadTemperature: aiAnalysis?.lead_temperature,
-          aiLeadIntent: aiAnalysis?.lead_intent,
-          aiConversionProbability: aiAnalysis?.conversion_probability,
-          aiUrgencyLevel: aiAnalysis?.urgency_level,
-          aiBuyingSignals: aiAnalysis?.buying_signals,
-          aiObjectionsRaised: aiAnalysis?.objections_raised,
-          aiRecommendedFollowup: aiAnalysis?.recommended_followup,
-          aiConversationSummary: aiAnalysis?.conversation_summary,
-          aiKeyInsights: aiAnalysis?.key_insights,
-          aiBudgetScore: aiAnalysis?.qualification_breakdown?.budget_score,
-          aiAuthorityScore: aiAnalysis?.qualification_breakdown?.authority_score,
-          aiNeedScore: aiAnalysis?.qualification_breakdown?.need_score,
-          aiTimelineScore: aiAnalysis?.qualification_breakdown?.timeline_score,
-          // Visitor Intelligence fields
-          visitorId: visitorGHLData.visitor_id,
-          isReturningVisitor: visitorGHLData.is_returning_visitor,
-          visitCount: visitorGHLData.visit_count,
-          firstVisitDate: visitorGHLData.first_visit_date,
-          lastVisitDate: visitorGHLData.last_visit_date,
-          utmSource: visitorGHLData.utm_source,
-          utmMedium: visitorGHLData.utm_medium,
-          utmCampaign: visitorGHLData.utm_campaign,
-          utmContent: visitorGHLData.utm_content,
-          utmTerm: visitorGHLData.utm_term,
-          referrerSource: visitorGHLData.referrer_source,
-          landingPage: visitorGHLData.landing_page,
-          entryPage: visitorGHLData.entry_page,
-          deviceType: visitorGHLData.device_type,
-          browser: visitorGHLData.browser,
-          pagesViewed: visitorGHLData.pages_viewed,
-          sectionsViewed: visitorGHLData.sections_viewed,
-          ctaClicks: visitorGHLData.cta_clicks,
-          calculatorUsed: visitorGHLData.calculator_used,
-          demoWatched: visitorGHLData.demo_watched,
-          demoWatchTime: visitorGHLData.demo_watch_time,
-          scrollDepth: visitorGHLData.scroll_depth,
-          timeOnSite: visitorGHLData.time_on_site,
-          chatbotOpened: visitorGHLData.chatbot_opened,
-          chatbotEngaged: visitorGHLData.chatbot_engaged,
-          engagementScore: visitorGHLData.engagement_score,
-          interestSignals: visitorGHLData.interest_signals,
-          behavioralIntent: visitorGHLData.behavioral_intent,
-          // New AI behavioral analysis fields
-          aiEngagementLevel: aiAnalysis?.engagement_level,
-          aiTrafficQuality: aiAnalysis?.traffic_quality,
-          aiBehavioralInsights: aiAnalysis?.behavioral_insights,
-          aiEngagementScore: aiAnalysis?.qualification_breakdown?.engagement_score,
-        },
+      await invokeKernelFunction("contact-form", {
+        name: leadData.name,
+        email: leadData.email,
+        phone: leadData.phone,
+        message: qualificationNotes,
+        businessType: leadData.trade,
+        businessTypeOther: leadData.businessName,
+        businessName: leadData.businessName,
+        teamSize: leadData.teamSize,
+        callVolume: leadData.callVolume,
+        aiTimeline: leadData.aiTimeline,
+        interests: leadData.interests,
+        potentialLoss: String(leadData.potentialLoss),
+        isGoodFit: true,
+        fitReason: "Chatbot_Qualified",
+        notes: leadData.notes.join(" | "),
+        formName: "Chatbot - Alex (AI Scored)",
+        // AI Analysis fields
+        aiLeadScore: aiAnalysis?.lead_score,
+        aiLeadTemperature: aiAnalysis?.lead_temperature,
+        aiLeadIntent: aiAnalysis?.lead_intent,
+        aiConversionProbability: aiAnalysis?.conversion_probability,
+        aiUrgencyLevel: aiAnalysis?.urgency_level,
+        aiBuyingSignals: aiAnalysis?.buying_signals,
+        aiObjectionsRaised: aiAnalysis?.objections_raised,
+        aiRecommendedFollowup: aiAnalysis?.recommended_followup,
+        aiConversationSummary: aiAnalysis?.conversation_summary,
+        aiKeyInsights: aiAnalysis?.key_insights,
+        aiBudgetScore: aiAnalysis?.qualification_breakdown?.budget_score,
+        aiAuthorityScore: aiAnalysis?.qualification_breakdown?.authority_score,
+        aiNeedScore: aiAnalysis?.qualification_breakdown?.need_score,
+        aiTimelineScore: aiAnalysis?.qualification_breakdown?.timeline_score,
+        // Visitor Intelligence fields
+        visitorId: visitorGHLData.visitor_id,
+        isReturningVisitor: visitorGHLData.is_returning_visitor,
+        visitCount: visitorGHLData.visit_count,
+        firstVisitDate: visitorGHLData.first_visit_date,
+        lastVisitDate: visitorGHLData.last_visit_date,
+        utmSource: visitorGHLData.utm_source,
+        utmMedium: visitorGHLData.utm_medium,
+        utmCampaign: visitorGHLData.utm_campaign,
+        utmContent: visitorGHLData.utm_content,
+        utmTerm: visitorGHLData.utm_term,
+        referrerSource: visitorGHLData.referrer_source,
+        landingPage: visitorGHLData.landing_page,
+        entryPage: visitorGHLData.entry_page,
+        deviceType: visitorGHLData.device_type,
+        browser: visitorGHLData.browser,
+        pagesViewed: visitorGHLData.pages_viewed,
+        sectionsViewed: visitorGHLData.sections_viewed,
+        ctaClicks: visitorGHLData.cta_clicks,
+        calculatorUsed: visitorGHLData.calculator_used,
+        demoWatched: visitorGHLData.demo_watched,
+        demoWatchTime: visitorGHLData.demo_watch_time,
+        scrollDepth: visitorGHLData.scroll_depth,
+        timeOnSite: visitorGHLData.time_on_site,
+        chatbotOpened: visitorGHLData.chatbot_opened,
+        chatbotEngaged: visitorGHLData.chatbot_engaged,
+        engagementScore: visitorGHLData.engagement_score,
+        interestSignals: visitorGHLData.interest_signals,
+        behavioralIntent: visitorGHLData.behavioral_intent,
+        // New AI behavioral analysis fields
+        aiEngagementLevel: aiAnalysis?.engagement_level,
+        aiTrafficQuality: aiAnalysis?.traffic_quality,
+        aiBehavioralInsights: aiAnalysis?.behavioral_insights,
+        aiEngagementScore: aiAnalysis?.qualification_breakdown?.engagement_score,
       });
 
       setHasSubmitted(true);

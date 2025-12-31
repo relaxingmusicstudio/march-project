@@ -1,5 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
-
 export type KernelIntent =
   | "kernel.health"
   | "analytics.upsert_visitor"
@@ -139,6 +137,56 @@ const getInvokeStatus = (error: unknown): number | undefined => {
   return contextStatus;
 };
 
+const postApi = async <T>(path: string, payload: Record<string, unknown>) => {
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload),
+    });
+    const raw = await response.text();
+    let parsed: { ok?: boolean; data?: T; error?: string; code?: string } | null = null;
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw) as { ok?: boolean; data?: T; error?: string; code?: string };
+      } catch {
+        parsed = null;
+      }
+    }
+
+    if (!response.ok) {
+      return {
+        data: null,
+        error: {
+          message: parsed?.error ?? response.statusText ?? "Request failed",
+          status: response.status,
+          code: parsed?.code,
+        },
+      };
+    }
+    if (parsed && parsed.ok === false) {
+      return {
+        data: null,
+        error: {
+          message: parsed.error ?? "Request failed",
+          status: response.status,
+          code: parsed.code,
+        },
+      };
+    }
+
+    return { data: (parsed?.data ?? null) as T, error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: {
+        message: error instanceof Error ? error.message : "Network error",
+      },
+    };
+  }
+};
+
 const buildKernelError = (code: string, message: string, status?: number): KernelError => ({
   code,
   message,
@@ -183,27 +231,18 @@ const runIntent = async (intent: KernelIntent, context: Record<string, unknown>)
     case "kernel.health":
       return { data: { ok: true, timestamp: new Date().toISOString() }, error: null };
     case "analytics.upsert_visitor":
-      return supabase.functions.invoke("save-analytics", {
-        body: { action: "upsert_visitor", data: context },
-      });
+      return postApi("/api/save-analytics", { action: "upsert_visitor", data: context });
     case "analytics.track_event":
-      return supabase.functions.invoke("save-analytics", {
-        body: { action: "track_event", data: context },
-      });
+      return postApi("/api/save-analytics", { action: "track_event", data: context });
     case "analytics.save_conversation":
-      return supabase.functions.invoke("save-analytics", {
-        body: { action: "save_conversation", data: context },
-      });
+      return postApi("/api/save-analytics", { action: "save_conversation", data: context });
     case "analytics.save_lead":
-      return supabase.functions.invoke("save-analytics", {
-        body: { action: "save_lead", data: context },
-      });
+      return postApi("/api/save-analytics", { action: "save_lead", data: context });
     case "analytics.update_lead_status":
-      return supabase.functions.invoke("save-analytics", {
-        body: { action: "update_lead_status", data: context },
-      });
+      return postApi("/api/save-analytics", { action: "update_lead_status", data: context });
     case "memory.search":
-      return supabase.functions.invoke("agent-memory", {
+      return postApi("/api/alex-chat", {
+        function: "agent-memory",
         body: {
           action: "search",
           query: context.query,
@@ -213,7 +252,8 @@ const runIntent = async (intent: KernelIntent, context: Record<string, unknown>)
         },
       });
     case "memory.save":
-      return supabase.functions.invoke("agent-memory", {
+      return postApi("/api/alex-chat", {
+        function: "agent-memory",
         body: {
           action: "save",
           agent_type: context.agentType,
@@ -224,19 +264,23 @@ const runIntent = async (intent: KernelIntent, context: Record<string, unknown>)
         },
       });
     case "memory.increment_usage":
-      return supabase.functions.invoke("agent-memory", {
+      return postApi("/api/alex-chat", {
+        function: "agent-memory",
         body: { action: "increment_usage", memory_id: context.memoryId },
       });
     case "memory.stats":
-      return supabase.functions.invoke("agent-memory", {
+      return postApi("/api/alex-chat", {
+        function: "agent-memory",
         body: { action: "stats", agent_type: context.agentType },
       });
     case "memory.delete":
-      return supabase.functions.invoke("agent-memory", {
+      return postApi("/api/alex-chat", {
+        function: "agent-memory",
         body: { action: "delete", memory_id: context.memoryId },
       });
     case "memory.feedback":
-      return supabase.functions.invoke("learn-from-success", {
+      return postApi("/api/alex-chat", {
+        function: "learn-from-success",
         body: {
           memory_id: context.memoryId,
           agent_type: context.agentType,
