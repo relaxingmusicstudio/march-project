@@ -27,3 +27,10 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# local debug artifacts
+*-prod.txt
+prod-url.txt
+prod-deploy-url.txt
+vercel-deploy-prod.txt
+proofgate-local.txt
