@@ -13,6 +13,8 @@ type ApiResponse = {
 const REQUIRED_ENV = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const;
 type RequiredEnvKey = (typeof REQUIRED_ENV)[number];
 
+const MAX_STACK = 2000;
+
 const setCorsHeaders = (res: ApiResponse) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -59,6 +61,27 @@ const getEnvStatus = () => {
   return { env, present, missing };
 };
 
+const normalizeError = (error: unknown) => {
+  if (error instanceof Error) {
+    const stack = error.stack ?? "";
+    const trimmedStack = stack.length > MAX_STACK ? `${stack.slice(0, MAX_STACK)}...` : stack;
+    const cause =
+      "cause" in error && error.cause !== undefined ? String((error as { cause?: unknown }).cause) : null;
+    return {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: trimmedStack,
+      errorCause: cause,
+    };
+  }
+  return {
+    errorName: "unknown",
+    errorMessage: String(error),
+    errorStack: "",
+    errorCause: null,
+  };
+};
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   const { env, present, missing } = getEnvStatus();
   const supabaseUrl = stripEnvValue(env?.SUPABASE_URL);
@@ -74,6 +97,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       writeOk: true,
       errorCode: null,
       env_present: present,
+      errorName: null,
+      errorMessage: null,
+      errorStack: null,
+      errorCause: null,
     });
     return;
   }
@@ -89,6 +116,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       code: "method_not_allowed",
       error: "Method not allowed",
       env_present: present,
+      errorName: "method_not_allowed",
+      errorMessage: "Method not allowed",
+      errorStack: null,
+      errorCause: null,
     });
     return;
   }
@@ -104,6 +135,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       code: "missing_env",
       error: "Supabase env missing",
       env_present: present,
+      errorName: "missing_env",
+      errorMessage: "Supabase env missing",
+      errorStack: null,
+      errorCause: null,
     });
     return;
   }
@@ -119,6 +154,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       code: "missing_env",
       error: "Supabase URL invalid",
       env_present: present,
+      errorName: "missing_env",
+      errorMessage: "Supabase URL invalid",
+      errorStack: null,
+      errorCause: null,
     });
     return;
   }
@@ -162,6 +201,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         code: "upstream_error",
         error: "supabase_write_failed",
         env_present: present,
+        errorName: "upstream_error",
+        errorMessage: `status:${response.status}`,
+        errorStack: null,
+        errorCause: null,
       });
       return;
     }
@@ -174,8 +217,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       writeOk: true,
       errorCode: null,
       env_present: present,
+      errorName: null,
+      errorMessage: null,
+      errorStack: null,
+      errorCause: null,
     });
   } catch (error) {
+    const normalized = normalizeError(error);
     sendJson(res, 500, {
       ok: false,
       status: 500,
@@ -186,6 +234,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       code: "upstream_error",
       error: error instanceof Error ? error.message : "supabase_write_failed",
       env_present: present,
+      ...normalized,
     });
   }
 }
