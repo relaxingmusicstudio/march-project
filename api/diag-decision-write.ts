@@ -14,6 +14,7 @@ const REQUIRED_ENV = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const;
 type RequiredEnvKey = (typeof REQUIRED_ENV)[number];
 
 const MAX_STACK = 2000;
+const MAX_BODY_PREVIEW = 1200;
 
 const setCorsHeaders = (res: ApiResponse) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -39,6 +40,18 @@ const parseHost = (value: string | undefined) => {
     return null;
   }
 };
+
+const parseJson = (raw: string) => {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const truncatePreview = (raw: string) =>
+  raw.length > MAX_BODY_PREVIEW ? `${raw.slice(0, MAX_BODY_PREVIEW)}...` : raw;
 
 const getEnvStatus = () => {
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
@@ -74,6 +87,25 @@ const normalizeError = (error: unknown) => {
 const hasForbiddenWhitespace = (value: string) => /[\s\u00A0\u200B]/.test(value);
 
 const isSupabaseHost = (value: string) => /^[a-z0-9-]+\.supabase\.co$/i.test(value);
+
+const isMissingSchemaResponse = (status: number, raw: string) => {
+  if (status !== 404 && status !== 400) return false;
+  const parsed = parseJson(raw);
+  if (parsed && typeof parsed === "object") {
+    const code = typeof parsed.code === "string" ? parsed.code.toLowerCase() : "";
+    const message = typeof parsed.message === "string" ? parsed.message.toLowerCase() : "";
+    const hint = typeof parsed.hint === "string" ? parsed.hint.toLowerCase() : "";
+    const details = typeof parsed.details === "string" ? parsed.details.toLowerCase() : "";
+    const combined = `${code} ${message} ${hint} ${details}`;
+    if (code === "pgrst205") return true;
+    if (combined.includes("schema cache") || combined.includes("could not find the table")) return true;
+    if (combined.includes("ceo_decisions")) return true;
+  }
+  const lowered = raw.toLowerCase();
+  if (lowered.includes("pgrst205")) return true;
+  if (lowered.includes("schema cache") || lowered.includes("could not find the table")) return true;
+  return lowered.includes("ceo_decisions");
+};
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   const { env, present } = getEnvStatus();
@@ -270,18 +302,25 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     });
 
     if (!response.ok) {
-      sendJson(res, response.status, {
+      const raw = await response.text();
+      const missingSchema = isMissingSchemaResponse(response.status, raw);
+      const status = missingSchema ? 500 : response.status;
+      sendJson(res, status, {
         ok: false,
-        status: response.status,
+        status,
         urlHost,
         timingMs: Date.now() - startedAt,
         writeOk: false,
-        errorCode: "upstream_error",
-        code: "upstream_error",
-        error: "supabase_write_failed",
+        errorCode: missingSchema ? "no_schema" : "upstream_error",
+        code: missingSchema ? "no_schema" : "upstream_error",
+        error: missingSchema ? "schema_missing" : "supabase_write_failed",
+        hint: missingSchema
+          ? "Apply Supabase migrations to create public.ceo_decisions."
+          : `status:${response.status}`,
+        bodyPreview: truncatePreview(raw ?? ""),
         env_present: present,
-        errorName: "upstream_error",
-        errorMessage: `status:${response.status}`,
+        errorName: missingSchema ? "no_schema" : "upstream_error",
+        errorMessage: missingSchema ? "missing_table" : `status:${response.status}`,
         errorStack: null,
         errorCause: null,
       });

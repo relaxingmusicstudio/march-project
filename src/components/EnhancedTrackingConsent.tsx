@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const CONSENT_STORAGE_KEY = "enhanced_tracking_consent";
@@ -62,23 +61,37 @@ const EnhancedTrackingConsent = () => {
     setIsSaving(true);
     try {
       const visitorId = getVisitorId();
-      
-      const { error } = await supabase
-        .from('user_consent')
-        .upsert({
-          visitor_id: visitorId,
-          enhanced_analytics: prefs.enhanced_analytics,
-          marketing_emails: prefs.marketing_emails,
-          personalization: prefs.personalization,
-          consent_version: 'v1.0',
-          consented_at: new Date().toISOString(),
-          user_agent: navigator.userAgent,
-        }, {
-          onConflict: 'visitor_id'
-        });
 
-      if (error) {
-        console.error('Error saving consent:', error);
+      const response = await fetch("/api/save-analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          action: "upsert_consent",
+          data: {
+            visitorId,
+            consent: prefs.enhanced_analytics || prefs.marketing_emails || prefs.personalization,
+            enhancedAnalytics: prefs.enhanced_analytics,
+            marketingEmails: prefs.marketing_emails,
+            personalization: prefs.personalization,
+            consentVersion: "v1.0",
+            consentedAt: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+          },
+        }),
+      });
+
+      const raw = await response.text();
+      const parsed = raw ? (() => {
+        try {
+          return JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })() : null;
+
+      if (!response.ok || parsed?.ok === false) {
+        console.error("Error saving consent:", parsed ?? raw);
       }
 
       localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(prefs));

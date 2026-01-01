@@ -20,10 +20,12 @@ const ALLOWED_ACTIONS = new Set([
   "save_conversation",
   "save_lead",
   "update_lead_status",
+  "upsert_consent",
 ]);
 
 const MAX_ERROR_BODY = 1200;
 const MAX_LOG_BODY = 200;
+const MAX_STACK = 2000;
 
 const readJsonBody = async (req: ApiRequest) => {
   if (req?.body && typeof req.body === "object") {
@@ -59,12 +61,6 @@ const sendJson = (res: ApiResponse, status: number, payload: Record<string, unkn
   res.end(JSON.stringify(payload));
 };
 
-const sendNoContent = (res: ApiResponse) => {
-  res.statusCode = 204;
-  setCorsHeaders(res);
-  res.end();
-};
-
 const parseJson = (raw: string) => {
   if (!raw) return null;
   try {
@@ -92,6 +88,27 @@ const parseHost = (value: string) => {
   } catch {
     return "unknown";
   }
+};
+
+const normalizeError = (error: unknown) => {
+  if (error instanceof Error) {
+    const stack = error.stack ?? "";
+    const trimmedStack = stack.length > MAX_STACK ? `${stack.slice(0, MAX_STACK)}...` : stack;
+    const cause =
+      "cause" in error && error.cause !== undefined ? String((error as { cause?: unknown }).cause) : null;
+    return {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: trimmedStack,
+      errorCause: cause,
+    };
+  }
+  return {
+    errorName: "unknown",
+    errorMessage: String(error),
+    errorStack: "",
+    errorCause: null,
+  };
 };
 
 const isValidSupabaseUrl = (value: string) => {
@@ -132,19 +149,24 @@ const requestSupabase = async (
 const sendUpstreamError = (res: ApiResponse, status: number, raw: string) => {
   sendJson(res, status, {
     ok: false,
-    code: "upstream_error",
     status,
-    body: raw ? truncateBody(raw) : "",
-    errorCode: "upstream_error",
+    errorCode: "supabase_error",
+    code: "upstream_error",
+    message: "Supabase upstream error",
+    details: raw ? truncateBody(raw) : "",
   });
 };
 
 const sendUpstreamException = (res: ApiResponse, error: unknown) => {
+  const normalized = normalizeError(error);
   sendJson(res, 500, {
     ok: false,
+    status: 500,
+    errorCode: "supabase_error",
     code: "upstream_error",
-    errorCode: "upstream_exception",
-    error: error instanceof Error ? error.message : "upstream_exception",
+    message: error instanceof Error ? error.message : "upstream_exception",
+    details: "supabase_request_failed",
+    ...normalized,
   });
 };
 
@@ -201,7 +223,7 @@ const buildHealthResponse = (method: string, envPresent: Record<RequiredEnvKey, 
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method === "OPTIONS") {
-    sendNoContent(res);
+    sendJson(res, 200, { ok: true, status: 200 });
     return;
   }
 
@@ -213,28 +235,73 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   if (req.method !== "POST") {
-    sendJson(res, 405, { ok: false, error: "method_not_allowed", code: "method_not_allowed" });
+    sendJson(res, 405, {
+      ok: false,
+      status: 405,
+      errorCode: "method_not_allowed",
+      error: "method_not_allowed",
+      code: "method_not_allowed",
+    });
     return;
   }
 
   const body = await readJsonBody(req);
   if (!body || typeof body !== "object") {
     console.error("[api/save-analytics] Invalid JSON payload.");
-    sendJson(res, 400, { ok: false, error: "invalid_json", code: "invalid_json" });
+    sendJson(res, 400, {
+      ok: false,
+      status: 400,
+      errorCode: "bad_json",
+      error: "bad_json",
+      code: "bad_json",
+    });
     return;
   }
 
   const payloadObject = body as Record<string, unknown>;
-  const action = payloadObject.action;
-  const data = payloadObject.data ?? null;
+  let action = typeof payloadObject.action === "string" ? payloadObject.action : null;
+  let data = payloadObject.data ?? null;
 
-  if (!action || typeof action !== "string") {
-    sendJson(res, 400, { ok: false, error: "missing_action", code: "missing_action" });
+  if (!action) {
+    const directEvent =
+      typeof payloadObject.event_name === "string" ||
+      typeof payloadObject.eventName === "string" ||
+      typeof payloadObject.eventType === "string";
+    const directConsent =
+      "consent" in payloadObject ||
+      "enhanced_analytics" in payloadObject ||
+      "enhancedAnalytics" in payloadObject ||
+      "marketing_emails" in payloadObject ||
+      "marketingEmails" in payloadObject ||
+      "personalization" in payloadObject;
+    if (directEvent) {
+      action = "track_event";
+      data = payloadObject;
+    } else if (directConsent) {
+      action = "upsert_consent";
+      data = payloadObject;
+    }
+  }
+
+  if (!action) {
+    sendJson(res, 400, {
+      ok: false,
+      status: 400,
+      errorCode: "missing_action",
+      error: "missing_action",
+      code: "missing_action",
+    });
     return;
   }
 
   if (!ALLOWED_ACTIONS.has(action)) {
-    sendJson(res, 403, { ok: false, error: "action_not_allowed", code: "action_not_allowed" });
+    sendJson(res, 403, {
+      ok: false,
+      status: 403,
+      errorCode: "action_not_allowed",
+      error: "action_not_allowed",
+      code: "action_not_allowed",
+    });
     return;
   }
 
@@ -247,6 +314,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     });
     sendJson(res, 500, {
       ok: false,
+      status: 500,
+      errorCode: "server_env_missing",
       error: "server_env_missing",
       code: "server_env_missing",
       missing,
@@ -260,6 +329,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     });
     sendJson(res, 500, {
       ok: false,
+      status: 500,
+      errorCode: "server_env_invalid",
       error: "server_env_invalid",
       code: "server_env_invalid",
     });
@@ -273,6 +344,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     switch (action) {
       case "upsert_visitor": {
         const visitor = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+        const visitorId = typeof visitor.visitorId === "string" ? visitor.visitorId : null;
         const payload = stripUndefined({
           visitor_id: visitor.visitorId,
           device: visitor.device,
@@ -301,22 +373,47 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           return;
         }
         const parsed = parseJson(raw) ?? (raw ? { raw } : null);
-        sendJson(res, 200, { ok: true, data: parsed });
+        sendJson(res, 200, {
+          ok: true,
+          status: 200,
+          id: visitorId,
+          ts: Date.now(),
+          data: parsed,
+        });
         return;
       }
       case "track_event": {
         const eventData = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+        const eventName =
+          (typeof eventData.eventName === "string" && eventData.eventName) ||
+          (typeof eventData.event_name === "string" && eventData.event_name) ||
+          (typeof eventData.eventType === "string" && eventData.eventType) ||
+          (typeof eventData.event_type === "string" && eventData.event_type) ||
+          "";
+
+        if (!eventName) {
+          sendJson(res, 400, {
+            ok: false,
+            status: 400,
+            errorCode: "bad_request",
+            error: "event_name_required",
+            code: "bad_request",
+          });
+          return;
+        }
+
         const payload = stripUndefined({
-          visitor_id: eventData.visitorId,
-          session_id: eventData.sessionId,
-          event_type: eventData.eventType,
-          event_data: eventData.eventData,
-          page_url: eventData.pageUrl,
-          utm_source: eventData.utmSource,
-          utm_medium: eventData.utmMedium,
-          utm_campaign: eventData.utmCampaign,
+          visitor_id: eventData.visitorId ?? eventData.visitor_id,
+          session_id: eventData.sessionId ?? eventData.session_id,
+          event_name: eventName,
+          event_type: eventName,
+          event_data: eventData.eventData ?? eventData.event_data,
+          page_url: eventData.pageUrl ?? eventData.page_url,
+          utm_source: eventData.utmSource ?? eventData.utm_source,
+          utm_medium: eventData.utmMedium ?? eventData.utm_medium,
+          utm_campaign: eventData.utmCampaign ?? eventData.utm_campaign,
         });
-        const url = `${baseUrl}/rest/v1/analytics_events`;
+        const url = `${baseUrl}/rest/v1/analytics_events?select=id`;
         const { response, raw, contentType, host } = await requestSupabase(
           url,
           { method: "POST", body: payload },
@@ -333,7 +430,100 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           return;
         }
         const parsed = parseJson(raw) ?? (raw ? { raw } : null);
-        sendJson(res, 200, { ok: true, data: parsed });
+        const id = Array.isArray(parsed) ? parsed[0]?.id : (parsed as { id?: string } | null)?.id;
+        sendJson(res, 200, { ok: true, status: 200, id: id ?? null, ts: Date.now(), data: parsed });
+        return;
+      }
+      case "upsert_consent": {
+        const consentData = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+        const visitorId =
+          (typeof consentData.visitorId === "string" && consentData.visitorId) ||
+          (typeof consentData.visitor_id === "string" && consentData.visitor_id) ||
+          "";
+        if (!visitorId) {
+          sendJson(res, 400, {
+            ok: false,
+            status: 400,
+            errorCode: "bad_request",
+            error: "visitor_id_required",
+            code: "bad_request",
+          });
+          return;
+        }
+
+        const enhancedAnalytics =
+          typeof consentData.enhanced_analytics === "boolean"
+            ? consentData.enhanced_analytics
+            : typeof consentData.enhancedAnalytics === "boolean"
+              ? consentData.enhancedAnalytics
+              : undefined;
+        const marketingEmails =
+          typeof consentData.marketing_emails === "boolean"
+            ? consentData.marketing_emails
+            : typeof consentData.marketingEmails === "boolean"
+              ? consentData.marketingEmails
+              : undefined;
+        const personalization =
+          typeof consentData.personalization === "boolean" ? consentData.personalization : undefined;
+        const consentValue =
+          typeof consentData.consent === "boolean"
+            ? consentData.consent
+            : Boolean(enhancedAnalytics || marketingEmails || personalization);
+        const consentVersion =
+          typeof consentData.consentVersion === "string"
+            ? consentData.consentVersion
+            : typeof consentData.consent_version === "string"
+              ? consentData.consent_version
+              : undefined;
+        const consentedAt =
+          typeof consentData.consentedAt === "string"
+            ? consentData.consentedAt
+            : typeof consentData.consented_at === "string"
+              ? consentData.consented_at
+              : undefined;
+        const userAgent =
+          typeof consentData.userAgent === "string"
+            ? consentData.userAgent
+            : typeof consentData.user_agent === "string"
+              ? consentData.user_agent
+              : undefined;
+
+        const payload = stripUndefined({
+          visitor_id: visitorId,
+          consent: consentValue,
+          enhanced_analytics: enhancedAnalytics,
+          marketing_emails: marketingEmails,
+          personalization,
+          consent_version: consentVersion,
+          consented_at: consentedAt ?? new Date().toISOString(),
+          user_agent: userAgent,
+          updated_at: new Date().toISOString(),
+        });
+
+        const url = `${baseUrl}/rest/v1/user_consent?on_conflict=visitor_id&select=visitor_id`;
+        const { response, raw, contentType, host } = await requestSupabase(
+          url,
+          { method: "POST", body: payload },
+          serviceRoleKey
+        );
+        if (!response.ok) {
+          logUpstreamResponse(action, {
+            host,
+            status: response.status,
+            contentType,
+            raw,
+          });
+          sendUpstreamError(res, response.status, raw);
+          return;
+        }
+        const parsed = parseJson(raw) ?? (raw ? { raw } : null);
+        sendJson(res, 200, {
+          ok: true,
+          status: 200,
+          id: visitorId,
+          ts: Date.now(),
+          data: parsed,
+        });
         return;
       }
       case "save_conversation": {
@@ -381,19 +571,25 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
               { method: "PATCH", body: payload },
               serviceRoleKey
             );
-            if (!updateResult.response.ok) {
-              logUpstreamResponse(action, {
-                host: updateResult.host,
-                status: updateResult.response.status,
-                contentType: updateResult.contentType,
-                raw: updateResult.raw,
-              });
-              sendUpstreamError(res, updateResult.response.status, updateResult.raw);
-              return;
-            }
-            sendJson(res, 200, { ok: true, data: { conversationId: existingId } });
+          if (!updateResult.response.ok) {
+            logUpstreamResponse(action, {
+              host: updateResult.host,
+              status: updateResult.response.status,
+              contentType: updateResult.contentType,
+              raw: updateResult.raw,
+            });
+            sendUpstreamError(res, updateResult.response.status, updateResult.raw);
             return;
           }
+          sendJson(res, 200, {
+            ok: true,
+            status: 200,
+            id: existingId ?? null,
+            ts: Date.now(),
+            data: { conversationId: existingId },
+          });
+          return;
+        }
         }
 
         const insertUrl = `${baseUrl}/rest/v1/conversations?select=id`;
@@ -414,7 +610,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         }
         const inserted = parseJson(raw);
         const insertedId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
-        sendJson(res, 200, { ok: true, data: { conversationId: insertedId ?? null } });
+        sendJson(res, 200, {
+          ok: true,
+          status: 200,
+          id: insertedId ?? null,
+          ts: Date.now(),
+          data: { conversationId: insertedId ?? null },
+        });
         return;
       }
       case "save_lead": {
@@ -461,7 +663,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         }
         const parsed = parseJson(raw);
         const leadId = Array.isArray(parsed) ? parsed[0]?.id : parsed?.id;
-        sendJson(res, 200, { ok: true, data: { leadId: leadId ?? null } });
+        sendJson(res, 200, {
+          ok: true,
+          status: 200,
+          id: leadId ?? null,
+          ts: Date.now(),
+          data: { leadId: leadId ?? null },
+        });
         return;
       }
       case "update_lead_status": {
@@ -522,7 +730,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           return;
         }
         const parsed = parseJson(raw) ?? (raw ? { raw } : null);
-        sendJson(res, 200, { ok: true, data: parsed });
+        sendJson(res, 200, {
+          ok: true,
+          status: 200,
+          id: null,
+          ts: Date.now(),
+          data: parsed,
+        });
         return;
       }
       default:
