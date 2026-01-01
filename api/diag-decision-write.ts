@@ -29,8 +29,6 @@ const sendJson = (res: ApiResponse, status: number, payload: Record<string, unkn
   res.end(JSON.stringify(payload));
 };
 
-const stripEnvValue = (value: string | undefined) => value?.trim().replace(/^"|"$|^'|'$/g, "");
-
 const normalizeSupabaseUrl = (url: string) => (url.endsWith("/") ? url.slice(0, -1) : url);
 
 const parseHost = (value: string | undefined) => {
@@ -39,15 +37,6 @@ const parseHost = (value: string | undefined) => {
     return new URL(value).host;
   } catch {
     return null;
-  }
-};
-
-const isValidSupabaseUrl = (value: string) => {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && Boolean(url.host);
-  } catch {
-    return false;
   }
 };
 
@@ -82,10 +71,16 @@ const normalizeError = (error: unknown) => {
   };
 };
 
+const hasForbiddenWhitespace = (value: string) => /[\s\u00A0\u200B]/.test(value);
+
+const isSupabaseHost = (value: string) => /^[a-z0-9-]+\.supabase\.co$/i.test(value);
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
-  const { env, present, missing } = getEnvStatus();
-  const supabaseUrl = stripEnvValue(env?.SUPABASE_URL);
-  const serviceRoleKey = stripEnvValue(env?.SUPABASE_SERVICE_ROLE_KEY);
+  const { env, present } = getEnvStatus();
+  const rawSupabaseUrl = env?.SUPABASE_URL ?? "";
+  const rawLength = rawSupabaseUrl.length;
+  const supabaseUrl = rawSupabaseUrl.trim();
+  const serviceRoleKey = (env?.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
   const urlHost = parseHost(supabaseUrl);
 
   if (req.method === "OPTIONS") {
@@ -124,7 +119,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
-  if (missing.length > 0 || !supabaseUrl || !serviceRoleKey) {
+  if (!serviceRoleKey) {
     sendJson(res, 500, {
       ok: false,
       status: 500,
@@ -143,21 +138,37 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
-  if (!isValidSupabaseUrl(supabaseUrl)) {
+  if (!supabaseUrl || hasForbiddenWhitespace(supabaseUrl) || supabaseUrl.endsWith("/")) {
     sendJson(res, 500, {
       ok: false,
       status: 500,
+      errorCode: "bad_env",
+      message: "Invalid SUPABASE_URL",
+      rawLength,
       urlHost,
-      timingMs: 0,
-      writeOk: false,
-      errorCode: "missing_env",
-      code: "missing_env",
-      error: "Supabase URL invalid",
+      hint: "Paste Supabase Settings → Data API → Project URL exactly; no trailing slash/spaces",
       env_present: present,
-      errorName: "missing_env",
-      errorMessage: "Supabase URL invalid",
-      errorStack: null,
-      errorCause: null,
+    });
+    return;
+  }
+
+  let parsedHost: string | null = urlHost;
+  try {
+    parsedHost = new URL(supabaseUrl).host;
+  } catch {
+    parsedHost = null;
+  }
+
+  if (!parsedHost || !isSupabaseHost(parsedHost)) {
+    sendJson(res, 500, {
+      ok: false,
+      status: 500,
+      errorCode: "bad_env",
+      message: "Invalid SUPABASE_URL",
+      rawLength,
+      urlHost: parsedHost,
+      hint: "Paste Supabase Settings → Data API → Project URL exactly; no trailing slash/spaces",
+      env_present: present,
     });
     return;
   }
