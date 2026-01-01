@@ -32,15 +32,18 @@ if ($prodUrl -and ($prodUrl -notmatch "^https?://")) {
   $prodUrl = "https://$prodUrl"
 }
 
-if (-not $prodUrl) {
-  Write-Host "FAIL: Could not parse production deployment URL from vercel inspect output." -ForegroundColor Red
-  exit 1
+if ($prodUrl) {
+  Write-Host "`nParsed production deployment URL: $prodUrl`n" -ForegroundColor Green
+} else {
+  Write-Host "`nUsing Base URL for API checks; production logs will use project scope.`n" -ForegroundColor Yellow
 }
 
-Write-Host "`nParsed production deployment URL: $prodUrl`n" -ForegroundColor Green
-
 Write-Host "`n=== vercel logs (before) ===`n" -ForegroundColor Cyan
-npx vercel logs $prodUrl 2>&1
+if ($prodUrl) {
+  npx vercel logs $prodUrl --since 1h 2>&1
+} else {
+  npx vercel logs --since 1h 2>&1
+}
 
 Write-Host "`n=== POST /api/save-analytics ===`n" -ForegroundColor Cyan
 $payload = @{
@@ -69,4 +72,8 @@ try {
 }
 
 Write-Host "`n=== vercel logs (after) ===`n" -ForegroundColor Cyan
-npx vercel logs $prodUrl 2>&1
+if ($prodUrl) {
+  npx vercel logs $prodUrl --since 1h 2>&1
+} else {
+  npx vercel logs --since 1h 2>&1
+}
