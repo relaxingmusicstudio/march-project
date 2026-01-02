@@ -5,6 +5,7 @@ import {
   writeOutcomeRecord,
   type DecisionOutcome,
 } from "@/kernel/memory/collectiveMemory";
+import { evaluateAssumptions, evaluateRiskGate } from "@/kernel/riskPolicy";
 
 export type KernelIntent =
   | "kernel.health"
@@ -39,8 +40,15 @@ export type KernelConstraints = {
     analytics?: boolean;
     memory?: boolean;
   };
+  assumptions?: Array<{
+    key: string;
+    validatedAt?: string;
+    expiresAt?: string;
+  }>;
   budgetCents?: number;
   maxBudgetCents?: number;
+  riskTolerance?: number;
+  allowHighRisk?: boolean;
   isAuthenticated?: boolean;
   requiresAuth?: boolean;
   dryRun?: boolean;
@@ -440,6 +448,32 @@ export const Kernel = {
       }
     };
 
+    const returnNoop = (reasonCode: string, detail: string) => {
+      const decisionId = recordDecision(`noop:${reasonCode}`, detail);
+      recordOutcome(decisionId, null, "unknown", reasonCode);
+      recordAudit(createAuditRecord(intent, true, constraints, proofs));
+      return {
+        ok: true,
+        result: {
+          status: "noop",
+          reason_code: reasonCode,
+          detail,
+        } as T,
+        auditId,
+        proofs,
+      };
+    };
+
+    const assumptionCheck = evaluateAssumptions(constraints);
+    proofs.push({
+      check: "assumptions",
+      ok: assumptionCheck.ok,
+      detail: assumptionCheck.detail ?? assumptionCheck.reasonCode,
+    });
+    if (!assumptionCheck.ok) {
+      return returnNoop(assumptionCheck.reasonCode, assumptionCheck.detail ?? "assumption_unverified");
+    }
+
     const envCheck = validateSupabaseEnv();
     proofs.push({
       check: "env.supabase",
@@ -502,12 +536,21 @@ export const Kernel = {
       }
     }
 
-    if (typeof constraints.budgetCents === "number" && typeof constraints.maxBudgetCents === "number") {
-      const allowed = constraints.budgetCents <= constraints.maxBudgetCents;
+    const riskGate = evaluateRiskGate(intent, context, constraints);
+    proofs.push({
+      check: "risk.score",
+      ok: riskGate.action === "allow",
+      detail: `score=${riskGate.assessment.score};level=${riskGate.assessment.level};reason=${riskGate.assessment.reason}`,
+    });
+
+    const effectiveMaxBudget =
+      typeof constraints.maxBudgetCents === "number" ? constraints.maxBudgetCents : riskGate.assessment.budgetCents;
+    if (typeof constraints.budgetCents === "number") {
+      const allowed = constraints.budgetCents <= effectiveMaxBudget;
       proofs.push({
         check: "budget.limit",
         ok: allowed,
-        detail: allowed ? "within_budget" : "exceeded",
+        detail: allowed ? "within_budget" : `exceeded:max=${effectiveMaxBudget}`,
       });
       if (!allowed) {
         const error = buildKernelError("budget_exceeded", "Budget exceeded");
@@ -518,6 +561,13 @@ export const Kernel = {
         );
         return { ok: false, result: null, error, auditId, proofs };
       }
+    }
+
+    if (riskGate.action === "noop") {
+      return returnNoop(
+        riskGate.reasonCode,
+        `score=${riskGate.assessment.score};level=${riskGate.assessment.level}`
+      );
     }
 
     if (!envCheck.ok && intent !== "kernel.health") {
