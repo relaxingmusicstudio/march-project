@@ -10,7 +10,19 @@ type ApiResponse = {
   end: (body?: string) => void;
 };
 
-const ROUTES = ["/api/health", "/api/alex-chat", "/api/save-analytics", "/api/_routes"];
+const ROUTES = [
+  "/api/health",
+  "/api/_routes",
+  "/api/alex-chat",
+  "/api/save-analytics",
+  "/api/decision/[id]",
+  "/api/decision-feedback",
+  "/api/search-decision",
+  "/api/resolve-decision",
+  "/api/diag-decision-write",
+  "/api/diag-save-analytics",
+  "/api/diag-supabase",
+];
 
 const setCorsHeaders = (res: ApiResponse) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
