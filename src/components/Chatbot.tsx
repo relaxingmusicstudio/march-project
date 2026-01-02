@@ -52,6 +52,10 @@ const MAX_NETWORK_RETRIES = 2;
 const CHAT_AUTH_MESSAGE = "Chat is temporarily unavailable (backend not authorized).";
 const AUTH_ERROR_STATUSES = new Set([401, 403]);
 const AUTH_ERROR_PATTERNS = ["unauthorized", "jwt", "invalid api key", "invalid api-key"];
+const CHAT_URL =
+  typeof window === "undefined"
+    ? "/api/alex-chat"
+    : new URL("/api/alex-chat", window.location.origin).toString();
 
 const getAuthStatus = (error: unknown): number | null => {
   if (!error) return null;
@@ -96,10 +100,10 @@ const invokeKernelFunction = async <T,>(
   payload: Record<string, unknown>
 ): Promise<{
   data: T | null;
-  error: { message: string; status?: number; code?: string; reply?: string } | null;
+  error: { message: string; status?: number; code?: string; reply?: string; endpoint?: string } | null;
 }> => {
   try {
-    const response = await fetch("/api/alex-chat", {
+    const response = await fetch(CHAT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -123,6 +127,7 @@ const invokeKernelFunction = async <T,>(
           status: response.status,
           code: parsed?.code,
           reply,
+          endpoint: CHAT_URL,
         },
       };
     }
@@ -134,6 +139,7 @@ const invokeKernelFunction = async <T,>(
           status: response.status,
           code: parsed.code,
           reply,
+          endpoint: CHAT_URL,
         },
       };
     }
@@ -143,6 +149,7 @@ const invokeKernelFunction = async <T,>(
       data: null,
       error: {
         message: error instanceof Error ? error.message : "Network error",
+        endpoint: CHAT_URL,
       },
     };
   }
@@ -635,7 +642,11 @@ Phase: ${leadData.conversationPhase}`;
           }));
         }
       } else {
-        setNetworkError("Chat is temporarily unavailable.");
+        const errorStatus = (error as { status?: number }).status;
+        const errorEndpoint = (error as { endpoint?: string }).endpoint;
+        const statusLabel = typeof errorStatus === "number" ? `status ${errorStatus}` : "unknown status";
+        const endpointLabel = errorEndpoint ? `endpoint ${errorEndpoint}` : "endpoint unknown";
+        setNetworkError(`Chat is temporarily unavailable (${statusLabel}, ${endpointLabel}).`);
         setRateLimitState(prev => ({
           ...prev,
           lastErrorCode: 'UNKNOWN_ERROR',
