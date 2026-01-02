@@ -1,5 +1,6 @@
 import { clampConfidence as clampLegacyConfidence, nowIso, type Decision } from "../src/contracts/decision";
 import { clampConfidence, type Decision as KernelDecision } from "../src/kernel/decisionContract";
+import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 import { recordDecision } from "../src/lib/decisionStore";
 
 export const config = { runtime: "nodejs" };
@@ -237,6 +238,19 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     created_at: decision.created_at,
   };
   recordDecision(kernelDecision);
+
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+  const isProduction = env.VERCEL_ENV === "production" || env.NODE_ENV === "production";
+  const lockState = getKernelLockState({ isProduction });
+  if (lockState.locked) {
+    sendJson(res, 200, {
+      ...buildNoopPayload(lockState, "kernel_lock"),
+      decision,
+      analytics_ok: false,
+      analytics_error: "kernel_locked",
+    });
+    return;
+  }
 
   const analyticsResult = await recordAnalyticsEvent("decision_proposed", {
     decision_id: decision.decision_id,

@@ -1,3 +1,5 @@
+import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
+
 export const config = { runtime: "nodejs" };
 
 type ApiRequest = AsyncIterable<Uint8Array | string> & {
@@ -109,6 +111,12 @@ const isMissingSchemaResponse = (status: number, raw: string) => {
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   const { env, present } = getEnvStatus();
+  const isProduction = env?.VERCEL_ENV === "production" || env?.NODE_ENV === "production";
+  const lockState = getKernelLockState({ isProduction });
+  if (lockState.locked) {
+    sendJson(res, 200, buildNoopPayload(lockState, "kernel_lock"));
+    return;
+  }
   const rawSupabaseUrl = env?.SUPABASE_URL ?? "";
   const rawLength = rawSupabaseUrl.length;
   const supabaseUrl = rawSupabaseUrl.trim();

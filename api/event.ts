@@ -1,4 +1,5 @@
 import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
+import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -205,6 +206,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   const { env, missing } = getEnvStatus();
+  const isProduction = env?.VERCEL_ENV === "production" || env?.NODE_ENV === "production";
+  const lockState = getKernelLockState({ isProduction });
+  if (lockState.locked) {
+    respondOk(res, buildNoopPayload(lockState, "kernel_lock"));
+    return;
+  }
   const supabaseUrl = stripEnvValue(env?.SUPABASE_URL);
   const serviceRoleKey = stripEnvValue(env?.SUPABASE_SERVICE_ROLE_KEY);
 

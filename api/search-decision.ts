@@ -2,6 +2,7 @@ import { DEFAULT_DOMAINS } from "../apps/search-pilot/src/core/domains";
 import { runSearch } from "../apps/search-pilot/src/core/engine";
 import { recordDecision } from "../src/lib/decisionStore";
 import type { Decision } from "../src/kernel/decisionContract";
+import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -150,6 +151,21 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   });
 
   recordDecision(response.decision);
+
+  const isProduction = env?.VERCEL_ENV === "production" || env?.NODE_ENV === "production";
+  const lockState = getKernelLockState({ isProduction });
+  if (lockState.locked) {
+    sendJson(res, 200, {
+      ...buildNoopPayload(lockState, "kernel_lock"),
+      decision: response.decision,
+      evidence_summary: response.evidence_summary,
+      intent: response.intent,
+      domains: response.domains,
+      explanation: response.explanation,
+      analytics: response.analytics,
+    });
+    return;
+  }
 
   const supabaseUrl = stripEnvValue(env?.SUPABASE_URL);
   const serviceRoleKey = stripEnvValue(env?.SUPABASE_SERVICE_ROLE_KEY);

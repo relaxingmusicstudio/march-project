@@ -17,6 +17,7 @@ export const API_ROUTES = [
   "/api/event",
   "/api/events",
   "/api/diag",
+  "/api/kernel/status",
   "/api/decision/[id]",
   "/api/decision-feedback",
   "/api/search-decision",

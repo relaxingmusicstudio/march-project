@@ -1,4 +1,5 @@
 import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
+import { getKernelLockState } from "../src/kernel/governanceGate.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -372,6 +373,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   const baseUrl = resolveBaseUrl(req.headers);
+  const isProduction = env?.VERCEL_ENV === "production" || env?.NODE_ENV === "production";
+  const lockState = getKernelLockState({ isProduction });
   const routesReport: Record<string, unknown> = {
     baseUrl,
     checks: {},
@@ -504,11 +507,17 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   const writesReport: Record<string, unknown> = {
+    lock: lockState,
     visitors: { ok: false },
     saveAnalytics: { ok: false },
   };
 
-  if (envReport.supabaseUrl.ok && supabaseServiceRoleKey) {
+  if (lockState.locked) {
+    errors.push({
+      code: "kernel_locked",
+      message: "Kernel lock enabled; skipping writes",
+    });
+  } else if (envReport.supabaseUrl.ok && supabaseServiceRoleKey) {
     const visitorId = `diag_test_${Date.now()}`;
     const payload = createVisitorPayload(visitorId, visitorColumns);
     const visitorWrite = await writeVisitor(trimmedSupabaseUrl, supabaseServiceRoleKey, payload);

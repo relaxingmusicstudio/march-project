@@ -5,6 +5,7 @@ import {
   writeOutcomeRecord,
   type DecisionOutcome,
 } from "@/kernel/memory/collectiveMemory";
+import { getKernelLockState } from "@/kernel/governanceGate";
 import { evaluateAssumptions, evaluateRiskGate } from "@/kernel/riskPolicy";
 
 export type KernelIntent =
@@ -49,6 +50,7 @@ export type KernelConstraints = {
   maxBudgetCents?: number;
   riskTolerance?: number;
   allowHighRisk?: boolean;
+  kernelLock?: "locked" | "open";
   isAuthenticated?: boolean;
   requiresAuth?: boolean;
   dryRun?: boolean;
@@ -472,6 +474,19 @@ export const Kernel = {
     });
     if (!assumptionCheck.ok) {
       return returnNoop(assumptionCheck.reasonCode, assumptionCheck.detail ?? "assumption_unverified");
+    }
+
+    const lockState = getKernelLockState({
+      isProduction: import.meta.env.PROD,
+      override: constraints.kernelLock,
+    });
+    proofs.push({
+      check: "kernel.lock",
+      ok: !lockState.locked,
+      detail: lockState.reason,
+    });
+    if (lockState.locked && intent !== "kernel.health") {
+      return returnNoop("kernel_locked", lockState.reason);
     }
 
     const envCheck = validateSupabaseEnv();
