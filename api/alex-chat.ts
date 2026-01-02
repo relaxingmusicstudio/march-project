@@ -14,7 +14,6 @@ type ApiResponse = {
 const REQUIRED_ENV = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const;
 type RequiredEnvKey = (typeof REQUIRED_ENV)[number];
 const MAX_STACK = 2000;
-const MAX_BODY_PREVIEW = 1200;
 
 const ALLOWED_FUNCTIONS = new Set([
   "alex-chat",
@@ -48,7 +47,7 @@ const readJsonBody = async (req: ApiRequest) => {
 
 const setCorsHeaders = (res: ApiResponse) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "content-type, authorization");
 };
 
@@ -101,9 +100,6 @@ const normalizeError = (error: unknown) => {
     errorCause: null,
   };
 };
-
-const truncatePreview = (raw: string) =>
-  raw.length > MAX_BODY_PREVIEW ? `${raw.slice(0, MAX_BODY_PREVIEW)}...` : raw;
 
 const getEnvStatus = () => {
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
@@ -188,25 +184,9 @@ const buildChatInsert = (
   };
 };
 
-const buildHealthResponse = (method: string, envPresent: Record<RequiredEnvKey, boolean>) => ({
-  status: "ok",
-  method,
-  expected_methods: ["POST"],
-  required_env: [...REQUIRED_ENV],
-  env_present: envPresent,
-  message: "Use POST via Network tab or curl/Invoke-RestMethod for verification.",
-});
-
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method === "OPTIONS") {
     sendNoContent(res);
-    return;
-  }
-
-  const { env, present, missing } = getEnvStatus();
-
-  if (req.method === "GET") {
-    sendJson(res, 200, buildHealthResponse("GET", present));
     return;
   }
 
@@ -224,30 +204,31 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const body = await readJsonBody(req);
   if (!body || typeof body !== "object") {
     console.error("[api/alex-chat] Invalid JSON payload.");
-    sendJson(res, 400, {
+    sendJson(res, 200, {
       ok: false,
-      status: 400,
-      errorCode: "bad_json",
-      error: "bad_json",
-      code: "bad_json",
+      status: 200,
+      errorCode: "invalid_json",
+      error: "invalid_json",
+      code: "invalid_json",
     });
     return;
   }
 
   const payloadObject = body as Record<string, unknown>;
-  const functionName =
-    typeof payloadObject.function === "string" ? payloadObject.function : "alex-chat";
+  const requestedFunction = typeof payloadObject.function === "string" ? payloadObject.function : null;
+  const functionName = requestedFunction ?? "alex-chat";
   const payload =
-    payloadObject.body ??
-    payloadObject.payload ??
-    (typeof payloadObject.function === "string"
-      ? (() => {
+    requestedFunction
+      ? payloadObject.body ??
+        payloadObject.payload ??
+        (() => {
           const { function: _fn, ...rest } = payloadObject;
           return rest;
         })()
-      : payloadObject);
+      : payloadObject;
+  const isFunctionRequest = typeof requestedFunction === "string";
 
-  if (!ALLOWED_FUNCTIONS.has(functionName)) {
+  if (requestedFunction && !ALLOWED_FUNCTIONS.has(functionName)) {
     console.error("[api/alex-chat] Function not allowed:", functionName);
     sendJson(res, 403, {
       ok: false,
@@ -259,10 +240,23 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
+  const directMessage = typeof payloadObject.message === "string" ? payloadObject.message : "";
+  if (!isFunctionRequest && !directMessage) {
+    sendJson(res, 200, {
+      ok: false,
+      status: 200,
+      errorCode: "missing_message",
+      error: "missing_message",
+      code: "missing_message",
+    });
+    return;
+  }
+
+  const { env, missing } = getEnvStatus();
   const supabaseUrl = stripEnvValue(env?.SUPABASE_URL);
   const serviceRoleKey = stripEnvValue(env?.SUPABASE_SERVICE_ROLE_KEY);
 
-  if (missing.length > 0 || !supabaseUrl || !serviceRoleKey) {
+  if (isFunctionRequest && (missing.length > 0 || !supabaseUrl || !serviceRoleKey)) {
     console.error("[api/alex-chat] Missing Supabase env.", {
       missing,
     });
@@ -277,15 +271,20 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
-  const baseUrl = normalizeSupabaseUrl(supabaseUrl);
+  const baseUrl = supabaseUrl ? normalizeSupabaseUrl(supabaseUrl) : "";
   const targetUrl = `${baseUrl}/functions/v1/${functionName}`;
-  const isDirectPost = typeof payloadObject.function !== "string";
   const shouldLogChat = functionName === "alex-chat";
   let chatMessageId: string | null = null;
+  let writeOk = true;
+  let writeError: string | null = null;
 
   if (shouldLogChat) {
     const { row } = buildChatInsert(payload as Record<string, unknown>, functionName);
     if (row) {
+      if (!supabaseUrl || !serviceRoleKey) {
+        writeOk = false;
+        writeError = "missing_env";
+      } else {
       const chatUrl = `${baseUrl}/rest/v1/chat_messages?select=id`;
       try {
         const chatResponse = await fetch(chatUrl, {
@@ -301,55 +300,35 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         const raw = await chatResponse.text();
         if (!chatResponse.ok) {
           const missingSchema = isMissingSchemaResponse(chatResponse.status, raw, "chat_messages");
-          if (missingSchema) {
-            sendJson(res, 500, {
-              ok: false,
-              status: 500,
-              errorCode: "no_schema",
-              error: "schema_missing",
-              code: "no_schema",
-              message: "Missing chat_messages table",
-              details: truncatePreview(raw ?? ""),
-            });
-            return;
-          }
-          sendJson(res, 500, {
-            ok: false,
-            status: 500,
-            errorCode: "supabase_error",
-            error: "supabase_write_failed",
-            code: "supabase_error",
-            message: "Supabase insert failed",
-            details: truncatePreview(raw ?? ""),
-          });
-          return;
+          writeOk = false;
+          writeError = missingSchema ? "schema_missing" : "supabase_write_failed";
+        } else {
+          const parsed = parseJson(raw);
+          chatMessageId = Array.isArray(parsed) ? parsed[0]?.id : (parsed as { id?: string } | null)?.id ?? null;
         }
-        const parsed = parseJson(raw);
-        chatMessageId = Array.isArray(parsed) ? parsed[0]?.id : (parsed as { id?: string } | null)?.id ?? null;
       } catch (error) {
         const normalized = normalizeError(error);
-        sendJson(res, 500, {
-          ok: false,
-          status: 500,
-          errorCode: "supabase_error",
-          error: "supabase_write_failed",
-          code: "supabase_error",
-          message: normalized.errorMessage,
-          details: "chat_messages_insert_exception",
-          ...normalized,
-        });
-        return;
+        writeOk = false;
+        writeError = normalized.errorMessage || "supabase_write_failed";
+      }
       }
     }
   }
 
-  if (isDirectPost) {
+  if (!isFunctionRequest) {
+    const visitorId =
+      (typeof payloadObject.visitorId === "string" && payloadObject.visitorId) ||
+      (typeof payloadObject.visitor_id === "string" && payloadObject.visitor_id) ||
+      null;
     sendJson(res, 200, {
       ok: true,
       status: 200,
+      reply: "Got it - I'm online. Tell me what you need and I'll route it.",
       id: chatMessageId,
       ts: Date.now(),
-      data: null,
+      write_ok: writeOk,
+      write_error: writeError,
+      data: { echo: directMessage, visitor_id: visitorId },
     });
     return;
   }
@@ -384,7 +363,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return;
     }
 
-    sendJson(res, 200, { ok: true, status: 200, id: chatMessageId, ts: Date.now(), data });
+    sendJson(res, 200, {
+      ok: true,
+      status: 200,
+      id: chatMessageId,
+      ts: Date.now(),
+      write_ok: writeOk,
+      write_error: writeError,
+      data,
+    });
   } catch (error) {
     console.error("[api/alex-chat] Upstream exception.", {
       functionName,

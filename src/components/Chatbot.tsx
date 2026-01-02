@@ -623,6 +623,7 @@ Phase: ${leadData.conversationPhase}`;
           }));
         }
       } else {
+        setNetworkError("Chat is temporarily unavailable.");
         setRateLimitState(prev => ({
           ...prev,
           lastErrorCode: 'UNKNOWN_ERROR',

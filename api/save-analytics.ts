@@ -143,6 +143,15 @@ const requestSupabase = async (
 };
 
 const sendUpstreamError = (res: ApiResponse, status: number, raw: string) => {
+  if (status === 409) {
+    sendJson(res, 200, {
+      ok: true,
+      status: 200,
+      note: "conflict_ignored",
+      ts: Date.now(),
+    });
+    return;
+  }
   sendJson(res, status, {
     ok: false,
     status,
