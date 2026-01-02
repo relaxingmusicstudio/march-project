@@ -94,7 +94,10 @@ const logChatError = (message: string, error?: unknown) => {
 const invokeKernelFunction = async <T,>(
   functionName: string,
   payload: Record<string, unknown>
-): Promise<{ data: T | null; error: { message: string; status?: number; code?: string } | null }> => {
+): Promise<{
+  data: T | null;
+  error: { message: string; status?: number; code?: string; reply?: string } | null;
+}> => {
   try {
     const response = await fetch("/api/alex-chat", {
       method: "POST",
@@ -103,14 +106,15 @@ const invokeKernelFunction = async <T,>(
       body: JSON.stringify({ function: functionName, body: payload }),
     });
     const raw = await response.text();
-    let parsed: { ok?: boolean; data?: T; error?: string; code?: string } | null = null;
+    let parsed: { ok?: boolean; data?: T; error?: string; code?: string; reply?: string } | null = null;
     if (raw) {
       try {
-        parsed = JSON.parse(raw) as { ok?: boolean; data?: T; error?: string; code?: string };
+        parsed = JSON.parse(raw) as { ok?: boolean; data?: T; error?: string; code?: string; reply?: string };
       } catch {
         parsed = null;
       }
     }
+    const reply = typeof parsed?.reply === "string" ? parsed.reply : undefined;
     if (!response.ok) {
       return {
         data: null,
@@ -118,6 +122,7 @@ const invokeKernelFunction = async <T,>(
           message: parsed?.error ?? response.statusText ?? "Request failed",
           status: response.status,
           code: parsed?.code,
+          reply,
         },
       };
     }
@@ -128,6 +133,7 @@ const invokeKernelFunction = async <T,>(
           message: parsed.error ?? "Request failed",
           status: response.status,
           code: parsed.code,
+          reply,
         },
       };
     }
@@ -491,6 +497,7 @@ Phase: ${leadData.conversationPhase}`;
 
     try {
       const allMessages = [...conversationHistory, ...newMessages];
+      const visitorGHLData = getGHLData();
       
       // Log the user message
       const userMessage = newMessages.find(m => m.role === 'user');
@@ -501,11 +508,16 @@ Phase: ${leadData.conversationPhase}`;
       const { data, error } = await invokeKernelFunction<AIResponse>("alex-chat", {
         messages: allMessages,
         leadData: leadData,
+        visitor_id: visitorGHLData.visitor_id ?? null,
       });
 
       const authStatus = getAuthStatus(error) ?? getAuthStatus(data?.error);
       if (authStatus) {
         setChatAuthUnavailable(true);
+        return null;
+      }
+      if (error?.reply) {
+        setNetworkError(error.reply);
         return null;
       }
 
