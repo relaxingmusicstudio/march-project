@@ -1,6 +1,5 @@
 const CACHE_NAME = 'apexlocal360-v1';
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json',
   '/favicon.png',
   '/alex-avatar.png'
@@ -98,12 +97,12 @@ self.addEventListener('fetch', (event) => {
               return cachedResponse;
             }
             
-            // Return offline page for navigation requests
+            // Return minimal offline response for navigations
             if (event.request.mode === 'navigate') {
-              return caches.match('/');
+              return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
             }
             
-            return new Response('Offline', { status: 503 });
+            return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
           });
       })
   );

@@ -28,23 +28,17 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { useUserRole } from "@/hooks/useUserRole";
+import {
+  CLIENT_ROUTES,
+  LEGACY_REDIRECTS,
+  matchesAnyRoute,
+  isApiRoute,
+  isPublicRoute,
+  isProtectedRoute,
+} from "@/kernel/routes";
 
 interface AuthRouterProps {
   children: React.ReactNode;
-}
-
-// Routes that don't require authentication
-const PUBLIC_ROUTES = ["/", "/login", "/auth", "/blog", "/privacy", "/terms", "/cookies"];
-
-// Routes for clients only
-const CLIENT_ROUTES = ["/app/portal"];
-
-// Legacy routes that redirect
-const LEGACY_REDIRECTS: Record<string, string> = {};
-
-// Check if path starts with any of the given prefixes
-function matchesAnyRoute(path: string, routes: string[]): boolean {
-  return routes.some(route => path === route || path.startsWith(route + "/"));
 }
 
 export function AuthRouter({ children }: AuthRouterProps) {
@@ -67,11 +61,14 @@ export function AuthRouter({ children }: AuthRouterProps) {
       return LEGACY_REDIRECTS[currentPath];
     }
 
-    // Public routes - no redirect needed
-    if (matchesAnyRoute(currentPath, PUBLIC_ROUTES)) return null;
+    // Never redirect API routes
+    if (isApiRoute(currentPath)) return null;
 
-    // Rule 1: Not authenticated -> /login
-    if (!isAuthenticated) return "/login";
+    // Public routes - no redirect needed
+    if (isPublicRoute(currentPath)) return null;
+
+    // Rule 1: Not authenticated -> /login (protected routes only)
+    if (!isAuthenticated && isProtectedRoute(currentPath)) return "/login";
 
     // If onboarding is complete, keep users out of the onboarding route
     if (isOnboardingComplete === true && currentPath === "/app/onboarding") {
@@ -135,7 +132,7 @@ export function AuthRouter({ children }: AuthRouterProps) {
   }
 
   // Not authenticated on protected route - show nothing while redirecting
-  if (!isAuthenticated && !matchesAnyRoute(currentPath, PUBLIC_ROUTES)) {
+  if (!isAuthenticated && isProtectedRoute(currentPath) && !isApiRoute(currentPath)) {
     return null;
   }
 
