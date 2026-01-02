@@ -10,6 +10,7 @@ export const LEGACY_REDIRECTS: Record<string, string> = {};
 
 export const API_ROUTES = [
   "/api/health",
+  "/api/build",
   "/api/_routes",
   "/api/alex-chat",
   "/api/save-analytics",
