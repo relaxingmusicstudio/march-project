@@ -6,6 +6,11 @@ import {
   type DecisionOutcome,
 } from "@/kernel/memory/collectiveMemory";
 import { getKernelLockState } from "@/kernel/governanceGate";
+import {
+  requiredApprovalsForRisk,
+  type MandateToken,
+  validateMandateToken,
+} from "@/kernel/mandates";
 import { evaluateAssumptions, evaluateRiskGate } from "@/kernel/riskPolicy";
 
 export type KernelIntent =
@@ -55,6 +60,8 @@ export type KernelConstraints = {
   requiresAuth?: boolean;
   dryRun?: boolean;
   forceFail?: string;
+  mandateToken?: MandateToken;
+  mandateSecret?: string;
 };
 
 export type KernelRunResult<T = unknown> = {
@@ -583,6 +590,28 @@ export const Kernel = {
         riskGate.reasonCode,
         `score=${riskGate.assessment.score};level=${riskGate.assessment.level}`
       );
+    }
+
+    const requiredApprovals = requiredApprovalsForRisk(riskGate.assessment.level);
+    if (requiredApprovals > 0) {
+      const mandateResult = await validateMandateToken(constraints.mandateToken, {
+        expectedIntent: intent,
+        minApprovals: requiredApprovals,
+        minRiskLevel: riskGate.assessment.level,
+        secret: constraints.mandateSecret,
+      });
+      proofs.push({
+        check: "mandate.required",
+        ok: mandateResult.ok,
+        detail: `${mandateResult.code};approvals=${mandateResult.approvals.unique}/${mandateResult.approvals.required}`,
+      });
+      if (!mandateResult.ok) {
+        const error = buildKernelError("mandate_required", `Mandate required: ${mandateResult.code}`);
+        const decisionId = recordDecision("blocked:mandate_required", error.message);
+        recordOutcome(decisionId, null, "failure", "mandate_required");
+        recordAudit(createAuditRecord(intent, false, constraints, proofs, error));
+        return { ok: false, result: null, error, auditId, proofs };
+      }
     }
 
     if (!envCheck.ok && intent !== "kernel.health") {
