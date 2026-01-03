@@ -1,5 +1,5 @@
-﻿import type { Signal, SignalDomainId } from "./types";
-import { normalizeText, slugify } from "./utils";
+﻿import type { Signal, SignalDomainId } from "./types.js";
+import { normalizeText, slugify } from "./utils.js";
 
 export type ContributionKind = "submission" | "observation";
 export type ContributionSource = "upload" | "link" | "csv" | "note";

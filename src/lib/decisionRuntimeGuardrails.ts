@@ -1,5 +1,5 @@
-import { appendDecisionAudit, type DecisionAuditScope } from "./decisionAuditStream";
-import { isValidDecisionId } from "./decisionValidation";
+import { appendDecisionAudit, type DecisionAuditScope } from "./decisionAuditStream.js";
+import { isValidDecisionId } from "./decisionValidation.js";
 
 export const DEFAULT_DECISION_CONFIDENCE_THRESHOLD = 0.6;
 
@@ -16,7 +16,7 @@ export type DecisionGuardrailViolation = {
 };
 
 export type DecisionGuardrailResult =
-  | { ok: true }
+  | { ok: true; violations?: DecisionGuardrailViolation[] }
   | { ok: false; violations: DecisionGuardrailViolation[] };
 
 export class DecisionGuardrailError extends Error {

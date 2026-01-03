@@ -1,5 +1,5 @@
-﻿import type { IntentParse, ReconciledResult, ScoreBreakdown } from "./types";
-import { clamp, normalizeText } from "./utils";
+﻿import type { IntentParse, ReconciledResult, ScoreBreakdown } from "./types.js";
+import { clamp, normalizeText } from "./utils.js";
 
 const SCORE_WEIGHTS = {
   relevance: 0.35,

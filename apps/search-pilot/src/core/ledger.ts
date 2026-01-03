@@ -1,4 +1,4 @@
-import type { LedgerPage, SearchInteractionType, SearchLedgerEvent, SearchResponse } from "./types";
+import type { LedgerPage, SearchInteractionType, SearchLedgerEvent, SearchResponse } from "./types.js";
 
 export type StorageLike = {
   getItem: (key: string) => string | null;

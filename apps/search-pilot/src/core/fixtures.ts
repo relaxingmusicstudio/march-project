@@ -1,4 +1,4 @@
-﻿import type { EvidenceRef, Signal, SignalDomainId } from "./types";
+﻿import type { EvidenceRef, Signal, SignalDomainId } from "./types.js";
 
 const BASE_TIME = "2024-01-15T12:00:00Z";
 const DAY_MS = 24 * 60 * 60 * 1000;

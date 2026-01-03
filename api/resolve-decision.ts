@@ -25,9 +25,7 @@ type CapturedResponse = {
   getHeaders: () => Map<string, string>;
 };
 
-const ROUTE = "/api/resolve-decision";
-
-const buildTraceId = () => `trace_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const buildRequestId = () => `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 const createCapturedResponse = (): CapturedResponse => {
   let body = "";
@@ -104,8 +102,7 @@ const normalizeError = (payload: Record<string, unknown> | null, status: number)
 };
 
 export default async function apiResolveDecision(req: ApiRequest, res: ApiResponse) {
-  const traceId = buildTraceId();
-  const ts = Date.now();
+  const requestId = buildRequestId();
   const capture = createCapturedResponse();
 
   try {
@@ -117,9 +114,7 @@ export default async function apiResolveDecision(req: ApiRequest, res: ApiRespon
       {
         ok: false,
         error: { code: "handler_exception", message: "handler_exception" },
-        trace_id: traceId,
-        where: ROUTE,
-        ts,
+        request_id: requestId,
       },
       capture.getHeaders()
     );
@@ -135,9 +130,7 @@ export default async function apiResolveDecision(req: ApiRequest, res: ApiRespon
       {
         ok: false,
         error: { code: "invalid_json", message: "invalid_json" },
-        trace_id: traceId,
-        where: ROUTE,
-        ts,
+        request_id: requestId,
       },
       capture.getHeaders()
     );
@@ -153,9 +146,7 @@ export default async function apiResolveDecision(req: ApiRequest, res: ApiRespon
       {
         ok: false,
         error: { code, message },
-        trace_id: traceId,
-        where: ROUTE,
-        ts,
+        request_id: requestId,
       },
       capture.getHeaders()
     );
@@ -168,8 +159,7 @@ export default async function apiResolveDecision(req: ApiRequest, res: ApiRespon
     {
       ok: true,
       data: payload,
-      trace_id: traceId,
-      ts,
+      request_id: requestId,
     },
     capture.getHeaders()
   );

@@ -1,5 +1,5 @@
-import type { SearchEvidenceSummary, SearchResponse } from "./types";
-import { slugify, unique } from "./utils";
+import type { SearchEvidenceSummary, SearchResponse } from "./types.js";
+import { slugify, unique } from "./utils.js";
 
 export type CEOSignalType = "opportunity" | "skill_demand" | "local_gap";
 

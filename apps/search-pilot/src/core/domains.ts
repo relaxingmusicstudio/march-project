@@ -1,6 +1,6 @@
-﻿import type { CanonicalFact, IntentParse, ReconciledResult, Signal, SignalDomainId } from "./types";
-import { FIXTURE_DOMAIN_ORDER, FIXTURE_SIGNALS } from "./fixtures";
-import { clamp, normalizeText, unique, simulateLatency } from "./utils";
+﻿import type { CanonicalFact, IntentParse, ReconciledResult, Signal, SignalDomainId } from "./types.js";
+import { FIXTURE_DOMAIN_ORDER, FIXTURE_SIGNALS } from "./fixtures.js";
+import { clamp, normalizeText, unique, simulateLatency } from "./utils.js";
 
 export const DOMAIN_LABELS: Record<SignalDomainId, string> = {
   local_listings: "Local Listings",

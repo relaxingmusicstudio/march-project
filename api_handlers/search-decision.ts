@@ -1,8 +1,8 @@
 import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
-import { DEFAULT_DOMAINS } from "../apps/search-pilot/src/core/domains";
-import { runSearch } from "../apps/search-pilot/src/core/engine";
-import { recordDecision } from "../src/lib/decisionStore";
-import type { Decision } from "../src/kernel/decisionContract";
+import { DEFAULT_DOMAINS } from "../apps/search-pilot/src/core/domains.js";
+import { runSearch } from "../apps/search-pilot/src/core/engine.js";
+import { recordDecision } from "../src/lib/decisionStore.js";
+import type { Decision } from "../src/kernel/decisionContract.js";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 import { DecisionGuardrailError, validateDecisionInput } from "../src/lib/decisionRuntimeGuardrails.js";
 

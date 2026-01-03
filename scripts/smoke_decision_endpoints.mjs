@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const searchPath = resolve(root, "api", "search-decision.ts");
 const resolvePath = resolve(root, "api", "resolve-decision.ts");
+const loaderPath = resolve(root, "scripts", "ts-loader.mjs");
+const loaderUrl = pathToFileURL(loaderPath).href;
 
 const inline = `
   import searchHandler from ${JSON.stringify(pathToFileURL(searchPath).href)};
@@ -36,11 +38,8 @@ const inline = `
     if (!payload || typeof payload.ok !== "boolean") {
       throw new Error(label + ": missing ok");
     }
-    if (typeof payload.trace_id !== "string") {
-      throw new Error(label + ": missing trace_id");
-    }
-    if (typeof payload.ts !== "number") {
-      throw new Error(label + ": missing ts");
+    if (typeof payload.request_id !== "string") {
+      throw new Error(label + ": missing request_id");
     }
     if (payload.ok) {
       if (!("data" in payload)) {
@@ -49,9 +48,6 @@ const inline = `
     } else {
       if (!payload.error || typeof payload.error.code !== "string" || typeof payload.error.message !== "string") {
         throw new Error(label + ": invalid error shape");
-      }
-      if (typeof payload.where !== "string") {
-        throw new Error(label + ": missing where");
       }
     }
   };
@@ -77,7 +73,7 @@ const inline = `
 
 const result = spawnSync(
   process.execPath,
-  ["--experimental-strip-types", "--input-type=module", "-e", inline],
+  ["--experimental-strip-types", "--experimental-loader", loaderUrl, "--input-type=module", "-e", inline],
   { encoding: "utf8" }
 );
 

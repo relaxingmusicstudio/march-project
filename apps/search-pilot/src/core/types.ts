@@ -1,4 +1,4 @@
-import type { Decision } from "../../../../src/kernel/decisionContract";
+import type { Decision } from "../../../../src/kernel/decisionContract.js";
 
 export type SignalDomainId =
   | "local_listings"

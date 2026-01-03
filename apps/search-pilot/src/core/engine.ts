@@ -1,11 +1,11 @@
-import { parseIntent } from "./intent";
-import { DEFAULT_DOMAINS, normalizeSignal, queryDomain, reconcileFacts } from "./domains";
-import { clampConfidence, type Decision } from "../../../../src/kernel/decisionContract";
+import { parseIntent } from "./intent.js";
+import { DEFAULT_DOMAINS, normalizeSignal, queryDomain, reconcileFacts } from "./domains.js";
+import { clampConfidence, type Decision } from "../../../../src/kernel/decisionContract.js";
 import {
   DEFAULT_DECISION_CONFIDENCE_THRESHOLD,
   enforceDecisionInput,
   enforceDecisionOutput,
-} from "../../../../src/lib/decisionRuntimeGuardrails";
+} from "../../../../src/lib/decisionRuntimeGuardrails.js";
 import type {
   SearchAnalyticsMeta,
   SearchEvidenceSummary,
@@ -13,9 +13,9 @@ import type {
   SearchResponse,
   SearchResult,
   SignalDomainId,
-} from "./types";
-import { buildConfidenceExplanation, scoreResult } from "./scoring";
-import { unique } from "./utils";
+} from "./types.js";
+import { buildConfidenceExplanation, scoreResult } from "./scoring.js";
+import { unique } from "./utils.js";
 
 const buildSummary = (claims: string[], max = 2): string => {
   const trimmed = claims.filter(Boolean).slice(0, max);

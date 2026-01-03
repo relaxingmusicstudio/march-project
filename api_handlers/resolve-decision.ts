@@ -1,8 +1,8 @@
 import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
-import { clampConfidence as clampLegacyConfidence, nowIso, type Decision } from "../src/contracts/decision";
-import { clampConfidence, type Decision as KernelDecision } from "../src/kernel/decisionContract";
+import { clampConfidence as clampLegacyConfidence, nowIso, type Decision } from "../src/contracts/decision.js";
+import { clampConfidence, type Decision as KernelDecision } from "../src/kernel/decisionContract.js";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
-import { recordDecision } from "../src/lib/decisionStore";
+import { recordDecision } from "../src/lib/decisionStore.js";
 import {
   DEFAULT_DECISION_CONFIDENCE_THRESHOLD,
   DecisionGuardrailError,

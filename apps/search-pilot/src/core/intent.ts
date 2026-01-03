@@ -1,5 +1,5 @@
-﻿import type { IntentParse, IntentPrimitive } from "./types";
-import { normalizeText } from "./utils";
+﻿import type { IntentParse, IntentPrimitive } from "./types.js";
+import { normalizeText } from "./utils.js";
 
 const SERVICE_KEYWORDS = [
   { value: "hvac", terms: ["hvac", "heating", "air conditioning", "ac", "heat pump"] },
