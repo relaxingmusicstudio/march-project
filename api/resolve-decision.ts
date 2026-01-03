@@ -1,3 +1,4 @@
+import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
 import { clampConfidence as clampLegacyConfidence, nowIso, type Decision } from "../src/contracts/decision";
 import { clampConfidence, type Decision as KernelDecision } from "../src/kernel/decisionContract";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
@@ -30,11 +31,21 @@ const setCorsHeaders = (res: ApiResponse) => {
 };
 
 const sendJson = (res: ApiResponse, status: number, payload: Record<string, unknown>) => {
-  res.statusCode = status;
   setCorsHeaders(res);
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(payload));
+  const isError = payload.ok === false || status >= 400;
+  if (isError) {
+    const errorCode =
+      (typeof payload.errorCode === "string" && payload.errorCode) ||
+      (typeof payload.code === "string" && payload.code) ||
+      "error";
+    const message =
+      (typeof payload.error === "string" && payload.error) ||
+      (typeof payload.message === "string" && payload.message) ||
+      "error";
+    jsonErr(res, status, errorCode, message, payload);
+    return;
+  }
+  jsonOk(res, payload);
 };
 
 const readJsonBody = async (req: ApiRequest) => {

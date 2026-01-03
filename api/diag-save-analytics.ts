@@ -1,3 +1,4 @@
+import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 
 export const config = { runtime: "nodejs" };
@@ -38,12 +39,20 @@ const setCorsHeaders = (res: ApiResponse) => {
   res.setHeader("Access-Control-Allow-Headers", "content-type, authorization");
 };
 
-const sendJson = (res: ApiResponse, status: number, payload: Record<string, unknown>) => {
-  res.statusCode = status;
+const respondOk = (res: ApiResponse, data: Record<string, unknown>) => {
   setCorsHeaders(res);
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(payload));
+  jsonOk(res, data);
+};
+
+const respondErr = (
+  res: ApiResponse,
+  status: number,
+  errorCode: string,
+  message: string,
+  extra: Record<string, unknown> = {}
+) => {
+  setCorsHeaders(res);
+  jsonErr(res, status, errorCode, message, extra);
 };
 
 const getEnvStatus = () => {
@@ -52,21 +61,19 @@ const getEnvStatus = () => {
     acc[key] = Boolean(env?.[key]);
     return acc;
   }, {} as Record<RequiredEnvKey, boolean>);
-  return { present };
+  return { env, present };
 };
 
 export default function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method === "OPTIONS") {
-    sendJson(res, 200, { ok: true, status: 200 });
+    respondOk(res, { status: 200 });
     return;
   }
 
   if (req.method !== "GET") {
-    sendJson(res, 405, {
-      ok: false,
+    respondErr(res, 405, "method_not_allowed", "method_not_allowed", {
       status: 405,
       errorCode: "method_not_allowed",
-      error: "method_not_allowed",
       code: "method_not_allowed",
     });
     return;
@@ -76,11 +83,10 @@ export default function handler(req: ApiRequest, res: ApiResponse) {
   const isProduction = env?.VERCEL_ENV === "production" || env?.NODE_ENV === "production";
   const lockState = getKernelLockState({ isProduction });
   if (lockState.locked) {
-    sendJson(res, 200, buildNoopPayload(lockState, "kernel_lock"));
+    respondOk(res, buildNoopPayload(lockState, "kernel_lock"));
     return;
   }
-  sendJson(res, 200, {
-    ok: true,
+  respondOk(res, {
     status: 200,
     required_env: [...REQUIRED_ENV],
     env_present: present,

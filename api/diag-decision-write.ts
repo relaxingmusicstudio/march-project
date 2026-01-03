@@ -1,3 +1,4 @@
+import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 
 export const config = { runtime: "nodejs" };
@@ -25,11 +26,21 @@ const setCorsHeaders = (res: ApiResponse) => {
 };
 
 const sendJson = (res: ApiResponse, status: number, payload: Record<string, unknown>) => {
-  res.statusCode = status;
   setCorsHeaders(res);
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(payload));
+  const isError = payload.ok === false || status >= 400;
+  if (isError) {
+    const errorCode =
+      (typeof payload.errorCode === "string" && payload.errorCode) ||
+      (typeof payload.code === "string" && payload.code) ||
+      "error";
+    const message =
+      (typeof payload.error === "string" && payload.error) ||
+      (typeof payload.message === "string" && payload.message) ||
+      "error";
+    jsonErr(res, status, errorCode, message, payload);
+    return;
+  }
+  jsonOk(res, payload);
 };
 
 const normalizeSupabaseUrl = (url: string) => (url.endsWith("/") ? url.slice(0, -1) : url);
@@ -122,8 +133,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const supabaseUrl = rawSupabaseUrl.trim();
   const trimmedLength = supabaseUrl.length;
   const serviceRoleKey = (env?.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
-  const baseHint =
-    "Paste Supabase Settings → Data API → Project URL exactly; no trailing slash/spaces";
+  const baseHint = "Paste Supabase Settings -> Data API -> Project URL exactly; no trailing slash/spaces";
   const urlHost = parseHost(supabaseUrl);
 
   if (req.method === "OPTIONS") {

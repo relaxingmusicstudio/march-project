@@ -1,3 +1,5 @@
+import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
+
 export const config = { runtime: "nodejs" };
 
 type ApiRequest = AsyncIterable<Uint8Array | string> & {
@@ -21,23 +23,20 @@ const setCorsHeaders = (res: ApiResponse) => {
   res.setHeader("Access-Control-Allow-Headers", "content-type, authorization");
 };
 
-const sendJson = (
+const respondOk = (res: ApiResponse, data: Record<string, unknown>) => {
+  setCorsHeaders(res);
+  jsonOk(res, data);
+};
+
+const respondErr = (
   res: ApiResponse,
   status: number,
-  payload: {
-    ok: boolean;
-    status: number;
-    urlHost: string | null;
-    timingMs: number;
-    bodyPreview: string;
-    errorCode: string | null;
-  }
+  errorCode: string,
+  message: string,
+  extra: Record<string, unknown> = {}
 ) => {
-  res.statusCode = status;
   setCorsHeaders(res);
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(payload));
+  jsonErr(res, status, errorCode, message, extra);
 };
 
 const getEnvStatus = () => {
@@ -66,8 +65,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const urlHost = parseHost(env?.SUPABASE_URL);
 
   if (req.method === "OPTIONS") {
-    sendJson(res, 200, {
-      ok: true,
+    respondOk(res, {
       status: 200,
       urlHost,
       timingMs: 0,
@@ -78,8 +76,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   if (req.method !== "GET") {
-    sendJson(res, 405, {
-      ok: false,
+    respondErr(res, 405, "method_not_allowed", "method_not_allowed", {
       status: 405,
       urlHost,
       timingMs: 0,
@@ -90,8 +87,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   if (missing.length > 0 || !env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) {
-    sendJson(res, 500, {
-      ok: false,
+    respondErr(res, 500, "server_env_missing", "server_env_missing", {
       status: 500,
       urlHost,
       timingMs: 0,
@@ -118,8 +114,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const preview = truncate(raw ?? "");
 
     if (!response.ok) {
-      sendJson(res, response.status, {
-        ok: false,
+      respondErr(res, response.status, "upstream_error", "upstream_error", {
         status: response.status,
         urlHost,
         timingMs: Date.now() - startedAt,
@@ -129,8 +124,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return;
     }
 
-    sendJson(res, 200, {
-      ok: true,
+    respondOk(res, {
       status: 200,
       urlHost,
       timingMs: Date.now() - startedAt,
@@ -138,8 +132,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       errorCode: null,
     });
   } catch (error) {
-    sendJson(res, 500, {
-      ok: false,
+    respondErr(res, 500, "upstream_exception", "upstream_exception", {
       status: 500,
       urlHost,
       timingMs: Date.now() - startedAt,
