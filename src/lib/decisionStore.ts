@@ -1,4 +1,5 @@
 import { clampConfidence, type Decision, type DecisionStatus } from "../kernel/decisionContract.js";
+import { DEFAULT_DECISION_CONFIDENCE_THRESHOLD } from "./decisionRuntimeGuardrails.js";
 
 export type DecisionOutcome = "worked" | "didnt_work" | "unknown";
 
@@ -46,10 +47,19 @@ export const recordOutcome = (
   const status = outcomeStatusMap[outcome];
   const delta = outcomeConfidenceDelta[outcome];
   const current = clampConfidence(existing.confidence + delta);
+  const uncertaintyScore = clampConfidence(1 - current);
+  const fallbackPath =
+    current < DEFAULT_DECISION_CONFIDENCE_THRESHOLD
+      ? existing.fallback_path?.trim()
+        ? existing.fallback_path
+        : "collect_more_context"
+      : null;
   const updatedDecision: Decision = {
     ...existing,
     status,
     confidence: current,
+    uncertainty_score: uncertaintyScore,
+    fallback_path: fallbackPath,
   };
   decisionStore.set(decisionId, updatedDecision);
 

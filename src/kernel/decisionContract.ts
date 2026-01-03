@@ -1,12 +1,20 @@
 export type DecisionStatus = "proposed" | "acted" | "confirmed" | "failed";
 
+export type DecisionRationale = {
+  reason_code: string;
+  factors: string[];
+};
+
 export type Decision = {
   decision_id: string;
   input_hash: string;
   recommendation: string;
   reasoning: string;
+  rationale: DecisionRationale;
   assumptions: string[];
   confidence: number;
+  uncertainty_score: number;
+  fallback_path: string | null;
   status: DecisionStatus;
   created_at: string;
 };

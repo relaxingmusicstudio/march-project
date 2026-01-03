@@ -3,6 +3,12 @@ import { clampConfidence as clampLegacyConfidence, nowIso, type Decision } from 
 import { clampConfidence, type Decision as KernelDecision } from "../src/kernel/decisionContract";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 import { recordDecision } from "../src/lib/decisionStore";
+import {
+  DEFAULT_DECISION_CONFIDENCE_THRESHOLD,
+  DecisionGuardrailError,
+  enforceDecisionOutput,
+  validateDecisionInput,
+} from "../src/lib/decisionRuntimeGuardrails.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -136,11 +142,29 @@ const buildAssumptions = (context: string) => [
   context ? "The provided context reflects current constraints." : "No additional constraints were provided.",
 ];
 
+const buildRationale = (query: string, context: string) => {
+  const factors: string[] = [];
+  if (context) factors.push("context_provided");
+  if (query.length > 32) factors.push("long_query");
+  return {
+    reason_code: "query_context",
+    factors,
+  };
+};
+
+const buildUncertaintyScore = (confidenceNormalized: number) =>
+  clampConfidence(1 - confidenceNormalized);
+
+const buildFallbackPath = (confidenceNormalized: number) =>
+  confidenceNormalized < DEFAULT_DECISION_CONFIDENCE_THRESHOLD ? "collect_more_context" : null;
+
 export const buildDecision = (query: string, context: string): Decision => {
   let confidence = 55;
   if (context) confidence += 10;
   if (query.length > 32) confidence += 5;
   confidence = clampLegacyConfidence(confidence);
+  const confidenceNormalized = clampConfidence(confidence / 100);
+  const uncertaintyScore = buildUncertaintyScore(confidenceNormalized);
 
   const uncertainty_notes =
     confidence < 60 ? ["Limited context; validate with a small test before scaling."] : [];
@@ -150,10 +174,13 @@ export const buildDecision = (query: string, context: string): Decision => {
     query,
     recommendation: buildRecommendation(query),
     reasoning: buildReasoning(context),
+    rationale: buildRationale(query, context),
     assumptions: buildAssumptions(context),
     confidence,
+    uncertainty_score: uncertaintyScore,
     uncertainty_notes,
     next_action: buildNextAction(query),
+    fallback_path: buildFallbackPath(confidenceNormalized),
     status: "proposed",
     created_at: nowIso(),
   };
@@ -224,13 +251,18 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const query = typeof body?.query === "string" ? body.query.trim() : "";
   const context = typeof body?.context === "string" ? body.context.trim() : "";
 
-  if (!query) {
-    sendJson(res, 400, { ok: false, code: "bad_request", error: "query is required" });
+  const inputValidation = validateDecisionInput({ query, context }, { source: "api/resolve-decision" });
+  if (!inputValidation.ok) {
+    const message = inputValidation.violations.some((violation) => violation.code === "query_required")
+      ? "query is required"
+      : "decision input invalid";
+    sendJson(res, 400, { ok: false, code: "bad_request", error: message });
     return;
   }
 
   const decision = buildDecision(query, context);
   const inputHash = hashString(`${query}|${context}`);
+  const normalizedConfidence = clampConfidence(decision.confidence / 100);
   const statusMap: Record<Decision["status"], KernelDecision["status"]> = {
     proposed: "proposed",
     acted: "acted",
@@ -243,11 +275,28 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     input_hash: inputHash,
     recommendation: decision.recommendation,
     reasoning: decision.reasoning,
+    rationale: decision.rationale,
     assumptions: decision.assumptions,
-    confidence: clampConfidence(decision.confidence / 100),
+    confidence: normalizedConfidence,
+    uncertainty_score: buildUncertaintyScore(normalizedConfidence),
+    fallback_path: buildFallbackPath(normalizedConfidence),
     status: statusMap[decision.status],
     created_at: decision.created_at,
   };
+
+  try {
+    enforceDecisionOutput(decision, { source: "api/resolve-decision", confidenceScale: "percent" });
+    enforceDecisionOutput(kernelDecision, { source: "api/resolve-decision", confidenceScale: "unit" });
+  } catch (error) {
+    const guardError = error instanceof DecisionGuardrailError ? error.message : "decision_output_invalid";
+    sendJson(res, 500, {
+      ok: false,
+      code: "decision_guardrail_failed",
+      error: guardError,
+    });
+    return;
+  }
+
   recordDecision(kernelDecision);
 
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};

@@ -1,6 +1,11 @@
 import { parseIntent } from "./intent";
 import { DEFAULT_DOMAINS, normalizeSignal, queryDomain, reconcileFacts } from "./domains";
 import { clampConfidence, type Decision } from "../../../../src/kernel/decisionContract";
+import {
+  DEFAULT_DECISION_CONFIDENCE_THRESHOLD,
+  enforceDecisionInput,
+  enforceDecisionOutput,
+} from "../../../../src/lib/decisionRuntimeGuardrails";
 import type {
   SearchAnalyticsMeta,
   SearchEvidenceSummary,
@@ -107,6 +112,31 @@ const buildAssumptions = (intent: SearchResponse["intent"], evidence: SearchEvid
     : "Clarifying the query should improve coverage.",
 ];
 
+const buildRationale = (
+  intent: SearchResponse["intent"],
+  evidence: SearchEvidenceSummary,
+  domains: SignalDomainId[]
+) => {
+  const coveredDomains = evidence.domainCounts.filter((entry) => entry.count > 0).length;
+  return {
+    reason_code: "intent_evidence",
+    factors: [
+      `ambiguity:${intent.ambiguity.level}`,
+      `evidence_results:${evidence.resultCount}`,
+      `domain_coverage:${coveredDomains}/${Math.max(domains.length, 1)}`,
+    ],
+  };
+};
+
+const buildUncertaintyScore = (confidence: number) => clampConfidence(1 - confidence);
+
+const buildFallbackPath = (confidence: number, status: Decision["status"]) => {
+  if (confidence < DEFAULT_DECISION_CONFIDENCE_THRESHOLD) {
+    return status === "failed" ? "retry_search" : "refine_query";
+  }
+  return null;
+};
+
 const buildDecision = (
   query: string,
   intent: SearchResponse["intent"],
@@ -122,14 +152,20 @@ const buildDecision = (
   const coveredDomains = evidence.domainCounts.filter((entry) => entry.count > 0).length;
   const coverageAdjustment = domains.length > 0 ? (coveredDomains / domains.length) * 0.1 : 0;
   const confidence = clampConfidence(base + ambiguityAdjustment + evidenceAdjustment + coverageAdjustment);
+  const rationale = buildRationale(intent, evidence, domains);
+  const uncertaintyScore = buildUncertaintyScore(confidence);
+  const fallbackPath = buildFallbackPath(confidence, "proposed");
 
   return {
     decision_id: buildDecisionId(inputHash, createdAt),
     input_hash: inputHash,
     recommendation: buildRecommendation(query, evidence),
     reasoning: buildReasoning(intent, evidence),
+    rationale,
     assumptions: buildAssumptions(intent, evidence),
     confidence,
+    uncertainty_score: uncertaintyScore,
+    fallback_path: fallbackPath,
     status: "proposed",
     created_at: createdAt,
   };
@@ -143,22 +179,36 @@ const buildFailureDecision = (
   message: string
 ): Decision => {
   const inputHash = hashString(`${intent.normalized}|${query}|${domains.join(",")}|failed`);
+  const confidence = 0.15;
+  const uncertaintyScore = buildUncertaintyScore(confidence);
+  const fallbackPath = buildFallbackPath(confidence, "failed");
   return {
     decision_id: buildDecisionId(inputHash, createdAt),
     input_hash: inputHash,
     recommendation: `Retry "${query}" after the search upstream recovers.`,
     reasoning: `Search upstream failed: ${message}. Returning a safe fallback decision.`,
+    rationale: {
+      reason_code: "upstream_failure",
+      factors: ["retry_recommended"],
+    },
     assumptions: [
       "Upstream coverage is required to validate signals.",
       "Retrying after recovery should restore evidence.",
     ],
-    confidence: 0.15,
+    confidence,
+    uncertainty_score: uncertaintyScore,
+    fallback_path: fallbackPath,
     status: "failed",
     created_at: createdAt,
   };
 };
 
 export const runSearch = async (query: string, options: SearchOptions = {}): Promise<SearchResponse> => {
+  enforceDecisionInput(
+    { query, domains: options.domains },
+    { source: "search-pilot", allowedDomains: DEFAULT_DOMAINS }
+  );
+
   const intent = parseIntent(query);
   const domains = options.domains && options.domains.length > 0 ? options.domains : DEFAULT_DOMAINS;
   const now = options.now ?? new Date().toISOString();
@@ -188,6 +238,8 @@ export const runSearch = async (query: string, options: SearchOptions = {}): Pro
     }
   };
 
+  let response: SearchResponse;
+
   if (options.mode === "live") {
     const message = "live_search_unavailable";
     const evidence: SearchEvidenceSummary = {
@@ -198,7 +250,7 @@ export const runSearch = async (query: string, options: SearchOptions = {}): Pro
     };
     const decision = buildFailureDecision(query, intent, domains, now, message);
     const analytics = await runAnalytics(decision);
-    return {
+    response = {
       query,
       intent,
       domains: unique(domains),
@@ -207,70 +259,74 @@ export const runSearch = async (query: string, options: SearchOptions = {}): Pro
       evidence_summary: evidence,
       analytics,
     };
+  } else {
+    try {
+      const domainSignals = await Promise.all(
+        domains.map(async (domain) => ({
+          domain,
+          signals: await queryDomain(domain, intent, { latencyMs, extraSignals }),
+        }))
+      );
+
+      const facts = domainSignals.flatMap((entry) => entry.signals.map(normalizeSignal));
+      const reconciled = reconcileFacts(facts);
+
+      const results: SearchResult[] = reconciled
+        .map((entry) => {
+          const scores = scoreResult(entry, intent, now);
+          const confidenceExplanation = buildConfidenceExplanation(scores, entry.domains);
+          return {
+            id: entry.entityId,
+            name: entry.name,
+            category: entry.category,
+            location: entry.location,
+            summary: buildSummary(entry.claims),
+            tags: entry.tags,
+            evidence: entry.evidence,
+            domains: entry.domains,
+            scores,
+            confidenceExplanation,
+          };
+        })
+        .sort((a, b) => b.scores.finalScore - a.scores.finalScore);
+
+      const evidence = buildEvidenceSummary(results, domains);
+      const decision = buildDecision(query, intent, domains, evidence, now);
+      const analytics = await runAnalytics(decision);
+
+      response = {
+        query,
+        intent,
+        domains: unique(domains),
+        decision,
+        explanation: buildExplanation(ambiguityNote, domains),
+        evidence_summary: evidence,
+        analytics,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "upstream_failed";
+      const evidence: SearchEvidenceSummary = {
+        resultCount: 0,
+        domainCounts: domains.map((domain) => ({ domain, count: 0 })),
+        categoryHighlights: [],
+        notes: [`Upstream failure: ${message}`],
+      };
+      const decision = buildFailureDecision(query, intent, domains, now, message);
+      const analytics = await runAnalytics(decision);
+
+      response = {
+        query,
+        intent,
+        domains: unique(domains),
+        decision,
+        explanation: buildExplanation(`Upstream failure: ${message}`, domains),
+        evidence_summary: evidence,
+        analytics,
+      };
+    }
   }
 
-  try {
-    const domainSignals = await Promise.all(
-      domains.map(async (domain) => ({
-        domain,
-        signals: await queryDomain(domain, intent, { latencyMs, extraSignals }),
-      }))
-    );
+  enforceDecisionOutput(response.decision, { source: "search-pilot", confidenceScale: "unit" });
 
-    const facts = domainSignals.flatMap((entry) => entry.signals.map(normalizeSignal));
-    const reconciled = reconcileFacts(facts);
-
-    const results: SearchResult[] = reconciled
-      .map((entry) => {
-        const scores = scoreResult(entry, intent, now);
-        const confidenceExplanation = buildConfidenceExplanation(scores, entry.domains);
-        return {
-          id: entry.entityId,
-          name: entry.name,
-          category: entry.category,
-          location: entry.location,
-          summary: buildSummary(entry.claims),
-          tags: entry.tags,
-          evidence: entry.evidence,
-          domains: entry.domains,
-          scores,
-          confidenceExplanation,
-        };
-      })
-      .sort((a, b) => b.scores.finalScore - a.scores.finalScore);
-
-    const evidence = buildEvidenceSummary(results, domains);
-    const decision = buildDecision(query, intent, domains, evidence, now);
-    const analytics = await runAnalytics(decision);
-
-    return {
-      query,
-      intent,
-      domains: unique(domains),
-      decision,
-      explanation: buildExplanation(ambiguityNote, domains),
-      evidence_summary: evidence,
-      analytics,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "upstream_failed";
-    const evidence: SearchEvidenceSummary = {
-      resultCount: 0,
-      domainCounts: domains.map((domain) => ({ domain, count: 0 })),
-      categoryHighlights: [],
-      notes: [`Upstream failure: ${message}`],
-    };
-    const decision = buildFailureDecision(query, intent, domains, now, message);
-    const analytics = await runAnalytics(decision);
-
-    return {
-      query,
-      intent,
-      domains: unique(domains),
-      decision,
-      explanation: buildExplanation(`Upstream failure: ${message}`, domains),
-      evidence_summary: evidence,
-      analytics,
-    };
-  }
+  return response;
 };

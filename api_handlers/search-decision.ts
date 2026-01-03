@@ -4,6 +4,7 @@ import { runSearch } from "../apps/search-pilot/src/core/engine";
 import { recordDecision } from "../src/lib/decisionStore";
 import type { Decision } from "../src/kernel/decisionContract";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
+import { DecisionGuardrailError, validateDecisionInput } from "../src/lib/decisionRuntimeGuardrails.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -102,8 +103,6 @@ const readJsonBody = async (req: ApiRequest) => {
   }
 };
 
-const allowedDomains = new Set(DEFAULT_DOMAINS);
-
 const mapDecisionStatusToDb = (status: Decision["status"]) => (status === "failed" ? "cancelled" : "pending");
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
@@ -134,32 +133,54 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   const body = (await readJsonBody(req)) as SearchPayload | null;
   const query = typeof body?.query === "string" ? body.query.trim() : "";
-  if (!query) {
-    sendJson(res, 400, { ok: false, code: "bad_request", error: "query is required" });
+  const domainsInput = body?.domains;
+  const inputValidation = validateDecisionInput(
+    { query, domains: domainsInput },
+    { source: "api/search-decision", allowedDomains: DEFAULT_DOMAINS }
+  );
+  if (!inputValidation.ok) {
+    const codes = new Set(inputValidation.violations.map((violation) => violation.code));
+    if (codes.has("query_required")) {
+      sendJson(res, 400, { ok: false, code: "bad_request", error: "query is required" });
+      return;
+    }
+    if (codes.has("domains_not_allowed")) {
+      sendJson(res, 400, {
+        ok: false,
+        code: "bad_request",
+        error: "domains must be one of the allowed domain ids",
+        allowed_domains: DEFAULT_DOMAINS,
+      });
+      return;
+    }
+    sendJson(res, 400, { ok: false, code: "bad_request", error: "domains must be an array of strings" });
     return;
   }
 
-  const domains =
-    Array.isArray(body?.domains) && body.domains.every((domain) => typeof domain === "string")
-      ? (body.domains as string[])
-      : undefined;
-  if (domains && domains.some((domain) => !allowedDomains.has(domain as (typeof DEFAULT_DOMAINS)[number]))) {
-    sendJson(res, 400, {
-      ok: false,
-      code: "bad_request",
-      error: "domains must be one of the allowed domain ids",
-      allowed_domains: DEFAULT_DOMAINS,
-    });
-    return;
-  }
+  const domains = Array.isArray(domainsInput) ? (domainsInput as string[]) : undefined;
 
   const mode = body?.mode === "live" ? "live" : "mock";
 
-  const response = await runSearch(query, {
-    domains: domains as (typeof DEFAULT_DOMAINS)[number][] | undefined,
-    mode,
-    latencyMs: 0,
-  });
+  let response: Awaited<ReturnType<typeof runSearch>>;
+  try {
+    response = await runSearch(query, {
+      domains: domains as (typeof DEFAULT_DOMAINS)[number][] | undefined,
+      mode,
+      latencyMs: 0,
+    });
+  } catch (error) {
+    if (error instanceof DecisionGuardrailError) {
+      const status = error.kind === "input" ? 400 : 500;
+      sendJson(res, status, {
+        ok: false,
+        code: "decision_guardrail_failed",
+        error: error.message,
+      });
+      return;
+    }
+    sendJson(res, 500, { ok: false, code: "decision_failed", error: "decision runtime error" });
+    return;
+  }
 
   recordDecision(response.decision);
 
