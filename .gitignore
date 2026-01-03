@@ -26,6 +26,7 @@ dist-ssr
 .release-gate-output.md
 
 .vercel
+.env
 .env*.local
 .ops
 

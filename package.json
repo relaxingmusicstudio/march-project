@@ -22,6 +22,7 @@
     "postdeploy:check": "node scripts/postdeploy-check.mjs",
     "preflight": "node scripts/preflight.cjs",
     "proofgate": "node scripts/proofgate.cjs",
+    "sim": "node scripts/sim.mjs --runs=500 --years=50",
     "release:gate": "node scripts/release-gate.cjs",
     "vercel:build-selftest": "node scripts/vercel-build-selftest.cjs",
     "pr:open": "node scripts/pr-open.cjs",
