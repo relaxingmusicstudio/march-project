@@ -134,6 +134,15 @@ export const platformToolsCore: PlatformToolCore[] = [
     canRunInline: true,
   },
   {
+    id: "decision-console",
+    name: "Decision Console",
+    description: "Post to decision endpoints and inspect raw JSON responses",
+    route: "/platform/decision-console",
+    requires: "authenticated",
+    category: "diagnostics",
+    canRunInline: false,
+  },
+  {
     id: "ops-center",
     name: "Ops Center",
     description: "Central cockpit for all diagnostics, build proof, and contradiction detection",

@@ -64,6 +64,7 @@ export const ROUTE_GUARDS: RouteGuard[] = [
   { path: "/platform/schema-snapshot", requires: "authenticated", description: "Schema Snapshot" },
   { path: "/platform/placeholder-scan", requires: "authenticated", description: "Placeholder Scanner" },
   { path: "/platform/route-nav-auditor", requires: "authenticated", description: "Route & Nav Auditor" },
+  { path: "/platform/decision-console", requires: "authenticated", description: "Decision Console" },
   { path: "/platform/ops", requires: "authenticated", description: "Ops Center" },
   { path: "/platform/vibes", requires: "authenticated", description: "Vibes Inspector" },
   

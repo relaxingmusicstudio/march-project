@@ -2,7 +2,21 @@
  * Tool Registry - Extensibility spine for Platform Tools
  * Adding new tools is as simple as adding to this registry
  */
-import { Shield, Database, Terminal, Cloud, UserCheck, TestTube, Building2, Clock, Flag, Table, Search, Map } from "lucide-react";
+import {
+  Shield,
+  Database,
+  Terminal,
+  Cloud,
+  UserCheck,
+  TestTube,
+  Building2,
+  Clock,
+  Flag,
+  Table,
+  Search,
+  Map,
+  FileJson,
+} from "lucide-react";
 import { platformToolsCore } from "./toolRegistryCore";
 import type { PlatformToolCore } from "./toolRegistryCore";
 
@@ -26,6 +40,7 @@ const TOOL_ICON_MAP: Record<string, PlatformTool["icon"]> = {
   "schema-snapshot": Table,
   "placeholder-scan": Search,
   "route-nav-auditor": Map,
+  "decision-console": FileJson,
   "ops-center": Terminal,
   "vibes-inspector": Shield,
 };

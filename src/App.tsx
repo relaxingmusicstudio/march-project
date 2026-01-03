@@ -75,6 +75,7 @@ import SetupWizard from "./pages/SetupWizard";
 const ProofGate = lazy(() => import("./pages/platform/ProofGate"));
 const ToolsHub = lazy(() => import("./pages/platform/ToolsHub"));
 const RouteNavAuditor = lazy(() => import("./pages/platform/RouteNavAuditor"));
+const DecisionConsole = lazy(() => import("./pages/platform/DecisionConsole"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -200,6 +201,7 @@ const App = () => {
                   <Route path="/platform/schema-snapshot" element={<ProtectedRoute><SchemaSnapshot /></ProtectedRoute>} />
                   <Route path="/platform/placeholder-scan" element={<ProtectedRoute><PlaceholderScan /></ProtectedRoute>} />
                   <Route path="/platform/route-nav-auditor" element={<ProtectedRoute><RouteNavAuditor /></ProtectedRoute>} />
+                  <Route path="/platform/decision-console" element={<ProtectedRoute><DecisionConsole /></ProtectedRoute>} />
                   <Route path="/platform/ops" element={<ProtectedRoute><OpsCenter /></ProtectedRoute>} />
                   <Route path="/platform/vibes" element={<ProtectedRoute><VibesInspector /></ProtectedRoute>} />
                   
