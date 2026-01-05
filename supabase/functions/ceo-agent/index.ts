@@ -2,9 +2,47 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { aiChat, aiChatStream, parseAIError } from "../_shared/ai.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+const baseCorsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
+};
+
+const resolveAllowedOrigin = (req: Request) => {
+  const configured = Deno.env.get("APP_ORIGIN") ?? Deno.env.get("CORS_ORIGIN");
+  if (!configured || configured === "*") return "*";
+  const allowed = configured
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const requestOrigin = req.headers.get("origin");
+  if (!requestOrigin) return allowed[0] ?? "*";
+  if (allowed.includes(requestOrigin)) return requestOrigin;
+  return allowed[0] ?? requestOrigin;
+};
+
+const buildCorsHeaders = (req: Request) => ({
+  ...baseCorsHeaders,
+  "Access-Control-Allow-Origin": resolveAllowedOrigin(req),
+});
+
+const withCors = (req: Request, init: ResponseInit = {}) => {
+  const headers = new Headers(init.headers ?? {});
+  const cors = buildCorsHeaders(req);
+  Object.entries(cors).forEach(([key, value]) => headers.set(key, value));
+  return { ...init, headers };
+};
+
+const jsonResponse = (req: Request, payload: unknown, init: ResponseInit = {}) => {
+  const headers = new Headers(init.headers ?? {});
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify(payload), withCors(req, { ...init, headers }));
+};
+
+const createRequestId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `srv_${crypto.randomUUID()}`;
+  }
+  return `srv_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`;
 };
 
 // Audit logging helper
@@ -29,6 +67,31 @@ async function logAudit(supabase: unknown, entry: {
     console.error('[AuditLog] Failed to log:', err);
   }
 }
+
+type SupabaseClient = ReturnType<typeof createClient>;
+
+const logActionEvent = async (
+  supabase: SupabaseClient,
+  entry: {
+    intent: string;
+    status: string;
+    mode: string;
+    payload: Record<string, unknown>;
+    user_id?: string | null;
+  }
+) => {
+  try {
+    await supabase.from("action_logs").insert({
+      user_id: entry.user_id ?? null,
+      mode: entry.mode,
+      intent: entry.intent,
+      status: entry.status,
+      payload: entry.payload,
+    });
+  } catch (err) {
+    console.error("[action_logs] insert failed", err);
+  }
+};
 
 const SYSTEM_PROMPT = `You are the CEO's AI business partner - not just an advisor, but an active co-pilot who runs systems and builds their business 24/7. Think of yourself as their strategic co-founder with perfect memory and tireless execution.
 
@@ -418,18 +481,96 @@ const analysisTools = [
 ];
 
 serve(async (req) => {
+  const url = new URL(req.url);
+  const requestStart = Date.now();
+  const requestIdFromHeader = req.headers.get("x-request-id") ?? req.headers.get("x-request_id");
+  const requestIdFromQuery = url.searchParams.get("request_id");
+  const origin = req.headers.get("origin");
+  const hasAuth = Boolean(req.headers.get("authorization"));
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, withCors(req, { status: 200 }));
   }
 
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+    return jsonResponse(req, { error: "Supabase configuration missing." }, { status: 500 });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  if (req.method === "GET" && url.pathname.endsWith("/ping")) {
+    const requestId = requestIdFromQuery ?? requestIdFromHeader ?? createRequestId();
+    await logActionEvent(supabase, {
+      intent: "ceo_agent_received",
+      status: "received",
+      mode: "sim",
+      payload: {
+        request_id: requestId,
+        origin,
+        has_auth: hasAuth,
+        path: url.pathname,
+        method: req.method,
+      },
+    });
+    const payload = {
+      ok: true,
+      service: "ceo-agent",
+      time: new Date().toISOString(),
+      request_id: requestId,
+    };
+    await logActionEvent(supabase, {
+      intent: "ceo_agent_completed",
+      status: "completed",
+      mode: "sim",
+      payload: { request_id: requestId, latency_ms: Date.now() - requestStart },
+    });
+    return jsonResponse(req, payload);
+  }
+
+  let body: Record<string, unknown>;
   try {
-    const { query, timeRange = "7d", conversationHistory = [], stream = false, visitorId, correctionContext } = await req.json();
-    
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-    
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    body = await req.json();
+  } catch (error) {
+    const requestId = requestIdFromQuery ?? requestIdFromHeader ?? createRequestId();
+    await logActionEvent(supabase, {
+      intent: "ceo_agent_failed",
+      status: "failed",
+      mode: "sim",
+      payload: { request_id: requestId, error_message: "Invalid JSON", error_code: "invalid_json" },
+    });
+    return jsonResponse(req, { error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const requestId =
+    (body.request_id as string | undefined) ?? requestIdFromHeader ?? requestIdFromQuery ?? createRequestId();
+  const mode = typeof body.mode === "string" ? body.mode : "sim";
+
+  await logActionEvent(supabase, {
+    intent: "ceo_agent_received",
+    status: "received",
+    mode,
+    payload: {
+      request_id: requestId,
+      origin,
+      has_auth: hasAuth,
+      path: url.pathname,
+      method: req.method,
+    },
+  });
+
+  try {
+    const { query, timeRange = "7d", conversationHistory = [], stream = false, visitorId, correctionContext } = body as {
+      query?: string;
+      timeRange?: string;
+      conversationHistory?: unknown[];
+      stream?: boolean;
+      visitorId?: string;
+      correctionContext?: unknown;
+    };
     
     // ═══ MEMORY RECALL: Search for relevant past discussions ═══
     let relevantMemories: unknown[] = [];
@@ -654,18 +795,47 @@ INSTRUCTIONS:
               }
               controller.enqueue(encoder.encode('data: [DONE]\n\n'));
               controller.close();
+              await logActionEvent(supabase, {
+                intent: "ceo_agent_completed",
+                status: "completed",
+                mode,
+                payload: { request_id: requestId, latency_ms: Date.now() - requestStart },
+              });
             } catch (err) {
               console.error('[CEO Agent] Stream error:', err);
+              await logActionEvent(supabase, {
+                intent: "ceo_agent_failed",
+                status: "failed",
+                mode,
+                payload: {
+                  request_id: requestId,
+                  error_message: err instanceof Error ? err.message : "stream_failed",
+                  error_code: "stream_failed",
+                },
+              });
               controller.error(err);
             }
           }
         });
 
-        return new Response(readableStream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
+        return new Response(
+          readableStream,
+          withCors(req, { headers: { "Content-Type": "text/event-stream" } })
+        );
       } catch (streamErr) {
         const aiError = parseAIError(streamErr);
         if (aiError.code === 'QUOTA_EXCEEDED') {
-          return new Response(JSON.stringify({ error: "Rate limited" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          await logActionEvent(supabase, {
+            intent: "ceo_agent_failed",
+            status: "failed",
+            mode,
+            payload: {
+              request_id: requestId,
+              error_message: "Rate limited",
+              error_code: aiError.code ?? "rate_limited",
+            },
+          });
+          return jsonResponse(req, { error: "Rate limited" }, { status: 429 });
         }
         throw streamErr;
       }
@@ -780,13 +950,33 @@ INSTRUCTIONS:
       }
     }
 
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    await logActionEvent(supabase, {
+      intent: "ceo_agent_completed",
+      status: "completed",
+      mode,
+      payload: { request_id: requestId, latency_ms: Date.now() - requestStart },
+    });
+    return jsonResponse(req, result);
   } catch (error) {
     console.error("CEO Agent error:", error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Unknown error",
-      response: "I'm having trouble right now. Please try again."
-    }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    await logActionEvent(supabase, {
+      intent: "ceo_agent_failed",
+      status: "failed",
+      mode,
+      payload: {
+        request_id: requestId,
+        error_message: error instanceof Error ? error.message : "Unknown error",
+        error_code: "exception",
+      },
+    });
+    return jsonResponse(
+      req,
+      {
+        error: error instanceof Error ? error.message : "Unknown error",
+        response: "I'm having trouble right now. Please try again.",
+      },
+      { status: 500 }
+    );
   }
 });
 

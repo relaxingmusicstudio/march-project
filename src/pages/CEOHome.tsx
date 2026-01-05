@@ -68,7 +68,8 @@ import { DEFAULT_AGENT_IDS } from "@/lib/ceoPilot/agents";
 import { deriveTaskClass, estimateActionCostCents } from "@/lib/ceoPilot/costUtils";
 import { deriveActionCost } from "@/lib/ceoPilot/economics/costModel";
 import CEOChatPanel from "@/components/CEOChatPanel";
-import { supabase } from "@/integrations/supabase/client";
+import { newRequestId, recordUiAttempt, getProofSpineTail, type ProofSpineEntry } from "@/lib/proofSpine";
+import { toast } from "sonner";
 
 export default function CEOHome() {
   const { email, role, signOut, userId } = useAuth();
@@ -124,6 +125,8 @@ export default function CEOHome() {
     loadPreflightIntent(userId, email)
   );
   const [intentNotice, setIntentNotice] = useState<string | null>(null);
+  const [lastAttempt, setLastAttempt] = useState<ProofSpineEntry | null>(null);
+  const [bufferTail, setBufferTail] = useState<ProofSpineEntry[]>([]);
   const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(() =>
     loadPreflightTeam(userId, email)
   );
@@ -232,6 +235,19 @@ export default function CEOHome() {
   useEffect(() => {
     setTeamSelection(loadPreflightTeam(userId, email));
   }, [userId, email]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setBufferTail(getProofSpineTail());
+    const handler = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const entry = event.detail as ProofSpineEntry;
+      setLastAttempt(entry);
+      setBufferTail(getProofSpineTail());
+    };
+    window.addEventListener("proof-spine", handler as EventListener);
+    return () => window.removeEventListener("proof-spine", handler as EventListener);
+  }, []);
 
   const handleApplySystemMode = () => {
     if (switchModeConfirm.trim().toUpperCase() !== switchModeTarget) return;
@@ -688,26 +704,105 @@ export default function CEOHome() {
     setIntentNotice(null);
   };
 
-  const handleSimulationNote = async (message: string) => {
+  const handleSimulationNote = async (message: string, actionIntent: string) => {
     setIntentNotice(message);
-    if (flightMode !== "SIM") return;
-    if (!userId) return;
-
-    const intent = intentSelection ?? "unselected";
-    const { error } = await supabase.from("action_logs").insert({
-      user_id: userId,
-      mode: "sim",
-      status: "initiated",
-      intent,
+    const requestId = newRequestId();
+    const mode = flightMode === "SIM" ? "sim" : "exec";
+    const attempt = await recordUiAttempt({
+      intent: actionIntent,
+      mode,
+      request_id: requestId,
       payload: {
         source: "command_center",
-        intent,
+        intent_gate: intentSelection ?? "unselected",
         note: message,
       },
     });
+    setLastAttempt(attempt);
+    setBufferTail(getProofSpineTail());
 
-    if (error) {
+    if (flightMode !== "SIM") {
+      toast.warning("Switch to Sim Mode to run simulations.");
       return;
+    }
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (!supabaseUrl || !anonKey) {
+      toast.warning("Integration missing.");
+      return;
+    }
+
+    try {
+      const pingUrl = new URL(`${supabaseUrl}/functions/v1/ceo-agent/ping`);
+      pingUrl.searchParams.set("request_id", requestId);
+      const pingResponse = await fetch(pingUrl.toString(), {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${anonKey}`,
+          "X-Request-Id": requestId,
+        },
+      });
+
+      if (!pingResponse.ok) {
+        toast.warning("Gateway unreachable.");
+        return;
+      }
+
+      const requestBody = {
+        query: message,
+        timeRange: "7d",
+        conversationHistory: [],
+        stream: false,
+        request_id: requestId,
+        mode,
+        intent: actionIntent,
+        source: "command_center",
+      };
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/ceo-agent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${anonKey}`,
+          "X-Request-Id": requestId,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        toast.warning("Gateway unreachable.");
+      }
+    } catch (error) {
+      console.error("[command_center] simulation call failed", error);
+      toast.warning("Gateway unreachable.");
+    }
+  };
+
+  const handleCopyDebug = async () => {
+    const payload = {
+      last_attempt: lastAttempt,
+      buffer_tail: bufferTail,
+      env: {
+        mode: import.meta.env.MODE,
+        supabase_url: import.meta.env.VITE_SUPABASE_URL ?? null,
+        flight_mode: flightMode,
+      },
+      user_id: userId ?? null,
+      origin: typeof window !== "undefined" ? window.location.origin : "unknown",
+    };
+    const raw = JSON.stringify(payload, null, 2);
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(raw);
+        toast.success("Debug JSON copied.");
+      } else {
+        toast.warning("Clipboard unavailable.");
+      }
+    } catch (error) {
+      console.error("[command_center] copy failed", error);
+      toast.warning("Copy failed.");
     }
   };
 
@@ -845,6 +940,47 @@ export default function CEOHome() {
       <div style={{ opacity: 0.8, marginBottom: 16 }}>
         Signed in as <b>{email ?? "unknown"}</b> - role: <b>{role}</b>
       </div>
+
+      {flightMode === "SIM" && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            fontSize: 11,
+            opacity: 0.8,
+            marginBottom: 12,
+            flexWrap: "wrap",
+          }}
+          data-testid="proof-spine-debug"
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <span style={{ fontWeight: 700 }}>Last attempt:</span>
+            <span>{lastAttempt ? lastAttempt.intent : "none"}</span>
+            {lastAttempt && (
+              <span>
+                | {new Date(lastAttempt.ts).toLocaleString()} | {lastAttempt.request_id} |{" "}
+                {lastAttempt.db_ok ? "db ok" : "db fail"}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleCopyDebug}
+            style={{
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid rgba(0,0,0,0.15)",
+              cursor: "pointer",
+              fontWeight: 700,
+              background: "white",
+            }}
+            data-testid="copy-proof-debug"
+          >
+            Copy Debug JSON
+          </button>
+        </div>
+      )}
 
       <div style={{ marginBottom: 16 }} data-testid="ceo-chat-panel">
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>CEO Chat</div>
@@ -1304,7 +1440,7 @@ export default function CEOHome() {
           </ul>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
-              onClick={() => handleSimulationNote("Simulation queued. No live actions executed.")}
+              onClick={() => handleSimulationNote("Simulation queued. No live actions executed.", "run_simulation")}
               style={{
                 padding: "8px 12px",
                 borderRadius: 8,
@@ -1323,7 +1459,7 @@ export default function CEOHome() {
               </div>
             </button>
             <button
-              onClick={() => handleSimulationNote("Predicted outcome ready (simulation only).")}
+              onClick={() => handleSimulationNote("Predicted outcome ready (simulation only).", "view_predicted_outcome")}
               style={{
                 padding: "8px 12px",
                 borderRadius: 8,
@@ -1388,7 +1524,7 @@ export default function CEOHome() {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
-              onClick={() => handleSimulationNote("Pod simulation queued. No live actions executed.")}
+              onClick={() => handleSimulationNote("Pod simulation queued. No live actions executed.", "run_simulation")}
               style={{
                 padding: "8px 12px",
                 borderRadius: 8,
@@ -1407,7 +1543,9 @@ export default function CEOHome() {
               </div>
             </button>
             <button
-              onClick={() => handleSimulationNote("Predicted pod outcome ready (simulation only).")}
+              onClick={() =>
+                handleSimulationNote("Predicted pod outcome ready (simulation only).", "view_predicted_outcome")
+              }
               style={{
                 padding: "8px 12px",
                 borderRadius: 8,

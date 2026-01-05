@@ -6,6 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { loadFlightMode, type FlightMode } from "@/lib/flightMode";
+import { newRequestId, recordUiAttempt, type ProofSpineEntry } from "@/lib/proofSpine";
 import { 
   MessageSquare, 
   Send, 
@@ -187,11 +189,13 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
     response: string;
     index: number;
   } | null>(null);
-  const { userId } = useAuth();
+  const { userId, email } = useAuth();
+  const [flightMode, setFlightMode] = useState<FlightMode>(() => loadFlightMode(userId, email));
   const [actionMode, setActionMode] = useState<ActionMode>("SIM");
   const [actionInputValues, setActionInputValues] = useState<Record<string, Record<string, string>>>({});
   const [actionPromptedInputs, setActionPromptedInputs] = useState<Record<string, boolean>>({});
   const [actionLogStates, setActionLogStates] = useState<Record<string, ActionLogState>>({});
+  const [lastAttempt, setLastAttempt] = useState<ProofSpineEntry | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialLoadRef = useRef(false);
 
@@ -208,6 +212,16 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, streamingContent]);
+
+  useEffect(() => {
+    setFlightMode(loadFlightMode(userId, email));
+  }, [userId, email]);
+
+  useEffect(() => {
+    const update = () => setFlightMode(loadFlightMode(userId, email));
+    window.addEventListener("ppp:flightmode", update);
+    return () => window.removeEventListener("ppp:flightmode", update);
+  }, [userId, email]);
 
   const loadConversation = async () => {
     try {
@@ -394,7 +408,22 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
 
   const sendMessage = async (query: string) => {
     if (!query.trim() || isLoading) return;
-    
+
+    const requestId = newRequestId();
+    const mode = actionMode === "EXEC" ? "exec" : "sim";
+    const attempt = await recordUiAttempt({
+      intent: "ceo_chat_message",
+      mode,
+      request_id: requestId,
+      payload: {
+        source: "ceo_chat_panel",
+        query,
+        conversation_id: conversationId,
+        flight_mode: flightMode,
+      },
+    });
+    setLastAttempt(attempt);
+
     if (isConversationEnding(query)) {
       setConversationComplete(true);
       const userMessage: Message = { role: "user", content: query, timestamp: new Date() };
@@ -424,6 +453,9 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
         timeRange: "7d",
         conversationHistory: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
         stream: true,
+        request_id: requestId,
+        mode,
+        intent: "ceo_chat_message",
       };
       
       if (pendingCorrection) {
@@ -623,7 +655,15 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
             </Button>
           </CardTitle>
         </CardHeader>
-      
+
+      {flightMode === "SIM" && (
+        <div className="px-4 pb-2 text-[11px] text-muted-foreground" data-testid="sim-log-status">
+          SIM log: {lastAttempt ? (lastAttempt.db_ok ? "success" : "fail") : "none"}
+          {lastAttempt ? ` | ${lastAttempt.intent}` : ""}
+          {lastAttempt?.db_error ? ` | ${lastAttempt.db_error}` : ""}
+        </div>
+      )}
+
       <CardContent className="flex-1 flex flex-col p-0 min-h-0 overflow-hidden">
         {/* Strategic Plan Widget for returning users */}
         {isReturningUser && messages.length > 0 && (
