@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { 
   MessageSquare, 
   Send, 
@@ -44,6 +45,58 @@ interface CEOChatPanelProps {
   onInsightGenerated?: (insight: Record<string, unknown>) => void;
   className?: string;
 }
+
+type ActionMode = "SIM" | "EXEC";
+type ActionLogState = "idle" | "logging" | "success" | "error";
+
+type RequiredInput = {
+  key: string;
+  label: string;
+  value: string;
+  valid: boolean;
+};
+
+type ActionProof = {
+  urls: string[];
+  ids: string[];
+  db_rows: string[];
+  logs: string[];
+};
+
+type ActionEnvelope = {
+  id: string;
+  intent: string;
+  mode: ActionMode;
+  required_inputs: RequiredInput[];
+  expected_effect: string;
+  proof: ActionProof;
+};
+
+const ACTION_INPUT_PATTERN = /\{([^}]+)\}|\[([^\]]+)\]/g;
+const buildActionProof = (): ActionProof => ({ urls: [], ids: [], db_rows: [], logs: [] });
+
+const toInputKey = (label: string) =>
+  label
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+
+const extractRequiredInputLabels = (intent: string) => {
+  const labels = new Set<string>();
+  let match: RegExpExecArray | null;
+  ACTION_INPUT_PATTERN.lastIndex = 0;
+  while ((match = ACTION_INPUT_PATTERN.exec(intent)) !== null) {
+    const label = (match[1] ?? match[2] ?? "").trim();
+    if (label) {
+      labels.add(label);
+    }
+  }
+  return Array.from(labels).slice(0, 6);
+};
+
+const buildEnvelopeId = (timestamp: Date, index: number) =>
+  `ceo-action-${timestamp.getTime()}-${index}`;
 
 const QUICK_ACTIONS = [
   { label: "What's the plan?", query: "Show me the current 2-week strategic plan" },
@@ -134,6 +187,11 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
     response: string;
     index: number;
   } | null>(null);
+  const { userId } = useAuth();
+  const [actionMode, setActionMode] = useState<ActionMode>("SIM");
+  const [actionInputValues, setActionInputValues] = useState<Record<string, Record<string, string>>>({});
+  const [actionPromptedInputs, setActionPromptedInputs] = useState<Record<string, boolean>>({});
+  const [actionLogStates, setActionLogStates] = useState<Record<string, ActionLogState>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialLoadRef = useRef(false);
 
@@ -223,6 +281,111 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
       console.error('Failed to save conversation:', err);
     }
   }, [conversationId]);
+
+  const buildRequiredInputs = useCallback(
+    (intent: string, envelopeId: string) => {
+      const labels = extractRequiredInputLabels(intent);
+      const overrides = actionInputValues[envelopeId] ?? {};
+      return labels.map((label) => {
+        const key = toInputKey(label);
+        const value = overrides[key] ?? "";
+        return { key, label, value, valid: value.trim().length > 0 };
+      });
+    },
+    [actionInputValues]
+  );
+
+  const buildActionEnvelope = useCallback(
+    (intent: string, envelopeId: string): ActionEnvelope => {
+      const trimmedIntent = intent.trim();
+      const expectedEffect =
+        trimmedIntent.length > 0
+          ? `If executed, this would attempt to: ${trimmedIntent}${trimmedIntent.endsWith(".") ? "" : "."}`
+          : "If executed, this would attempt to complete the proposed action.";
+      return {
+        id: envelopeId,
+        intent: trimmedIntent || "Proposed action",
+        mode: actionMode,
+        required_inputs: buildRequiredInputs(intent, envelopeId),
+        expected_effect: expectedEffect,
+        proof: buildActionProof(),
+      };
+    },
+    [actionMode, buildRequiredInputs]
+  );
+
+  const updateRequiredInput = (envelopeId: string, key: string, value: string) => {
+    setActionInputValues((prev) => ({
+      ...prev,
+      [envelopeId]: {
+        ...(prev[envelopeId] ?? {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  const logActionEnvelope = async (
+    envelope: ActionEnvelope,
+    meta?: { messageTimestamp?: Date; actionIndex?: number }
+  ) => {
+    if (!userId) {
+      toast.error("Sign in to log actions.");
+      return;
+    }
+
+    const missingInputs = envelope.required_inputs.filter((input) => !input.valid);
+    if (missingInputs.length > 0) {
+      if (!actionPromptedInputs[envelope.id]) {
+        const missingLabel = missingInputs.map((input) => input.label).join(", ");
+        toast.warning("Missing required inputs", {
+          description: missingLabel.length > 0 ? missingLabel : "Please provide the required inputs.",
+        });
+      }
+      setActionPromptedInputs((prev) => ({ ...prev, [envelope.id]: true }));
+      return;
+    }
+
+    setActionLogStates((prev) => ({ ...prev, [envelope.id]: "logging" }));
+
+    const payload = {
+      envelope: {
+        id: envelope.id,
+        intent: envelope.intent,
+        mode: envelope.mode,
+        required_inputs: envelope.required_inputs.map(({ key, label, value, valid }) => ({
+          key,
+          label,
+          value,
+          valid,
+        })),
+        expected_effect: envelope.expected_effect,
+        proof: envelope.proof,
+      },
+      source: "ceo_chat_panel",
+      conversation_id: conversationId,
+      message_timestamp: meta?.messageTimestamp?.toISOString() ?? null,
+      suggested_action_index: meta?.actionIndex ?? null,
+    };
+
+    const status = envelope.mode === "SIM" ? "simulated" : "executed";
+    const { error } = await supabase.from("action_logs").insert({
+      user_id: userId,
+      mode: envelope.mode,
+      intent: envelope.intent,
+      status,
+      payload,
+      proof: envelope.proof,
+    });
+
+    if (error) {
+      setActionLogStates((prev) => ({ ...prev, [envelope.id]: "error" }));
+      toast.error("Failed to log action.");
+      return;
+    }
+
+    setActionLogStates((prev) => ({ ...prev, [envelope.id]: "success" }));
+    toast.success(status === "simulated" ? "Simulation logged." : "Execution logged.");
+  };
 
   const isConversationEnding = (text: string): boolean => {
     const lower = text.toLowerCase().trim();
@@ -428,6 +591,27 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
                 Session Complete
               </Badge>
             )}
+            <div className="ml-2 flex items-center gap-1 rounded-full border border-border/60 px-1 py-0.5">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Mode</span>
+              <Button
+                type="button"
+                size="sm"
+                variant={actionMode === "SIM" ? "secondary" : "ghost"}
+                className="h-5 px-2 text-[10px]"
+                onClick={() => setActionMode("SIM")}
+              >
+                SIM
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={actionMode === "EXEC" ? "secondary" : "ghost"}
+                className="h-5 px-2 text-[10px]"
+                onClick={() => setActionMode("EXEC")}
+              >
+                EXEC
+              </Button>
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -529,33 +713,145 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
                     </div>
                   )}
                   
-                  {/* Suggested Actions */}
-                  {msg.role === "assistant" && msg.suggestedActions && msg.suggestedActions.length > 0 && i === messages.length - 1 && !conversationComplete && (
-                    <div className="ml-8 mt-2 space-y-1.5">
-                      <p className="text-xs text-muted-foreground">Quick options:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {msg.suggestedActions.map((action, j) => (
+                  {/* Action Envelopes */}
+                  {msg.role === "assistant" &&
+                    msg.suggestedActions &&
+                    msg.suggestedActions.length > 0 &&
+                    i === messages.length - 1 &&
+                    !conversationComplete && (
+                      <div className="ml-8 mt-2 space-y-2">
+                        <p className="text-xs text-muted-foreground">Action Envelopes:</p>
+                        <div className="space-y-2">
+                          {msg.suggestedActions.map((action, j) => {
+                            const envelopeId = buildEnvelopeId(msg.timestamp, j);
+                            const envelope = buildActionEnvelope(action, envelopeId);
+                            const missingInputs = envelope.required_inputs.filter((input) => !input.valid);
+                            const logState = actionLogStates[envelope.id] ?? "idle";
+                            const isPrompted = actionPromptedInputs[envelope.id];
+                            return (
+                              <div
+                                key={envelope.id}
+                                className="rounded-lg border border-border/70 bg-background p-3 space-y-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                    Action Envelope
+                                  </Badge>
+                                  <Badge
+                                    variant={actionMode === "EXEC" ? "default" : "secondary"}
+                                    className="text-[10px]"
+                                  >
+                                    {actionMode}
+                                  </Badge>
+                                  <span className="text-xs font-medium text-foreground">
+                                    {envelope.intent.length > 80
+                                      ? `${envelope.intent.slice(0, 80)}...`
+                                      : envelope.intent}
+                                  </span>
+                                </div>
+                                <div className="grid gap-1 text-[11px] text-muted-foreground">
+                                  <div>
+                                    <span className="font-semibold text-foreground">Intent:</span>{" "}
+                                    {envelope.intent}
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-foreground">Expected effect:</span>{" "}
+                                    {envelope.expected_effect}
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-foreground">Proof slots:</span>{" "}
+                                    urls({envelope.proof.urls.length}) | ids({envelope.proof.ids.length}) |
+                                    db_rows({envelope.proof.db_rows.length}) | logs({envelope.proof.logs.length})
+                                  </div>
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  <span className="font-semibold text-foreground">Required inputs:</span>{" "}
+                                  {envelope.required_inputs.length === 0 ? "none" : null}
+                                </div>
+                                {envelope.required_inputs.length > 0 && (
+                                  <div className="grid gap-1">
+                                    {envelope.required_inputs.map((inputField) => (
+                                      <div key={inputField.key} className="flex items-center gap-2">
+                                        <span className="min-w-[110px] text-[11px] font-medium text-foreground">
+                                          {inputField.label}
+                                        </span>
+                                        <Input
+                                          value={inputField.value}
+                                          onChange={(event) =>
+                                            updateRequiredInput(envelope.id, inputField.key, event.target.value)
+                                          }
+                                          placeholder="Required input"
+                                          className="h-7 text-[11px]"
+                                        />
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {inputField.valid ? "ok" : "missing"}
+                                        </Badge>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {isPrompted && missingInputs.length > 0 && (
+                                  <div className="flex items-center gap-2 text-[11px] text-amber-700">
+                                    <AlertCircle className="h-3 w-3" />
+                                    Missing inputs: {missingInputs.map((item) => item.label).join(", ")}
+                                  </div>
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-7"
+                                    onClick={() => handleSuggestedAction(action)}
+                                  >
+                                    Ask CEO
+                                  </Button>
+                                  <Button
+                                    variant={actionMode === "EXEC" ? "default" : "secondary"}
+                                    size="sm"
+                                    className="text-xs h-7"
+                                    disabled={logState === "logging"}
+                                    onClick={() =>
+                                      logActionEnvelope(envelope, {
+                                        messageTimestamp: msg.timestamp,
+                                        actionIndex: j,
+                                      })
+                                    }
+                                  >
+                                    {actionMode === "SIM" ? "Log SIM" : "EXEC action"}
+                                  </Button>
+                                  {logState === "logging" && (
+                                    <Badge variant="outline" className="text-[10px] flex items-center gap-1">
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      Logging
+                                    </Badge>
+                                  )}
+                                  {logState === "success" && (
+                                    <Badge variant="outline" className="text-[10px] text-green-700 border-green-400">
+                                      Logged
+                                    </Badge>
+                                  )}
+                                  {logState === "error" && (
+                                    <Badge variant="outline" className="text-[10px] text-red-700 border-red-400">
+                                      Log failed
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex gap-2">
                           <Button
-                            key={j}
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            className="text-xs h-7 bg-background"
-                            onClick={() => handleSuggestedAction(action)}
+                            className="text-xs h-7 text-muted-foreground"
+                            onClick={handleEndConversation}
                           >
-                            {action.length > 50 ? action.slice(0, 50) + '...' : action}
+                            I'm done
                           </Button>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs h-7 text-muted-foreground"
-                          onClick={handleEndConversation}
-                        >
-                          I'm done
-                        </Button>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               );
             })}

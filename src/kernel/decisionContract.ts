@@ -1,5 +1,7 @@
 export type DecisionStatus = "proposed" | "acted" | "confirmed" | "failed";
 
+import type { CalibrationResult } from "../lib/metaCalibration.js";
+
 export type DecisionRationale = {
   reason_code: string;
   factors: string[];
@@ -14,6 +16,7 @@ export type Decision = {
   assumptions: string[];
   confidence: number;
   uncertainty_score: number;
+  calibration?: CalibrationResult;
   fallback_path: string | null;
   status: DecisionStatus;
   created_at: string;

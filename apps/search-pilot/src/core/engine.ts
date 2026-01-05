@@ -6,6 +6,7 @@ import {
   enforceDecisionInput,
   enforceDecisionOutput,
 } from "../../../../src/lib/decisionRuntimeGuardrails.js";
+import { calibrateDecision } from "../../../../src/lib/metaCalibration.js";
 import type {
   SearchAnalyticsMeta,
   SearchEvidenceSummary,
@@ -327,6 +328,21 @@ export const runSearch = async (query: string, options: SearchOptions = {}): Pro
   }
 
   enforceDecisionOutput(response.decision, { source: "search-pilot", confidenceScale: "unit" });
+
+  const calibration = calibrateDecision({
+    decision: response.decision as unknown as Record<string, unknown>,
+    context: {
+      evidence_summary: response.evidence_summary,
+      domains: response.domains,
+      intent: response.intent,
+    },
+    action: "suggest",
+  });
+
+  response.decision = {
+    ...response.decision,
+    calibration,
+  };
 
   return response;
 };

@@ -9,6 +9,7 @@ import {
   enforceDecisionOutput,
   validateDecisionInput,
 } from "../src/lib/decisionRuntimeGuardrails.js";
+import { calibrateDecision, getCalibrationGate } from "../src/lib/metaCalibration.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -297,7 +298,30 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
-  recordDecision(kernelDecision);
+  const calibration = calibrateDecision({
+    decision: decision as unknown as Record<string, unknown>,
+    context: { context },
+    action: "suggest",
+  });
+  const calibratedDecision: Decision = { ...decision, calibration };
+  const calibratedKernelDecision: KernelDecision = { ...kernelDecision, calibration };
+
+  const gate = getCalibrationGate(calibration, "suggest");
+  if (gate.noop) {
+    sendJson(res, 200, {
+      ok: true,
+      status: 200,
+      noop: true,
+      reason_code: gate.reason_code,
+      calibration,
+      block_reason: calibration.block_reason,
+      missing_evidence: calibration.missing_evidence,
+      decision: calibratedDecision,
+      analytics_ok: false,
+      analytics_error: "calibration_gate",
+    });
+    return;
+  }
 
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
   const isProduction = env.VERCEL_ENV === "production" || env.NODE_ENV === "production";
@@ -305,22 +329,31 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (lockState.locked) {
     sendJson(res, 200, {
       ...buildNoopPayload(lockState, "kernel_lock"),
-      decision,
+      calibration,
+      decision: calibratedDecision,
       analytics_ok: false,
       analytics_error: "kernel_locked",
     });
     return;
   }
 
-  const analyticsResult = await recordAnalyticsEvent("decision_proposed", {
-    decision_id: decision.decision_id,
-    confidence: decision.confidence,
-  });
+  const allowSideEffects = calibration.confidence >= 0.75 && !calibration.block;
+  if (allowSideEffects) {
+    recordDecision(calibratedKernelDecision);
+  }
+
+  const analyticsResult = allowSideEffects
+    ? await recordAnalyticsEvent("decision_proposed", {
+        decision_id: calibratedDecision.decision_id,
+        confidence: calibratedDecision.confidence,
+      })
+    : { ok: false, error: "calibration_gate" };
 
   const payload: Record<string, unknown> = {
     ok: true,
-    decision,
+    decision: calibratedDecision,
     analytics_ok: analyticsResult.ok,
+    calibration,
   };
   if (!analyticsResult.ok) {
     payload.analytics_error = analyticsResult.error ?? "analytics_failed";

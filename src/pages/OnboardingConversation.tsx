@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { Brain, ArrowRight, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,23 +54,41 @@ const STEPS: Step[] = [
 
 export default function OnboardingConversation() {
   const navigate = useNavigate();
-  const { data, updateData, completeWithData, reset, status } = useOnboardingStatus();
+  const location = useLocation();
+  const { data, advanceStep, completeWithData, reset, status, stepCompleted, isLoading } =
+    useOnboardingStatus();
   const [step, setStep] = useState(0);
   const [formState, setFormState] = useState<OnboardingData>(data);
 
   const totalSteps = STEPS.length;
   const progress = useMemo(() => Math.round(((step + 1) / totalSteps) * 100), [step, totalSteps]);
+  const isEditMode = useMemo(() => {
+    const editParam = new URLSearchParams(location.search).get("edit");
+    return editParam === "1" || editParam === "true";
+  }, [location.search]);
 
   useEffect(() => {
     setFormState(data);
   }, [data]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const nextStep = Math.min(stepCompleted, totalSteps - 1);
+    setStep(nextStep);
+  }, [stepCompleted, totalSteps, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading && status === "complete" && !isEditMode) {
+      navigate("/app", { replace: true });
+    }
+  }, [status, isEditMode, isLoading, navigate]);
 
   const handleChange = (key: keyof OnboardingData, value: string) => {
     setFormState((prev) => ({ ...prev, [key]: value }));
   };
 
   const goNext = () => {
-    updateData(formState);
+    advanceStep(formState, step + 1);
     setStep((s) => Math.min(s + 1, totalSteps - 1));
   };
 

@@ -67,6 +67,8 @@ import { BRAND } from "@/config/brand";
 import { DEFAULT_AGENT_IDS } from "@/lib/ceoPilot/agents";
 import { deriveTaskClass, estimateActionCostCents } from "@/lib/ceoPilot/costUtils";
 import { deriveActionCost } from "@/lib/ceoPilot/economics/costModel";
+import CEOChatPanel from "@/components/CEOChatPanel";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function CEOHome() {
   const { email, role, signOut, userId } = useAuth();
@@ -686,8 +688,27 @@ export default function CEOHome() {
     setIntentNotice(null);
   };
 
-  const handleSimulationNote = (message: string) => {
+  const handleSimulationNote = async (message: string) => {
     setIntentNotice(message);
+    if (flightMode !== "SIM") return;
+    if (!userId) return;
+
+    const intent = intentSelection ?? "unselected";
+    const { error } = await supabase.from("action_logs").insert({
+      user_id: userId,
+      mode: "sim",
+      status: "initiated",
+      intent,
+      payload: {
+        source: "command_center",
+        intent,
+        note: message,
+      },
+    });
+
+    if (error) {
+      return;
+    }
   };
 
   const handleTeamSelect = (team: TeamSelection) => {
@@ -823,6 +844,11 @@ export default function CEOHome() {
       <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 6 }}>{BRAND.ceo.subline}</div>
       <div style={{ opacity: 0.8, marginBottom: 16 }}>
         Signed in as <b>{email ?? "unknown"}</b> - role: <b>{role}</b>
+      </div>
+
+      <div style={{ marginBottom: 16 }} data-testid="ceo-chat-panel">
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>CEO Chat</div>
+        <CEOChatPanel className="h-[520px]" />
       </div>
 
       <div
@@ -1735,7 +1761,7 @@ export default function CEOHome() {
           </p>
           <button
             data-testid="resume-onboarding"
-            onClick={() => navigate("/app/onboarding")}
+            onClick={() => navigate("/app/onboarding?edit=1")}
             style={{
               padding: "10px 14px",
               borderRadius: 8,
@@ -1765,7 +1791,7 @@ export default function CEOHome() {
             <div style={{ fontWeight: 800, fontSize: 16 }}>Business Context</div>
             {!hasContext && (
               <button
-                onClick={() => navigate("/app/onboarding")}
+                onClick={() => navigate("/app/onboarding?edit=1")}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 8,

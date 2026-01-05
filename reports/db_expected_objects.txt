@@ -1,0 +1,882 @@
+TABLES
+public.user_roles
+public.visitors
+public.conversations
+public.leads
+public.analytics_events
+public.ab_tests
+public.chatbot_prompts
+public.chatbot_prompt_history
+public.channels
+public.contacts_unified
+public.conversations_unified
+public.messages_unified
+public.sequences
+public.sequence_enrollments
+api_settings
+content_ideas
+content
+content_calendar
+content_comments
+ad_campaigns
+keywords
+public.funnels
+public.funnel_stages
+public.funnel_enrollments
+public.ab_test_experiments
+public.ab_test_variants
+public.funnel_stage_conversions
+public.work_queue
+public.automation_logs
+public.content_patterns
+public.content_performance
+public.scraped_inspiration
+public.clients
+public.client_usage
+public.client_tickets
+public.marketing_spend
+public.client_interventions
+public.client_onboarding
+public.client_deliverables
+public.onboarding_tasks
+public.client_training_sessions
+public.product_configurations
+public.referral_program
+public.nps_surveys
+public.client_value_reports
+public.expansion_revenue
+public.phone_numbers
+public.call_logs
+public.voicemail_drops
+public.sms_opt_outs
+public.dialer_queue
+public.cold_outreach_campaigns
+public.cold_outreach_contacts
+public.cold_outreach_sequences
+public.cold_outreach_sends
+public.warm_nurture_campaigns
+public.nurture_touchpoints
+public.nurture_enrollments
+public.sms_campaigns
+public.sms_campaign_recipients
+consent_audit_log
+lead_activities
+public.scraped_prospects
+public.sms_keywords
+public.competitor_watch
+public.agent_memories
+public.learning_events
+public.agent_performance
+public.api_logs
+public.deal_pipeline
+public.accounts
+public.buying_committee
+public.generated_documents
+public.system_health
+public.system_modes
+public.system_config
+public.rules_of_engagement
+public.business_context
+public.notification_preferences
+public.notification_queue
+public.human_bypass_requests
+public.compliance_rules
+public.compliance_audit_log
+public.lead_enrichment_profiles
+public.enrichment_queue
+public.compliance_health
+public.system_scaling_events
+public.agent_cost_tracking
+public.escalation_rules
+public.escalation_queue
+public.revenue_attribution
+public.agent_roi_metrics
+public.financial_forecasts
+public.action_queue
+public.conflict_log
+public.action_priority_rules
+public.strategic_goals
+public.strategic_recommendations
+public.scenario_simulations
+public.agent_shared_state
+public.user_patterns
+client_invoices
+client_payments
+public.business_knowledge
+public.business_profile
+public.user_directives
+public.usage_records
+public.stripe_products
+public.billing_agent_actions
+public.follow_up_tasks
+public.video_provider_config
+public.video_provider_health
+public.video_generation_events
+public.video_assets
+public.video_projects
+public.video_project_items
+public.video_templates
+public.bank_connections
+public.bank_transactions
+public.accounting_sync_log
+public.platform_audit_log
+public.llm_configuration
+public.team_invites
+public.lockdown_rules
+public.security_lockdowns
+public.ceo_score_history
+public.ai_rate_limits
+public.ai_rate_limit_usage
+public.ai_response_cache
+public.ai_cost_log
+public.profiles
+public.user_consent
+public.service_credentials
+public.credential_usage_log
+public.service_registry
+public.service_relationships
+public.integration_templates
+public.agent_integration_permissions
+public.integration_permission_violations
+public.tenants
+subscription_plans
+user_preferences
+relationship_memory
+public.ceo_action_queue
+public.ceo_standing_orders
+public.ceo_alerts
+public.claude_activity_log
+public.ceo_style_profile
+public.ceo_decision_feedback
+public.ceo_draft_history
+public.ceo_autopilot_config
+public.ceo_auto_executions
+mock_activity_log
+simulation_timeline
+business_dna
+ab_test_results_mock
+simulation_runs
+mock_service_credentials
+public.ceo_conversations
+public.ceo_strategic_plan
+public.ceo_agent_delegations
+public.human_ratings
+public.ceo_autopilot_settings
+public.system_health_metrics
+public.business_templates
+public.deployments
+public.action_history
+public.tenant_templates
+public.tenant_knowledge
+public.template_knowledge_seeds
+public.template_content_blocks
+public.tenant_content_blocks
+public.contact_consent
+public.contact_suppression
+public.outbound_touch_log
+public.budget_usage_log
+public.budget_caps
+public.system_events
+public.system_event_consumers
+public.system_event_dead_letter
+public.ceo_decisions
+public.ceo_job_runs
+public.ceo_rate_limits
+public.inbound_webhooks
+public.tenant_integrations
+public.scheduler_idempotency
+public.lead_profiles
+public.request_nonces
+public.lead_normalize_rate_limits
+public.user_integrations
+public.lead_events
+public.consults
+public.chat_messages
+public.chat_sessions
+public.entities
+public.events
+public.outcomes
+public.links
+public.onboarding_state
+
+FUNCTIONS
+public.has_role(_user_id UUID, _role app_role)
+public.update_updated_at_column()
+public.handle_new_user()
+public.get_user_tenant_id()
+public.user_belongs_to_tenant(check_tenant_id UUID)
+check_feature_access(check_tenant_id uuid, feature text)
+public.is_platform_admin()
+public.get_user_tenant_status()
+public.provision_tenant(p_name text, p_owner_user_id uuid, p_template_key text DEFAULT 'base', p_plan tenant_plan DEFAULT 'starter')
+public.activate_tenant(p_tenant_id uuid)
+public.clone_template_to_tenant(p_tenant_id uuid, p_template_key text)
+public.admin_create_tenant(p_name text, p_template_key text DEFAULT 'base', p_plan tenant_plan DEFAULT 'starter', p_owner_email text DEFAULT NULL)
+public.get_user_role(_user_id uuid)
+public.assign_owner_role()
+public.ensure_user_role(_user_id uuid)
+public.is_emergency_stop_active()
+public.get_budget_usage(p_category text, p_period_type text, p_period_start date DEFAULT CURRENT_DATE)
+public.check_budget_cap(p_category text, p_amount_cents integer DEFAULT 0)
+public.record_budget_usage(p_category text, p_amount_cents integer, p_module_source text DEFAULT NULL, p_metadata jsonb DEFAULT NULL)
+public.cold_update_lead_fields(p_lead_id uuid, p_status text DEFAULT NULL, p_engagement_score integer DEFAULT NULL, p_last_contacted timestamptz DEFAULT NULL)
+public.sales_update_lead_fields(p_lead_id uuid, p_status text DEFAULT NULL, p_qualification_data jsonb DEFAULT NULL, p_assigned_to uuid DEFAULT NULL)
+public.check_outbound_compliance(p_contact_id uuid, p_channel text, p_consent_type text DEFAULT NULL)
+public.is_rpc_context()
+public.cold_update_lead_fields(p_lead_id uuid, p_status text DEFAULT NULL, p_engagement_score integer DEFAULT NULL, p_last_contacted timestamp with time zone DEFAULT NULL)
+public.claim_system_events(p_event_type text, p_limit int DEFAULT 10)
+public.mark_event_processed(p_event_id uuid, p_consumer_name text)
+public.mark_event_failed(p_event_id uuid, p_consumer_name text, p_error text)
+public.cold_update_lead_fields(p_lead_id uuid, p_status text DEFAULT NULL, p_engagement_score integer DEFAULT NULL, p_last_contacted timestamptz DEFAULT NULL, p_last_call_outcome text DEFAULT NULL, p_last_call_notes text DEFAULT NULL, p_increment_call_attempts boolean DEFAULT false)
+public.convert_lead(p_lead_id uuid, p_converted_at timestamptz DEFAULT now(), p_notes text DEFAULT NULL, p_revenue_value numeric DEFAULT NULL)
+public.check_lead_update_allowed()
+public.funnels_update_lead_fields(p_lead_id uuid, p_source text DEFAULT NULL, p_utm_source text DEFAULT NULL, p_utm_medium text DEFAULT NULL, p_utm_campaign text DEFAULT NULL, p_utm_term text DEFAULT NULL, p_utm_content text DEFAULT NULL)
+public.funnels_update_lead_fields(p_lead_id uuid, p_source text DEFAULT NULL, p_utm_source text DEFAULT NULL, p_utm_medium text DEFAULT NULL, p_utm_campaign text DEFAULT NULL)
+public.call_ceo_scheduler(p_action text, p_tenant_ids text[] DEFAULT NULL)
+public.check_scheduler_secret_configured()
+public.call_ceo_scheduler(p_action text)
+public.get_scheduler_jobs()
+public.reconcile_scheduler_pg_net()
+public.normalize_email(raw_email text)
+public.normalize_phone(raw_phone text)
+public.compute_lead_fingerprint(p_email text, p_phone text, p_company_name text)
+public.update_lead_profiles_updated_at()
+public.audit_lead_profile_changes()
+public.has_role(_user_id uuid, _role text)
+public.has_role(_user_id uuid, _role public.app_role)
+public.normalize_lead_atomic(p_tenant_id uuid, p_email text DEFAULT NULL, p_phone text DEFAULT NULL, p_company_name text DEFAULT NULL, p_first_name text DEFAULT NULL, p_last_name text DEFAULT NULL, p_job_title text DEFAULT NULL, p_source text DEFAULT 'lead-normalize')
+public.check_and_increment_rate_limit(p_rate_key text, p_max_requests integer DEFAULT 20, p_window_seconds integer DEFAULT 60)
+public.qa_dependency_check()
+public.qa_seed_ceo_alerts(p_tenant_id uuid)
+public.qa_seed_minimal_lead_data(p_tenant_id uuid)
+public.update_user_integrations_updated_at()
+public.update_leads_updated_at()
+public.update_consults_updated_at()
+public.has_role(role text, user_id uuid default auth.uid())
+
+TRIGGERS
+update_conversations_updated_at on public.conversations
+update_leads_updated_at on public.leads
+update_chatbot_prompts_updated_at on public.chatbot_prompts
+update_channels_updated_at on public.channels
+update_contacts_unified_updated_at on public.contacts_unified
+update_conversations_unified_updated_at on public.conversations_unified
+update_sequences_updated_at on public.sequences
+update_funnels_updated_at on public.funnels
+update_ab_experiments_updated_at on public.ab_test_experiments
+update_work_queue_updated_at on public.work_queue
+update_content_patterns_updated_at on public.content_patterns
+update_clients_updated_at on public.clients
+update_client_tickets_updated_at on public.client_tickets
+update_client_interventions_updated_at on public.client_interventions
+update_client_onboarding_updated_at on public.client_onboarding
+update_client_deliverables_updated_at on public.client_deliverables
+update_onboarding_tasks_updated_at on public.onboarding_tasks
+update_client_training_sessions_updated_at on public.client_training_sessions
+update_product_configurations_updated_at on public.product_configurations
+update_referral_program_updated_at on public.referral_program
+update_phone_numbers_updated_at on public.phone_numbers
+update_dialer_queue_updated_at on public.dialer_queue
+update_cold_outreach_campaigns_updated_at on public.cold_outreach_campaigns
+update_cold_outreach_contacts_updated_at on public.cold_outreach_contacts
+update_cold_outreach_sequences_updated_at on public.cold_outreach_sequences
+update_warm_nurture_campaigns_updated_at on public.warm_nurture_campaigns
+update_sms_campaigns_updated_at on public.sms_campaigns
+update_scraped_prospects_updated_at on public.scraped_prospects
+update_sms_keywords_updated_at on public.sms_keywords
+update_competitor_watch_updated_at on public.competitor_watch
+update_agent_memories_updated_at on public.agent_memories
+update_agent_performance_updated_at on public.agent_performance
+update_deal_pipeline_updated_at on public.deal_pipeline
+update_accounts_updated_at on public.accounts
+update_buying_committee_updated_at on public.buying_committee
+update_generated_documents_updated_at on public.generated_documents
+update_system_modes_updated_at on public.system_modes
+update_system_config_updated_at on public.system_config
+update_roe_updated_at on public.rules_of_engagement
+update_business_context_updated_at on public.business_context
+update_notification_prefs_updated_at on public.notification_preferences
+update_bypass_requests_updated_at on public.human_bypass_requests
+update_compliance_rules_updated_at on public.compliance_rules
+update_lead_enrichment_profiles_updated_at on public.lead_enrichment_profiles
+update_agent_cost_tracking_updated_at on public.agent_cost_tracking
+update_escalation_rules_updated_at on public.escalation_rules
+update_escalation_queue_updated_at on public.escalation_queue
+update_action_queue_updated_at on public.action_queue
+update_strategic_goals_updated_at on public.strategic_goals
+update_agent_shared_state_updated_at on public.agent_shared_state
+update_user_patterns_updated_at on public.user_patterns
+update_client_invoices_updated_at on client_invoices
+update_business_knowledge_updated_at on public.business_knowledge
+update_business_profile_updated_at on public.business_profile
+update_user_directives_updated_at on public.user_directives
+update_stripe_products_updated_at on public.stripe_products
+update_follow_up_tasks_updated_at on public.follow_up_tasks
+update_video_provider_config_updated_at on public.video_provider_config
+update_video_provider_health_updated_at on public.video_provider_health
+update_video_assets_updated_at on public.video_assets
+update_video_projects_updated_at on public.video_projects
+update_video_project_items_updated_at on public.video_project_items
+update_video_templates_updated_at on public.video_templates
+update_bank_connections_updated_at on public.bank_connections
+update_llm_configuration_updated_at on public.llm_configuration
+update_lockdown_rules_updated_at on public.lockdown_rules
+update_ai_rate_limits_updated_at on public.ai_rate_limits
+update_profiles_updated_at on public.profiles
+on_auth_user_created on auth.users
+update_user_consent_updated_at on public.user_consent
+update_service_credentials_updated_at on public.service_credentials
+update_service_registry_updated_at on public.service_registry
+update_agent_integration_permissions_updated_at on public.agent_integration_permissions
+update_user_preferences_updated_at on user_preferences
+update_ceo_action_queue_updated_at on public.ceo_action_queue
+update_ceo_standing_orders_updated_at on public.ceo_standing_orders
+update_ceo_style_profile_updated_at on public.ceo_style_profile
+update_ceo_conversations_updated_at on public.ceo_conversations
+update_ceo_strategic_plan_updated_at on public.ceo_strategic_plan
+update_human_ratings_updated_at on public.human_ratings
+update_business_templates_updated_at on public.business_templates
+update_deployments_updated_at on public.deployments
+on_tenant_created_assign_owner on public.tenants
+enforce_lead_ownership on public.leads
+update_ceo_decisions_updated_at on public.ceo_decisions
+trigger_lead_profiles_updated_at on public.lead_profiles
+trigger_audit_lead_profiles on public.lead_profiles
+audit_lead_profile_changes_trigger on public.lead_profiles
+audit_lead_profile_changes on public.lead_profiles
+trg_audit_lead_profile_changes on public.lead_profiles
+trg_user_integrations_updated_at on public.user_integrations
+trg_leads_updated_at on public.leads
+trg_consults_updated_at on public.consults
+update_onboarding_state_updated_at on public.onboarding_state
+
+POLICIES
+"Admins can view all roles" on public.user_roles
+"Anyone can insert visitors" on public.visitors
+"Admins can view all visitors" on public.visitors
+"Anyone can update visitors" on public.visitors
+"Anyone can insert conversations" on public.conversations
+"Anyone can update conversations" on public.conversations
+"Admins can view all conversations" on public.conversations
+"Admins can view all leads" on public.leads
+"Admins can update leads" on public.leads
+"Anyone can insert analytics events" on public.analytics_events
+"Admins can view all analytics events" on public.analytics_events
+"Anyone can insert ab tests" on public.ab_tests
+"Admins can view all ab tests" on public.ab_tests
+"Admins can update ab tests" on public.ab_tests
+"Admins can view chatbot prompts" on public.chatbot_prompts
+"Admins can update chatbot prompts" on public.chatbot_prompts
+"Admins can insert chatbot prompts" on public.chatbot_prompts
+"Service role can read prompts" on public.chatbot_prompts
+"Admins can view prompt history" on public.chatbot_prompt_history
+"Anyone can insert prompt history" on public.chatbot_prompt_history
+"Admins can manage channels" on public.channels
+"Admins can view all contacts" on public.contacts_unified
+"Admins can manage contacts" on public.contacts_unified
+"Anyone can insert contacts" on public.contacts_unified
+"Admins can view all conversations" on public.conversations_unified
+"Admins can manage conversations" on public.conversations_unified
+"Anyone can insert conversations" on public.conversations_unified
+"Anyone can update conversations" on public.conversations_unified
+"Admins can view all messages" on public.messages_unified
+"Admins can manage messages" on public.messages_unified
+"Anyone can insert messages" on public.messages_unified
+"Admins can manage sequences" on public.sequences
+"Admins can manage enrollments" on public.sequence_enrollments
+"Anyone can insert enrollments" on public.sequence_enrollments
+"Anyone can update enrollments" on public.sequence_enrollments
+"Admins can manage settings" on api_settings
+"Admins can manage content ideas" on content_ideas
+"Admins can manage content" on content
+"Admins can manage calendar" on content_calendar
+"Admins can manage comments" on content_comments
+"Admins can manage campaigns" on ad_campaigns
+"Admins can manage keywords" on keywords
+"Admins can manage funnels" on public.funnels
+"Anyone can view active funnels" on public.funnels
+"Admins can manage stages" on public.funnel_stages
+"Anyone can view stages" on public.funnel_stages
+"Admins can manage enrollments" on public.funnel_enrollments
+"Anyone can insert enrollments" on public.funnel_enrollments
+"Anyone can update own enrollment" on public.funnel_enrollments
+"Admins can manage experiments" on public.ab_test_experiments
+"Anyone can view active experiments" on public.ab_test_experiments
+"Admins can manage variants" on public.ab_test_variants
+"Anyone can view variants" on public.ab_test_variants
+"Anyone can update variant stats" on public.ab_test_variants
+"Admins can view conversions" on public.funnel_stage_conversions
+"Anyone can insert conversions" on public.funnel_stage_conversions
+"Anyone can update conversions" on public.funnel_stage_conversions
+"Admins can manage work queue" on public.work_queue
+"Anyone can view work queue" on public.work_queue
+"Anyone can insert work items" on public.work_queue
+"Anyone can update work items" on public.work_queue
+"Admins can manage automation logs" on public.automation_logs
+"Anyone can view automation logs" on public.automation_logs
+"Anyone can insert automation logs" on public.automation_logs
+"Anyone can update automation logs" on public.automation_logs
+"Admins can manage content patterns" on public.content_patterns
+"Anyone can view content patterns" on public.content_patterns
+"Anyone can insert content patterns" on public.content_patterns
+"Anyone can update content patterns" on public.content_patterns
+"Admins can manage content performance" on public.content_performance
+"Anyone can view content performance" on public.content_performance
+"Anyone can insert content performance" on public.content_performance
+"Anyone can update content performance" on public.content_performance
+"Admins can manage scraped inspiration" on public.scraped_inspiration
+"Anyone can view scraped inspiration" on public.scraped_inspiration
+"Anyone can insert scraped inspiration" on public.scraped_inspiration
+"Admins can manage clients" on public.clients
+"Anyone can insert clients" on public.clients
+"Admins can manage client usage" on public.client_usage
+"Anyone can insert client usage" on public.client_usage
+"Anyone can update client usage" on public.client_usage
+"Admins can manage tickets" on public.client_tickets
+"Anyone can insert tickets" on public.client_tickets
+"Anyone can update tickets" on public.client_tickets
+"Admins can manage marketing spend" on public.marketing_spend
+"Anyone can insert marketing spend" on public.marketing_spend
+"Anyone can view marketing spend" on public.marketing_spend
+"Admins can manage interventions" on public.client_interventions
+"Anyone can insert interventions" on public.client_interventions
+"Anyone can update interventions" on public.client_interventions
+"Anyone can view interventions" on public.client_interventions
+"Admins can manage client onboarding" on public.client_onboarding
+"Anyone can insert client onboarding" on public.client_onboarding
+"Anyone can update client onboarding" on public.client_onboarding
+"Anyone can view client onboarding" on public.client_onboarding
+"Admins can manage client deliverables" on public.client_deliverables
+"Anyone can insert client deliverables" on public.client_deliverables
+"Anyone can update client deliverables" on public.client_deliverables
+"Anyone can view client deliverables" on public.client_deliverables
+"Admins can manage onboarding tasks" on public.onboarding_tasks
+"Anyone can insert onboarding tasks" on public.onboarding_tasks
+"Anyone can update onboarding tasks" on public.onboarding_tasks
+"Anyone can view onboarding tasks" on public.onboarding_tasks
+"Admins can manage training sessions" on public.client_training_sessions
+"Anyone can insert training sessions" on public.client_training_sessions
+"Anyone can update training sessions" on public.client_training_sessions
+"Anyone can view training sessions" on public.client_training_sessions
+"Admins can manage product configurations" on public.product_configurations
+"Anyone can insert product configurations" on public.product_configurations
+"Anyone can update product configurations" on public.product_configurations
+"Anyone can view product configurations" on public.product_configurations
+"Admins can manage referral program" on public.referral_program
+"Anyone can insert referrals" on public.referral_program
+"Anyone can update referrals" on public.referral_program
+"Anyone can view referrals" on public.referral_program
+"Admins can manage NPS surveys" on public.nps_surveys
+"Anyone can insert NPS surveys" on public.nps_surveys
+"Anyone can update NPS surveys" on public.nps_surveys
+"Anyone can view NPS surveys" on public.nps_surveys
+"Admins can manage value reports" on public.client_value_reports
+"Anyone can insert value reports" on public.client_value_reports
+"Anyone can view value reports" on public.client_value_reports
+"Admins can manage expansion revenue" on public.expansion_revenue
+"Anyone can insert expansion revenue" on public.expansion_revenue
+"Anyone can view expansion revenue" on public.expansion_revenue
+"Admins can manage phone_numbers" on public.phone_numbers
+"Admins can manage call_logs" on public.call_logs
+"Admins can manage voicemail_drops" on public.voicemail_drops
+"Admins can manage sms_opt_outs" on public.sms_opt_outs
+"Admins can manage dialer_queue" on public.dialer_queue
+"Admins can manage cold_outreach_campaigns" on public.cold_outreach_campaigns
+"Admins can manage cold_outreach_contacts" on public.cold_outreach_contacts
+"Admins can manage cold_outreach_sequences" on public.cold_outreach_sequences
+"Admins can manage cold_outreach_sends" on public.cold_outreach_sends
+"Admins can manage warm_nurture_campaigns" on public.warm_nurture_campaigns
+"Admins can manage nurture_touchpoints" on public.nurture_touchpoints
+"Admins can manage nurture_enrollments" on public.nurture_enrollments
+"Admins can manage sms_campaigns" on public.sms_campaigns
+"Admins can manage sms_campaign_recipients" on public.sms_campaign_recipients
+"Admins can manage consent_audit_log" on consent_audit_log
+"Anyone can insert consent_audit_log" on consent_audit_log
+"Anyone can view consent_audit_log" on consent_audit_log
+"Admins can manage lead_activities" on lead_activities
+"Anyone can insert lead_activities" on lead_activities
+"Anyone can view lead_activities" on lead_activities
+"Anyone can update lead_activities" on lead_activities
+"Admins can manage scraped_prospects" on public.scraped_prospects
+"Admins can manage sms_keywords" on public.sms_keywords
+"Anyone can view active keywords" on public.sms_keywords
+"Admins can manage competitor_watch" on public.competitor_watch
+"Admins can manage agent memories" on public.agent_memories
+"Anyone can insert agent memories" on public.agent_memories
+"Anyone can view agent memories" on public.agent_memories
+"Anyone can update agent memories" on public.agent_memories
+"Admins can manage learning events" on public.learning_events
+"Anyone can insert learning events" on public.learning_events
+"Anyone can view learning events" on public.learning_events
+"Admins can manage agent performance" on public.agent_performance
+"Anyone can insert agent performance" on public.agent_performance
+"Anyone can update agent performance" on public.agent_performance
+"Anyone can view agent performance" on public.agent_performance
+"Anyone can insert api logs" on public.api_logs
+"Admins can manage api logs" on public.api_logs
+"Anyone can view api logs" on public.api_logs
+"Anyone can insert deals" on public.deal_pipeline
+"Anyone can update deals" on public.deal_pipeline
+"Anyone can view deals" on public.deal_pipeline
+"Admins can manage deals" on public.deal_pipeline
+"Anyone can view accounts" on public.accounts
+"Anyone can insert accounts" on public.accounts
+"Anyone can update accounts" on public.accounts
+"Admins can manage accounts" on public.accounts
+"Anyone can view buying_committee" on public.buying_committee
+"Anyone can insert buying_committee" on public.buying_committee
+"Anyone can update buying_committee" on public.buying_committee
+"Admins can manage buying_committee" on public.buying_committee
+"Anyone can view generated_documents" on public.generated_documents
+"Anyone can insert generated_documents" on public.generated_documents
+"Admins can manage generated_documents" on public.generated_documents
+"Anyone can view system_health" on public.system_health
+"Anyone can insert system_health" on public.system_health
+"Admins can manage system_health" on public.system_health
+"Authenticated users can read system modes" on public.system_modes
+"Authenticated users can manage system modes" on public.system_modes
+"Authenticated users can read system config" on public.system_config
+"Authenticated users can manage system config" on public.system_config
+"Authenticated users can read ROE" on public.rules_of_engagement
+"Authenticated users can manage ROE" on public.rules_of_engagement
+"Authenticated users can read business context" on public.business_context
+"Authenticated users can manage business context" on public.business_context
+"Users can manage own notification prefs" on public.notification_preferences
+"Users can read own notifications" on public.notification_queue
+"System can insert notifications" on public.notification_queue
+"Authenticated users can read bypass requests" on public.human_bypass_requests
+"Authenticated users can manage bypass requests" on public.human_bypass_requests
+"Admins can manage compliance rules" on public.compliance_rules
+"Anyone can view compliance rules" on public.compliance_rules
+"Admins can manage compliance audit log" on public.compliance_audit_log
+"Anyone can insert compliance audit log" on public.compliance_audit_log
+"Anyone can view compliance audit log" on public.compliance_audit_log
+"Admins can manage lead enrichment profiles" on public.lead_enrichment_profiles
+"Anyone can insert lead enrichment profiles" on public.lead_enrichment_profiles
+"Anyone can update lead enrichment profiles" on public.lead_enrichment_profiles
+"Anyone can view lead enrichment profiles" on public.lead_enrichment_profiles
+"Admins can manage enrichment queue" on public.enrichment_queue
+"Anyone can insert enrichment queue" on public.enrichment_queue
+"Anyone can update enrichment queue" on public.enrichment_queue
+"Anyone can view enrichment queue" on public.enrichment_queue
+"Admins can manage compliance health" on public.compliance_health
+"Anyone can insert compliance health" on public.compliance_health
+"Anyone can update compliance health" on public.compliance_health
+"Anyone can view compliance health" on public.compliance_health
+"Authenticated users can manage system_scaling_events" on public.system_scaling_events
+"Authenticated users can manage agent_cost_tracking" on public.agent_cost_tracking
+"Authenticated users can manage escalation_rules" on public.escalation_rules
+"Authenticated users can manage escalation_queue" on public.escalation_queue
+"Authenticated users can manage revenue_attribution" on public.revenue_attribution
+"Authenticated users can manage agent_roi_metrics" on public.agent_roi_metrics
+"Authenticated users can manage financial_forecasts" on public.financial_forecasts
+"Authenticated users can manage action_queue" on public.action_queue
+"Authenticated users can manage conflict_log" on public.conflict_log
+"Authenticated users can manage action_priority_rules" on public.action_priority_rules
+"Authenticated users can manage strategic_goals" on public.strategic_goals
+"Authenticated users can manage strategic_recommendations" on public.strategic_recommendations
+"Authenticated users can manage scenario_simulations" on public.scenario_simulations
+"Authenticated users can manage agent_shared_state" on public.agent_shared_state
+"Service role full access to system_scaling_events" on public.system_scaling_events
+"Service role full access to agent_cost_tracking" on public.agent_cost_tracking
+"Service role full access to escalation_rules" on public.escalation_rules
+"Service role full access to escalation_queue" on public.escalation_queue
+"Service role full access to revenue_attribution" on public.revenue_attribution
+"Service role full access to agent_roi_metrics" on public.agent_roi_metrics
+"Service role full access to financial_forecasts" on public.financial_forecasts
+"Service role full access to action_queue" on public.action_queue
+"Service role full access to conflict_log" on public.conflict_log
+"Service role full access to action_priority_rules" on public.action_priority_rules
+"Service role full access to strategic_goals" on public.strategic_goals
+"Service role full access to strategic_recommendations" on public.strategic_recommendations
+"Service role full access to scenario_simulations" on public.scenario_simulations
+"Service role full access to agent_shared_state" on public.agent_shared_state
+"Allow service role full access on user_patterns" on public.user_patterns
+"Admins can manage invoices" on client_invoices
+"Anyone can view invoices" on client_invoices
+"Anyone can insert invoices" on client_invoices
+"Anyone can update invoices" on client_invoices
+"Admins can manage payments" on client_payments
+"Anyone can view payments" on client_payments
+"Anyone can insert payments" on client_payments
+"Anyone can update payments" on client_payments
+"Admins can manage business_knowledge" on public.business_knowledge
+"Anyone can view business_knowledge" on public.business_knowledge
+"Anyone can insert business_knowledge" on public.business_knowledge
+"Anyone can update business_knowledge" on public.business_knowledge
+"Anyone can delete business_knowledge" on public.business_knowledge
+"Admins can manage business_profile" on public.business_profile
+"Anyone can view business_profile" on public.business_profile
+"Anyone can insert business_profile" on public.business_profile
+"Anyone can update business_profile" on public.business_profile
+"Admins can manage all directives" on public.user_directives
+"Anyone can insert directives" on public.user_directives
+"Anyone can view directives" on public.user_directives
+"Anyone can update directives" on public.user_directives
+"Admins can manage usage_records" on public.usage_records
+"Anyone can insert usage_records" on public.usage_records
+"Anyone can view usage_records" on public.usage_records
+"Admins can manage stripe_products" on public.stripe_products
+"Anyone can view stripe_products" on public.stripe_products
+"Service can manage stripe_products" on public.stripe_products
+"Admins can manage billing_agent_actions" on public.billing_agent_actions
+"Anyone can insert billing_agent_actions" on public.billing_agent_actions
+"Anyone can view billing_agent_actions" on public.billing_agent_actions
+"Anyone can update billing_agent_actions" on public.billing_agent_actions
+"Admins can manage follow_up_tasks" on public.follow_up_tasks
+"Anyone can insert follow_up_tasks" on public.follow_up_tasks
+"Anyone can update follow_up_tasks" on public.follow_up_tasks
+"Anyone can view follow_up_tasks" on public.follow_up_tasks
+"Anyone can view provider config" on public.video_provider_config
+"Admins can manage provider config" on public.video_provider_config
+"Anyone can view provider health" on public.video_provider_health
+"Anyone can insert provider health" on public.video_provider_health
+"Anyone can update provider health" on public.video_provider_health
+"Anyone can view generation events" on public.video_generation_events
+"Anyone can insert generation events" on public.video_generation_events
+"Anyone can update generation events" on public.video_generation_events
+"Anyone can view video assets" on public.video_assets
+"Anyone can insert video assets" on public.video_assets
+"Anyone can update video assets" on public.video_assets
+"Admins can delete video assets" on public.video_assets
+"Anyone can view video projects" on public.video_projects
+"Anyone can insert video projects" on public.video_projects
+"Anyone can update video projects" on public.video_projects
+"Admins can delete video projects" on public.video_projects
+"Anyone can view project items" on public.video_project_items
+"Anyone can insert project items" on public.video_project_items
+"Anyone can update project items" on public.video_project_items
+"Anyone can delete project items" on public.video_project_items
+"Anyone can view templates" on public.video_templates
+"Admins can manage templates" on public.video_templates
+"Admins can manage accounting_sync_log" on public.accounting_sync_log
+"Anyone can view accounting_sync_log" on public.accounting_sync_log
+"Anyone can insert accounting_sync_log" on public.accounting_sync_log
+"Admins can view audit logs" on public.platform_audit_log
+"Service role can insert audit logs" on public.platform_audit_log
+"Admins can manage LLM config" on public.llm_configuration
+"Anyone can view active LLM config" on public.llm_configuration
+"Admins can manage invites" on public.team_invites
+"Users can view their own invites" on public.team_invites
+"Admins can manage lockdown rules" on public.lockdown_rules
+"Anyone can view active rules" on public.lockdown_rules
+"Admins can manage lockdowns" on public.security_lockdowns
+"Anyone can view lockdowns" on public.security_lockdowns
+"Admins can manage CEO scores" on public.ceo_score_history
+"Anyone can view CEO scores" on public.ceo_score_history
+"Service role can insert CEO scores" on public.ceo_score_history
+"Admins can manage ai_rate_limits" on public.ai_rate_limits
+"Anyone can view ai_rate_limits" on public.ai_rate_limits
+"Service role can manage ai_rate_limits" on public.ai_rate_limits
+"Service role can manage ai_rate_limit_usage" on public.ai_rate_limit_usage
+"Anyone can view ai_rate_limit_usage" on public.ai_rate_limit_usage
+"Service role can manage ai_response_cache" on public.ai_response_cache
+"Anyone can view ai_response_cache" on public.ai_response_cache
+"Service role can manage ai_cost_log" on public.ai_cost_log
+"Anyone can view ai_cost_log" on public.ai_cost_log
+"Admins can manage leads" on public.leads
+"Service role can insert leads" on public.leads
+"Admins only for bank_transactions" on public.bank_transactions
+"Admins only for client_invoices" on public.client_invoices
+"Admins only for client_payments" on public.client_payments
+"Admins only for bank_connections" on public.bank_connections
+"Admins can manage contacts_unified" on public.contacts_unified
+"Service role can insert contacts_unified" on public.contacts_unified
+"Users can view own profile" on public.profiles
+"Users can update own profile" on public.profiles
+"Users can insert own profile" on public.profiles
+"Admins can view all profiles" on public.profiles
+"Anyone can insert consent" on public.user_consent
+"Anyone can view consent" on public.user_consent
+"Anyone can update consent" on public.user_consent
+"Admins can manage consent" on public.user_consent
+"Admins only for service_credentials" on public.service_credentials
+"Service role full access to service_credentials" on public.service_credentials
+"Admins can view credential_usage_log" on public.credential_usage_log
+"Service role can manage credential_usage_log" on public.credential_usage_log
+"Anyone can view agent_integration_permissions" on public.agent_integration_permissions
+"Admins can manage agent_integration_permissions" on public.agent_integration_permissions
+"Service role full access to agent_integration_permissions" on public.agent_integration_permissions
+"Service role can manage integration_permission_violations" on public.integration_permission_violations
+"Authenticated users can view credential_usage_log" on public.credential_usage_log
+"Anyone can view service_registry" on public.service_registry
+"Admins can manage service_registry" on public.service_registry
+"Anyone can view service_relationships" on public.service_relationships
+"Admins can manage service_relationships" on public.service_relationships
+"Anyone can view integration_templates" on public.integration_templates
+"Admins can manage integration_templates" on public.integration_templates
+"Admins can view integration_permission_violations" on public.integration_permission_violations
+"Users can view their own tenant" on public.tenants
+"Admins can manage tenants" on public.tenants
+"Users can view profiles in their tenant" on public.profiles
+"Tenant isolation for business_profile" on public.business_profile
+"Tenant isolation for leads" on public.leads
+"Tenant isolation for clients" on public.clients
+"Tenant isolation for contacts_unified" on public.contacts_unified
+"Tenant isolation for content" on public.content
+"Tenant isolation for sequences" on public.sequences
+"Tenant isolation for action_queue" on public.action_queue
+"Tenant isolation for work_queue" on public.work_queue
+"Tenant isolation for analytics_events" on public.analytics_events
+"Anyone can view subscription_plans" on subscription_plans
+"Admins can manage subscription_plans" on subscription_plans
+"Users can view their own preferences" on user_preferences
+"Users can insert their own preferences" on user_preferences
+"Users can update their own preferences" on user_preferences
+"Users can view their own memories" on relationship_memory
+"Users can insert their own memories" on relationship_memory
+"Users can update their own memories" on relationship_memory
+"Authenticated users can view action queue" on public.ceo_action_queue
+"Authenticated users can manage action queue" on public.ceo_action_queue
+"Authenticated users can view standing orders" on public.ceo_standing_orders
+"Authenticated users can manage standing orders" on public.ceo_standing_orders
+"Authenticated users can view alerts" on public.ceo_alerts
+"Authenticated users can manage alerts" on public.ceo_alerts
+"Authenticated users can view claude activity" on public.claude_activity_log
+"Authenticated users can manage claude activity" on public.claude_activity_log
+"Service role full access action queue" on public.ceo_action_queue
+"Service role full access standing orders" on public.ceo_standing_orders
+"Service role full access alerts" on public.ceo_alerts
+"Service role full access claude activity" on public.claude_activity_log
+"Admins can manage ceo_style_profile" on public.ceo_style_profile
+"Anyone can view ceo_style_profile" on public.ceo_style_profile
+"Service role full access ceo_style_profile" on public.ceo_style_profile
+"Admins can manage ceo_decision_feedback" on public.ceo_decision_feedback
+"Anyone can view ceo_decision_feedback" on public.ceo_decision_feedback
+"Anyone can insert ceo_decision_feedback" on public.ceo_decision_feedback
+"Service role full access ceo_decision_feedback" on public.ceo_decision_feedback
+"Admins can manage ceo_draft_history" on public.ceo_draft_history
+"Anyone can view ceo_draft_history" on public.ceo_draft_history
+"Anyone can insert ceo_draft_history" on public.ceo_draft_history
+"Service role full access ceo_draft_history" on public.ceo_draft_history
+"Authenticated users can manage autopilot config" on public.ceo_autopilot_config
+"Authenticated users can view auto executions" on public.ceo_auto_executions
+"Users can view own tenant mock logs" on mock_activity_log
+"Service role full access mock logs" on mock_activity_log
+"Users can view own tenant timeline" on simulation_timeline
+"Service role full access timeline" on simulation_timeline
+"Users can view own tenant DNA" on business_dna
+"Users can manage own tenant DNA" on business_dna
+"Service role full access DNA" on business_dna
+"Users can view own tenant AB tests" on ab_test_results_mock
+"Service role full access AB tests" on ab_test_results_mock
+"Users can view own tenant simulations" on simulation_runs
+"Users can manage own tenant simulations" on simulation_runs
+"Service role full access simulations" on simulation_runs
+"Anyone can view mock credentials" on mock_service_credentials
+"Service role full access mock credentials" on mock_service_credentials
+"Users can view own conversations" on public.ceo_conversations
+"Users can insert own conversations" on public.ceo_conversations
+"Users can update own conversations" on public.ceo_conversations
+"Service role full access conversations" on public.ceo_conversations
+"Users can view tenant plan" on public.ceo_strategic_plan
+"Users can manage tenant plan" on public.ceo_strategic_plan
+"Service role full access plan" on public.ceo_strategic_plan
+"Users can view tenant delegations" on public.ceo_agent_delegations
+"Users can insert delegations" on public.ceo_agent_delegations
+"Users can update delegations" on public.ceo_agent_delegations
+"Service role full access delegations" on public.ceo_agent_delegations
+"Users can view all ratings" on public.human_ratings
+"Users can create ratings" on public.human_ratings
+"Users can update own ratings" on public.human_ratings
+"Allow public read on ceo_autopilot_settings" on public.ceo_autopilot_settings
+"Allow public read on system_health_metrics" on public.system_health_metrics
+"Allow public insert on system_health_metrics" on public.system_health_metrics
+"Allow public update on ceo_autopilot_settings" on public.ceo_autopilot_settings
+"Anyone can view active templates" on public.business_templates
+"Admins can manage templates" on public.business_templates
+"Service role full access templates" on public.business_templates
+"Users can view own tenant deployments" on public.deployments
+"Admins can manage deployments" on public.deployments
+"Service role full access deployments" on public.deployments
+"Authenticated users can view action_history" on public.action_history
+"Service role can insert action_history" on public.action_history
+"Anyone can view active templates" on public.tenant_templates
+"Platform admins can manage templates" on public.tenant_templates
+"Tenant isolation for ceo_action_queue" on public.ceo_action_queue
+"Platform admins can view all tenants" on public.tenants
+"Platform admins can manage tenants" on public.tenants
+"Users can view own tenant knowledge" on public.tenant_knowledge
+"Users can manage own tenant knowledge" on public.tenant_knowledge
+"Service role full access tenant_knowledge" on public.tenant_knowledge
+"Anyone can view template seeds" on public.template_knowledge_seeds
+"Admins can manage template seeds" on public.template_knowledge_seeds
+"Anyone can view template blocks" on public.template_content_blocks
+"Admins can manage template blocks" on public.template_content_blocks
+"Users can view own tenant blocks" on public.tenant_content_blocks
+"Users can manage own tenant blocks" on public.tenant_content_blocks
+"Service role full access tenant_blocks" on public.tenant_content_blocks
+"Service role full access contact_consent" on public.contact_consent
+"Service role full access contact_suppression" on public.contact_suppression
+"Anyone can view contact_suppression" on public.contact_suppression
+"Service role full access outbound_touch_log" on public.outbound_touch_log
+"Anyone can view outbound_touch_log" on public.outbound_touch_log
+"Service role full access budget_usage_log" on public.budget_usage_log
+"Service role full access budget_caps" on public.budget_caps
+"Service role full access on system_events" on public.system_events
+"Users can read own tenant events" on public.system_events
+"Service role full access on system_event_consumers" on public.system_event_consumers
+"Service role full access on system_event_dead_letter" on public.system_event_dead_letter
+"Service role full access to system_events" on public.system_events
+"Service role full access to system_event_consumers" on public.system_event_consumers
+"Service role full access to system_event_dead_letter" on public.system_event_dead_letter
+"Users can view their tenant's decisions" on public.ceo_decisions
+"System can insert decisions" on public.ceo_decisions
+"Users can update their tenant's decisions" on public.ceo_decisions
+"Users can view their tenant's job runs" on public.ceo_job_runs
+"System can insert job runs" on public.ceo_job_runs
+"System can update job runs" on public.ceo_job_runs
+"System can manage rate limits" on public.ceo_rate_limits
+"Tenant isolation for call_logs" on public.call_logs
+"Tenant isolation for client_invoices" on public.client_invoices
+"Tenant isolation for agent_cost_tracking" on public.agent_cost_tracking
+"Service role full access to inbound_webhooks" on public.inbound_webhooks
+"Tenant isolation for inbound_webhooks" on public.inbound_webhooks
+"Service role full access to tenant_integrations" on public.tenant_integrations
+"Tenant isolation for tenant_integrations" on public.tenant_integrations
+"Service role only for scheduler_idempotency" on public.scheduler_idempotency
+"Service role only" on public.scheduler_idempotency
+"Tenant isolation for lead_profiles" on public.lead_profiles
+"Admins can manage lead_profiles" on public.lead_profiles
+"lead_profiles_platform_admin_access" on public.lead_profiles
+"lead_profiles_tenant_select" on public.lead_profiles
+"lead_profiles_tenant_insert" on public.lead_profiles
+"lead_profiles_tenant_update" on public.lead_profiles
+"lead_profiles_admin_all" on public.lead_profiles
+"lead_profiles_service_role_all" on public.lead_profiles
+"request_nonces_service_role_all" on public.request_nonces
+lead_profiles_tenant_select on public.lead_profiles
+lead_profiles_tenant_insert on public.lead_profiles
+lead_profiles_tenant_update on public.lead_profiles
+lead_profiles_service_role_all on public.lead_profiles
+lead_profiles_admin_all on public.lead_profiles
+request_nonces_service_role_all on public.request_nonces
+"Service role can manage rate limits" on public.lead_normalize_rate_limits
+"user_integrations_select_own" on public.user_integrations
+"user_integrations_insert_own" on public.user_integrations
+"user_integrations_update_own" on public.user_integrations
+"user_integrations_delete_own" on public.user_integrations
+"leads_select_own" on public.leads
+"leads_insert_own" on public.leads
+"leads_update_own" on public.leads
+"leads_delete_own" on public.leads
+"lead_events_select_own" on public.lead_events
+"lead_events_insert_own" on public.lead_events
+"lead_events_update_own" on public.lead_events
+"lead_events_delete_own" on public.lead_events
+"consults_select_own" on public.consults
+"consults_insert_own" on public.consults
+"consults_update_own" on public.consults
+"consults_delete_own" on public.consults
+"Users can view own onboarding_state" on public.onboarding_state
+"Users can update own onboarding_state" on public.onboarding_state
+"Users can insert own onboarding_state" on public.onboarding_state
+
+
+SUMMARY
+Tables: 199
+Functions: 53
+Triggers: 94
+Policies: 520
+Frontend tables missing from migrations: ['queue_unified']
+Frontend RPCs missing from migrations: []

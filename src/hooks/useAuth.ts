@@ -86,12 +86,12 @@ export function useAuth() {
       // If your DB has has_role overload conflicts, this can error (PGRST203).
       // We do NOT block the app on it.
       const { data, error } = await supabase.rpc("has_role", {
-        _user_id: userId,
-        _role: "admin",
+        role: "admin",
+        user_id: userId,
       });
 
       if (error) throw error;
-      const isAdmin = Boolean(data);
+      const isAdmin = data === true;
 
       setState((s) => ({ ...s, role: isAdmin ? "admin" : "user" }));
     } catch (err: unknown) {

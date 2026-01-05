@@ -5,6 +5,7 @@ import { recordDecision } from "../src/lib/decisionStore.js";
 import type { Decision } from "../src/kernel/decisionContract.js";
 import { buildNoopPayload, getKernelLockState } from "../src/kernel/governanceGate.js";
 import { DecisionGuardrailError, validateDecisionInput } from "../src/lib/decisionRuntimeGuardrails.js";
+import { calibrateDecision, getCalibrationGate } from "../src/lib/metaCalibration.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -182,14 +183,31 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
-  recordDecision(response.decision);
+  const calibration =
+    (response.decision as Decision & { calibration?: ReturnType<typeof calibrateDecision> }).calibration ??
+    calibrateDecision({
+      decision: response.decision as unknown as Record<string, unknown>,
+      context: {
+        evidence_summary: response.evidence_summary,
+        domains: response.domains,
+        intent: response.intent,
+      },
+      action: "suggest",
+    });
+  const calibratedDecision: Decision = { ...response.decision, calibration };
+  response.decision = calibratedDecision;
 
-  const isProduction = env?.VERCEL_ENV === "production" || env?.NODE_ENV === "production";
-  const lockState = getKernelLockState({ isProduction });
-  if (lockState.locked) {
+  const gate = getCalibrationGate(calibration, "suggest");
+  if (gate.noop) {
     sendJson(res, 200, {
-      ...buildNoopPayload(lockState, "kernel_lock"),
-      decision: response.decision,
+      ok: true,
+      status: 200,
+      noop: true,
+      reason_code: gate.reason_code,
+      calibration,
+      block_reason: calibration.block_reason,
+      missing_evidence: calibration.missing_evidence,
+      decision: calibratedDecision,
       evidence_summary: response.evidence_summary,
       intent: response.intent,
       domains: response.domains,
@@ -199,88 +217,110 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return;
   }
 
+  const isProduction = env?.VERCEL_ENV === "production" || env?.NODE_ENV === "production";
+  const lockState = getKernelLockState({ isProduction });
+  if (lockState.locked) {
+    sendJson(res, 200, {
+      ...buildNoopPayload(lockState, "kernel_lock"),
+      calibration,
+      decision: calibratedDecision,
+      evidence_summary: response.evidence_summary,
+      intent: response.intent,
+      domains: response.domains,
+      explanation: response.explanation,
+      analytics: response.analytics,
+    });
+    return;
+  }
+
+  recordDecision(calibratedDecision);
+
   const supabaseUrl = stripEnvValue(env?.SUPABASE_URL);
   const serviceRoleKey = stripEnvValue(env?.SUPABASE_SERVICE_ROLE_KEY);
 
-  if (missing.length > 0 || !supabaseUrl || !serviceRoleKey) {
-    sendJson(res, 500, {
-      ok: false,
-      code: "missing_env",
-      error: "Supabase env missing",
-      hint: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY",
-    });
-    return;
-  }
-
-  if (!isValidSupabaseUrl(supabaseUrl)) {
-    sendJson(res, 500, {
-      ok: false,
-      code: "missing_env",
-      error: "Supabase URL invalid",
-      hint: "SUPABASE_URL must be https://<project>.supabase.co",
-    });
-    return;
-  }
-
-  const baseUrl = normalizeSupabaseUrl(supabaseUrl);
-  const host = parseHost(baseUrl);
-  const insertUrl = `${baseUrl}/rest/v1/ceo_decisions?on_conflict=id&select=id`;
-  const recordPayload = {
-    id: response.decision.decision_id,
-    decision: response.decision.recommendation,
-    reasoning: response.decision.reasoning,
-    confidence: response.decision.confidence,
-    purpose: "search_decision",
-    status: mapDecisionStatusToDb(response.decision.status),
-    context_snapshot: {
-      query,
-      input_hash: response.decision.input_hash,
-      assumptions: response.decision.assumptions,
-      decision_status: response.decision.status,
-      created_at: response.decision.created_at,
-      domains: response.domains,
-      evidence_summary: response.evidence_summary,
-    },
-  };
-
-  try {
-    const responseWrite = await fetch(insertUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        Prefer: "resolution=merge-duplicates, return=representation",
-      },
-      body: JSON.stringify(recordPayload),
-    });
-
-    if (!responseWrite.ok) {
+  const allowSideEffects = calibration.confidence >= 0.75 && !calibration.block;
+  if (allowSideEffects) {
+    if (missing.length > 0 || !supabaseUrl || !serviceRoleKey) {
       sendJson(res, 500, {
         ok: false,
-        code: "upstream_error",
-        error: "supabase_insert_failed",
-        hint: `status:${responseWrite.status}`,
+        code: "missing_env",
+        error: "Supabase env missing",
+        hint: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY",
       });
       return;
     }
-  } catch (error) {
-    sendJson(res, 500, {
-      ok: false,
-      code: "upstream_error",
-      error: error instanceof Error ? error.message : "supabase_insert_failed",
-      hint: `host:${host}`,
-    });
-    return;
+
+    if (!isValidSupabaseUrl(supabaseUrl)) {
+      sendJson(res, 500, {
+        ok: false,
+        code: "missing_env",
+        error: "Supabase URL invalid",
+        hint: "SUPABASE_URL must be https://<project>.supabase.co",
+      });
+      return;
+    }
+
+    const baseUrl = normalizeSupabaseUrl(supabaseUrl);
+    const host = parseHost(baseUrl);
+    const insertUrl = `${baseUrl}/rest/v1/ceo_decisions?on_conflict=id&select=id`;
+    const recordPayload = {
+      id: calibratedDecision.decision_id,
+      decision: calibratedDecision.recommendation,
+      reasoning: calibratedDecision.reasoning,
+      confidence: calibratedDecision.confidence,
+      purpose: "search_decision",
+      status: mapDecisionStatusToDb(calibratedDecision.status),
+      context_snapshot: {
+        query,
+        input_hash: calibratedDecision.input_hash,
+        assumptions: calibratedDecision.assumptions,
+        decision_status: calibratedDecision.status,
+        created_at: calibratedDecision.created_at,
+        domains: response.domains,
+        evidence_summary: response.evidence_summary,
+      },
+    };
+
+    try {
+      const responseWrite = await fetch(insertUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          Prefer: "resolution=merge-duplicates, return=representation",
+        },
+        body: JSON.stringify(recordPayload),
+      });
+
+      if (!responseWrite.ok) {
+        sendJson(res, 500, {
+          ok: false,
+          code: "upstream_error",
+          error: "supabase_insert_failed",
+          hint: `status:${responseWrite.status}`,
+        });
+        return;
+      }
+    } catch (error) {
+      sendJson(res, 500, {
+        ok: false,
+        code: "upstream_error",
+        error: error instanceof Error ? error.message : "supabase_insert_failed",
+        hint: `host:${host}`,
+      });
+      return;
+    }
   }
 
   sendJson(res, 200, {
     ok: true,
-    decision: response.decision,
+    decision: calibratedDecision,
     evidence_summary: response.evidence_summary,
     intent: response.intent,
     domains: response.domains,
     explanation: response.explanation,
     analytics: response.analytics,
+    calibration,
   });
 }

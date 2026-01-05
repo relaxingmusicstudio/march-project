@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/AppHeader";
+import DbHealthPanel from "@/components/DbHealthPanel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { useRoleNavigation } from "@/hooks/useRoleNavigation";
@@ -118,6 +119,11 @@ export function AppLayout() {
               </Tooltip>
             </div>
           </div>
+          {import.meta.env.DEV && (
+            <div className="px-4 py-3">
+              <DbHealthPanel />
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

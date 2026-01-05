@@ -368,6 +368,39 @@ export type Database = {
         }
         Relationships: []
       }
+      action_logs: {
+        Row: {
+          created_at: string
+          id: string
+          intent: string
+          mode: string
+          payload: Json | null
+          proof: Json | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intent: string
+          mode: string
+          payload?: Json | null
+          proof?: Json | null
+          status: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intent?: string
+          mode?: string
+          payload?: Json | null
+          proof?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       action_queue: {
         Row: {
           action_payload: Json | null
@@ -2947,6 +2980,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      onboarding_state: {
+        Row: {
+          business_name: string | null
+          calendar_link: string | null
+          contact_phone: string | null
+          industry: string | null
+          lead_sources: string | null
+          offer_pricing: string | null
+          primary_goal: string | null
+          service_area: string | null
+          step_completed: number
+          target_customer: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          business_name?: string | null
+          calendar_link?: string | null
+          contact_phone?: string | null
+          industry?: string | null
+          lead_sources?: string | null
+          offer_pricing?: string | null
+          primary_goal?: string | null
+          service_area?: string | null
+          step_completed?: number
+          target_customer?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          business_name?: string | null
+          calendar_link?: string | null
+          contact_phone?: string | null
+          industry?: string | null
+          lead_sources?: string | null
+          offer_pricing?: string | null
+          primary_goal?: string | null
+          service_area?: string | null
+          step_completed?: number
+          target_customer?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       client_payments: {
         Row: {
@@ -9731,6 +9809,7 @@ export type Database = {
         }
         Returns: Json
       }
+      db_to_regclass: { Args: { p_name: string }; Returns: string | null }
       ensure_user_role: { Args: { _user_id: string }; Returns: string }
       funnels_update_lead_fields:
         | {
@@ -9786,6 +9865,7 @@ export type Database = {
             Returns: boolean
           }
         | { Args: { _role: string; _user_id: string }; Returns: boolean }
+        | { Args: { role: string; user_id: string }; Returns: boolean }
       is_emergency_stop_active: { Args: never; Returns: boolean }
       is_platform_admin: { Args: never; Returns: boolean }
       is_rpc_context: { Args: never; Returns: boolean }

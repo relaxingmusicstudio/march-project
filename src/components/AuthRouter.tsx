@@ -50,6 +50,10 @@ export function AuthRouter({ children }: AuthRouterProps) {
 
   const isLoading = authLoading || onboardingLoading || roleLoading;
   const currentPath = location.pathname;
+  const isOnboardingEdit = useMemo(() => {
+    const editParam = new URLSearchParams(location.search).get("edit");
+    return editParam === "1" || editParam === "true";
+  }, [location.search]);
 
   // Compute target path based on current state - IDEMPOTENT
   const targetPath = useMemo(() => {
@@ -71,7 +75,7 @@ export function AuthRouter({ children }: AuthRouterProps) {
     if (!isAuthenticated && isProtectedRoute(currentPath)) return "/login";
 
     // If onboarding is complete, keep users out of the onboarding route
-    if (isOnboardingComplete === true && currentPath === "/app/onboarding") {
+    if (isOnboardingComplete === true && currentPath === "/app/onboarding" && !isOnboardingEdit) {
       return "/app";
     }
 
@@ -110,7 +114,7 @@ export function AuthRouter({ children }: AuthRouterProps) {
     }
 
     return null;
-  }, [isLoading, isAuthenticated, isOnboardingComplete, isClient, isOwner, role, currentPath]);
+  }, [isLoading, isAuthenticated, isOnboardingComplete, isClient, isOwner, role, currentPath, isOnboardingEdit]);
 
   // Execute navigation if target differs from current
   useEffect(() => {

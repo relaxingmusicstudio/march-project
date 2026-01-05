@@ -1,3 +1,5 @@
+import type { CalibrationResult } from "../lib/metaCalibration.js";
+
 export type DecisionStatus = "proposed" | "acted" | "confirmed" | "failed" | "unknown";
 
 export type DecisionRationale = {
@@ -15,6 +17,7 @@ export interface Decision {
   confidence: number;
   uncertainty_score: number;
   uncertainty_notes: string[];
+  calibration?: CalibrationResult;
   next_action: string;
   fallback_path: string | null;
   status: DecisionStatus;

@@ -41,6 +41,20 @@ const extractField = (payload: Record<string, unknown> | null, key: string) => {
   return undefined;
 };
 
+const extractDecision = (payload: Record<string, unknown> | null) => {
+  const decision = extractField(payload, "decision");
+  return decision && typeof decision === "object" ? (decision as Record<string, unknown>) : null;
+};
+
+const extractCalibration = (payload: Record<string, unknown> | null) => {
+  const direct = extractField(payload, "calibration");
+  if (direct && typeof direct === "object") return direct as Record<string, unknown>;
+  const decision = extractDecision(payload);
+  const nested = decision?.calibration;
+  if (nested && typeof nested === "object") return nested as Record<string, unknown>;
+  return null;
+};
+
 const buildClientError = (endpoint: string, message: string): ConsoleResponse => ({
   endpoint,
   status: 0,
@@ -192,6 +206,29 @@ export default function DecisionConsole() {
   const noopValue = extractField(payload, "noop");
   const reasonCodeValue = extractField(payload, "reason_code");
   const requestIdValue = extractField(payload, "request_id") ?? extractField(payload, "trace_id");
+  const calibration = extractCalibration(payload);
+  const calibrationLabel =
+    typeof calibration?.calibration_label === "string" ? calibration.calibration_label : null;
+  const calibrationConfidence =
+    typeof calibration?.confidence === "number" ? Math.round(calibration.confidence * 100) : null;
+  const calibrationVariant =
+    calibrationLabel === "high"
+      ? "default"
+      : calibrationLabel === "medium"
+        ? "secondary"
+        : calibrationLabel === "low" || calibrationLabel === "blocked"
+          ? "destructive"
+          : "outline";
+  const missingEvidence = Array.isArray(calibration?.missing_evidence) ? calibration.missing_evidence : [];
+  const requiredEvidence = Array.isArray(calibration?.required_evidence) ? calibration.required_evidence : [];
+  const blockReason =
+    typeof calibration?.block_reason === "string" && calibration.block_reason
+      ? calibration.block_reason
+      : null;
+  const showCalibrationBlock =
+    calibration?.block === true ||
+    calibrationLabel === "blocked" ||
+    ["calibration_blocked", "low_confidence", "confidence_gate"].includes(String(reasonCodeValue ?? ""));
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
@@ -276,9 +313,13 @@ export default function DecisionConsole() {
                 ok: {okValue === null ? "unknown" : okValue ? "true" : "false"}
               </Badge>
               <Badge variant="outline">status: {String(statusValue)}</Badge>
-              <Badge variant="outline">noop: {noopValue ?? "n/a"}</Badge>
-              <Badge variant="outline">reason_code: {reasonCodeValue ?? "n/a"}</Badge>
-              <Badge variant="outline">request_id: {requestIdValue ?? "n/a"}</Badge>
+              <Badge variant="outline">noop: {String(noopValue ?? "n/a")}</Badge>
+              <Badge variant="outline">reason_code: {String(reasonCodeValue ?? "n/a")}</Badge>
+              <Badge variant="outline">request_id: {String(requestIdValue ?? "n/a")}</Badge>
+              <Badge variant={calibrationVariant}>calibration: {calibrationLabel ?? "n/a"}</Badge>
+              <Badge variant="outline">
+                confidence: {calibrationConfidence === null ? "n/a" : `${calibrationConfidence}%`}
+              </Badge>
             </div>
 
             <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
@@ -286,6 +327,27 @@ export default function DecisionConsole() {
               <div>Timestamp: {output?.timestamp ?? "n/a"}</div>
               <div>Duration: {output?.durationMs ?? 0} ms</div>
             </div>
+
+            {calibration && (
+              <div className="rounded-md border p-3 text-xs space-y-2">
+                <div className="font-medium">Calibration Guidance</div>
+                {showCalibrationBlock && (
+                  <>
+                    <div>block_reason: {blockReason ?? "n/a"}</div>
+                    <div>
+                      missing_evidence: {missingEvidence.length > 0 ? missingEvidence.join(", ") : "none"}
+                    </div>
+                  </>
+                )}
+                <div>
+                  required_evidence: {requiredEvidence.length > 0 ? requiredEvidence.join(", ") : "n/a"}
+                </div>
+                <div>
+                  What would raise confidence?{" "}
+                  {missingEvidence.length > 0 ? missingEvidence.join(", ") : "No additional evidence required."}
+                </div>
+              </div>
+            )}
 
             {smokeResults && (
               <div className="rounded-md border p-3 text-xs space-y-2">
@@ -303,7 +365,7 @@ export default function DecisionConsole() {
                         ok: {resultOk === null ? "unknown" : resultOk ? "true" : "false"}
                       </Badge>
                       <Badge variant="outline">status: {result.status}</Badge>
-                      <Badge variant="outline">request_id: {requestId ?? "n/a"}</Badge>
+                      <Badge variant="outline">request_id: {String(requestId ?? "n/a")}</Badge>
                     </div>
                   );
                 })}
