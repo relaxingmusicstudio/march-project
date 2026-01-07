@@ -24,6 +24,8 @@
     "postdeploy:check": "node scripts/postdeploy-check.mjs",
     "preflight": "node scripts/preflight.cjs",
     "proofgate": "node scripts/proofgate.cjs",
+    "proof:quick": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/proof-quick.ps1",
+    "proof:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/proof-full.ps1",
     "sim": "node scripts/sim.mjs --runs=500 --years=50",
     "release:gate": "node scripts/release-gate.cjs",
     "vercel:build-selftest": "node scripts/vercel-build-selftest.cjs",

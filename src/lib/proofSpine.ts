@@ -10,6 +10,12 @@ export type ProofSpineEntry = {
   origin: string;
   db_ok?: boolean;
   db_error?: string;
+  edge_url?: string;
+  edge_status?: "ok" | "error";
+  edge_http_status?: number;
+  edge_response?: unknown;
+  edge_error?: { message?: string; stack?: string };
+  edge_ts?: string;
 };
 
 type UiAttemptInput = {
@@ -20,7 +26,7 @@ type UiAttemptInput = {
 };
 
 const BUFFER_KEY = "proof_spine_buffer";
-const MAX_ENTRIES = 50;
+const MAX_ENTRIES = 25;
 
 const readBuffer = (): ProofSpineEntry[] => {
   if (typeof window === "undefined" || !window.localStorage) return [];
@@ -43,6 +49,11 @@ const writeBuffer = (entries: ProofSpineEntry[]) => {
   }
 };
 
+const emitUpdate = (entry: ProofSpineEntry) => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("proof-spine", { detail: entry }));
+};
+
 const randomFragment = () => {
   if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
     const bytes = new Uint8Array(6);
@@ -59,6 +70,8 @@ export const getProofSpineTail = (limit = 5): ProofSpineEntry[] => {
   return buffer.slice(Math.max(0, buffer.length - limit));
 };
 
+export const getProofSpineBuffer = (): ProofSpineEntry[] => readBuffer();
+
 export const recordUiAttempt = async (input: UiAttemptInput): Promise<ProofSpineEntry> => {
   const entry: ProofSpineEntry = {
     request_id: input.request_id,
@@ -71,16 +84,21 @@ export const recordUiAttempt = async (input: UiAttemptInput): Promise<ProofSpine
 
   const buffer = [...readBuffer(), entry].slice(-MAX_ENTRIES);
   writeBuffer(buffer);
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("proof-spine", { detail: entry }));
-  }
+  emitUpdate(entry);
 
   try {
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError || !authData.user) {
       console.error("[proofSpine] auth unavailable", authError ?? "no session");
       toast.warning("Proof log failed: no active session.");
-      return { ...entry, db_ok: false, db_error: authError?.message ?? "no session" };
+      const updated = { ...entry, db_ok: false, db_error: authError?.message ?? "no session" };
+      const latest = readBuffer();
+      if (latest.length > 0 && latest[latest.length - 1].request_id === entry.request_id) {
+        latest[latest.length - 1] = updated;
+        writeBuffer(latest);
+      }
+      emitUpdate(updated);
+      return updated;
     }
 
     const { error } = await supabase.from("action_logs").insert({
@@ -104,6 +122,7 @@ export const recordUiAttempt = async (input: UiAttemptInput): Promise<ProofSpine
         latest[latest.length - 1] = updated;
         writeBuffer(latest);
       }
+      emitUpdate(updated);
       return updated;
     }
     const updated = { ...entry, db_ok: true };
@@ -112,6 +131,7 @@ export const recordUiAttempt = async (input: UiAttemptInput): Promise<ProofSpine
       latest[latest.length - 1] = updated;
       writeBuffer(latest);
     }
+    emitUpdate(updated);
     return updated;
   } catch (err) {
     console.error("[proofSpine] insert exception", err);
@@ -122,6 +142,35 @@ export const recordUiAttempt = async (input: UiAttemptInput): Promise<ProofSpine
       latest[latest.length - 1] = updated;
       writeBuffer(latest);
     }
+    emitUpdate(updated);
     return updated;
   }
+};
+
+type EdgeResponseInput = {
+  request_id: string;
+  edge_url: string;
+  status: "ok" | "error";
+  http_status?: number;
+  response?: unknown;
+  error?: { message?: string; stack?: string };
+};
+
+export const recordEdgeResponse = (input: EdgeResponseInput): ProofSpineEntry | null => {
+  const buffer = readBuffer();
+  const index = buffer.findIndex((entry) => entry.request_id === input.request_id);
+  if (index === -1) return null;
+  const updated: ProofSpineEntry = {
+    ...buffer[index],
+    edge_url: input.edge_url,
+    edge_status: input.status,
+    edge_http_status: input.http_status,
+    edge_response: input.response,
+    edge_error: input.error,
+    edge_ts: new Date().toISOString(),
+  };
+  buffer[index] = updated;
+  writeBuffer(buffer);
+  emitUpdate(updated);
+  return updated;
 };

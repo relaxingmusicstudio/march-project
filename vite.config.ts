@@ -15,6 +15,14 @@ const apiMiddleware = () => ({
         next();
         return;
       }
+      if (req.url.startsWith("/api/health")) {
+        const now = new Date().toISOString();
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(JSON.stringify({ status: "ok", ok: true, source: "vite-dev", ts: now }));
+        return;
+      }
       void routeApiRequest(req, res);
     });
   },

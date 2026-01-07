@@ -6,8 +6,10 @@ BEGIN
     EXECUTE 'REVOKE EXECUTE ON FUNCTION public.has_role(uuid, text) FROM PUBLIC';
   END IF;
 
-  IF to_regprocedure('public.has_role(uuid, public.app_role)') IS NOT NULL THEN
-    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.has_role(uuid, public.app_role) FROM PUBLIC';
+  IF to_regtype('public.app_role') IS NOT NULL THEN
+    IF to_regprocedure('public.has_role(uuid, public.app_role)') IS NOT NULL THEN
+      EXECUTE 'REVOKE EXECUTE ON FUNCTION public.has_role(uuid, public.app_role) FROM PUBLIC';
+    END IF;
   END IF;
 END;
 $do$;
@@ -32,19 +34,21 @@ $$;
 -- If legacy enum overload exists, keep compatibility but harden it by delegating to text overload
 DO $do$
 BEGIN
-  IF to_regprocedure('public.has_role(uuid, public.app_role)') IS NOT NULL THEN
-    EXECUTE $sql$
-      CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role public.app_role)
-      RETURNS boolean
-      LANGUAGE sql
-      STABLE
-      SECURITY DEFINER
-      SET search_path = public
-      SET row_security = off
-      AS $fn$
-        SELECT public.has_role(_user_id, _role::text)
-      $fn$;
-    $sql$;
+  IF to_regtype('public.app_role') IS NOT NULL THEN
+    IF to_regprocedure('public.has_role(uuid, public.app_role)') IS NOT NULL THEN
+      EXECUTE $sql$
+        CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role public.app_role)
+        RETURNS boolean
+        LANGUAGE sql
+        STABLE
+        SECURITY DEFINER
+        SET search_path = public
+        SET row_security = off
+        AS $fn$
+          SELECT public.has_role(_user_id, _role::text)
+        $fn$;
+      $sql$;
+    END IF;
   END IF;
 END;
 $do$;
@@ -56,8 +60,10 @@ BEGIN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.has_role(uuid, text) TO authenticated, service_role';
   END IF;
 
-  IF to_regprocedure('public.has_role(uuid, public.app_role)') IS NOT NULL THEN
-    EXECUTE 'GRANT EXECUTE ON FUNCTION public.has_role(uuid, public.app_role) TO authenticated, service_role';
+  IF to_regtype('public.app_role') IS NOT NULL THEN
+    IF to_regprocedure('public.has_role(uuid, public.app_role)') IS NOT NULL THEN
+      EXECUTE 'GRANT EXECUTE ON FUNCTION public.has_role(uuid, public.app_role) TO authenticated, service_role';
+    END IF;
   END IF;
 END;
 $do$;

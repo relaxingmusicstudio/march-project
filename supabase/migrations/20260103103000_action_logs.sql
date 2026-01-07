@@ -12,8 +12,10 @@ create table if not exists public.action_logs (
 
 alter table public.action_logs enable row level security;
 
+drop policy if exists "Users can insert own action logs" on public.action_logs;
 create policy "Users can insert own action logs" on public.action_logs
   for insert with check (auth.uid() = user_id);
 
+drop policy if exists "Users can view own action logs" on public.action_logs;
 create policy "Users can view own action logs" on public.action_logs
   for select using (auth.uid() = user_id);

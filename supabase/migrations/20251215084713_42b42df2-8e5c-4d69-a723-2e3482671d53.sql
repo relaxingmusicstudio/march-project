@@ -1,5 +1,10 @@
+-- Ensure pgcrypto for gen_random_bytes()
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+SET search_path = public, extensions;
+
 -- Create platform_audit_log table for universal audit trail (immutable)
-CREATE TABLE public.platform_audit_log (
+CREATE TABLE IF NOT EXISTS public.platform_audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID,
   timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -18,27 +23,29 @@ CREATE TABLE public.platform_audit_log (
 );
 
 -- Create index for efficient querying
-CREATE INDEX idx_audit_log_timestamp ON public.platform_audit_log(timestamp DESC);
-CREATE INDEX idx_audit_log_agent ON public.platform_audit_log(agent_name);
-CREATE INDEX idx_audit_log_action ON public.platform_audit_log(action_type);
-CREATE INDEX idx_audit_log_user ON public.platform_audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON public.platform_audit_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_agent ON public.platform_audit_log(agent_name);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON public.platform_audit_log(action_type);
+CREATE INDEX IF NOT EXISTS idx_audit_log_user ON public.platform_audit_log(user_id);
 
 -- Enable RLS
 ALTER TABLE public.platform_audit_log ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies - only admins can view, service role can insert
+DROP POLICY IF EXISTS "Admins can view audit logs" ON public.platform_audit_log;
 CREATE POLICY "Admins can view audit logs"
 ON public.platform_audit_log
 FOR SELECT
 USING (has_role(auth.uid(), 'admin'::app_role));
 
+DROP POLICY IF EXISTS "Service role can insert audit logs" ON public.platform_audit_log;
 CREATE POLICY "Service role can insert audit logs"
 ON public.platform_audit_log
 FOR INSERT
 WITH CHECK (true);
 
 -- Create LLM configuration table for failover support
-CREATE TABLE public.llm_configuration (
+CREATE TABLE IF NOT EXISTS public.llm_configuration (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   provider TEXT NOT NULL,
   model_name TEXT NOT NULL,
@@ -59,18 +66,20 @@ CREATE TABLE public.llm_configuration (
 -- Enable RLS
 ALTER TABLE public.llm_configuration ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage LLM config" ON public.llm_configuration;
 CREATE POLICY "Admins can manage LLM config"
 ON public.llm_configuration
 FOR ALL
 USING (has_role(auth.uid(), 'admin'::app_role));
 
+DROP POLICY IF EXISTS "Anyone can view active LLM config" ON public.llm_configuration;
 CREATE POLICY "Anyone can view active LLM config"
 ON public.llm_configuration
 FOR SELECT
 USING (is_active = true);
 
 -- Create team_invites table
-CREATE TABLE public.team_invites (
+CREATE TABLE IF NOT EXISTS public.team_invites (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL,
   invited_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -82,24 +91,26 @@ CREATE TABLE public.team_invites (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_team_invites_email ON public.team_invites(email);
-CREATE INDEX idx_team_invites_token ON public.team_invites(token);
+CREATE INDEX IF NOT EXISTS idx_team_invites_email ON public.team_invites(email);
+CREATE INDEX IF NOT EXISTS idx_team_invites_token ON public.team_invites(token);
 
 -- Enable RLS
 ALTER TABLE public.team_invites ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage invites" ON public.team_invites;
 CREATE POLICY "Admins can manage invites"
 ON public.team_invites
 FOR ALL
 USING (has_role(auth.uid(), 'admin'::app_role));
 
+DROP POLICY IF EXISTS "Users can view their own invites" ON public.team_invites;
 CREATE POLICY "Users can view their own invites"
 ON public.team_invites
 FOR SELECT
 USING (email = (SELECT email FROM auth.users WHERE id = auth.uid()));
 
 -- Create lockdown_rules table for security sentinel
-CREATE TABLE public.lockdown_rules (
+CREATE TABLE IF NOT EXISTS public.lockdown_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rule_name TEXT NOT NULL,
   agent_type TEXT,
@@ -117,18 +128,20 @@ CREATE TABLE public.lockdown_rules (
 -- Enable RLS
 ALTER TABLE public.lockdown_rules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage lockdown rules" ON public.lockdown_rules;
 CREATE POLICY "Admins can manage lockdown rules"
 ON public.lockdown_rules
 FOR ALL
 USING (has_role(auth.uid(), 'admin'::app_role));
 
+DROP POLICY IF EXISTS "Anyone can view active rules" ON public.lockdown_rules;
 CREATE POLICY "Anyone can view active rules"
 ON public.lockdown_rules
 FOR SELECT
 USING (is_active = true);
 
 -- Create security_lockdowns table to track active lockdowns
-CREATE TABLE public.security_lockdowns (
+CREATE TABLE IF NOT EXISTS public.security_lockdowns (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rule_id UUID REFERENCES public.lockdown_rules(id) ON DELETE SET NULL,
   agent_type TEXT NOT NULL,
@@ -141,24 +154,26 @@ CREATE TABLE public.security_lockdowns (
   resolution_notes TEXT
 );
 
-CREATE INDEX idx_lockdowns_status ON public.security_lockdowns(status);
-CREATE INDEX idx_lockdowns_agent ON public.security_lockdowns(agent_type);
+CREATE INDEX IF NOT EXISTS idx_lockdowns_status ON public.security_lockdowns(status);
+CREATE INDEX IF NOT EXISTS idx_lockdowns_agent ON public.security_lockdowns(agent_type);
 
 -- Enable RLS
 ALTER TABLE public.security_lockdowns ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage lockdowns" ON public.security_lockdowns;
 CREATE POLICY "Admins can manage lockdowns"
 ON public.security_lockdowns
 FOR ALL
 USING (has_role(auth.uid(), 'admin'::app_role));
 
+DROP POLICY IF EXISTS "Anyone can view lockdowns" ON public.security_lockdowns;
 CREATE POLICY "Anyone can view lockdowns"
 ON public.security_lockdowns
 FOR SELECT
 USING (true);
 
 -- Create CEO score history table
-CREATE TABLE public.ceo_score_history (
+CREATE TABLE IF NOT EXISTS public.ceo_score_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   score INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),
   client_health_score INTEGER,
@@ -171,32 +186,37 @@ CREATE TABLE public.ceo_score_history (
   calculated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_ceo_score_date ON public.ceo_score_history(calculated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ceo_score_date ON public.ceo_score_history(calculated_at DESC);
 
 -- Enable RLS
 ALTER TABLE public.ceo_score_history ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins can manage CEO scores" ON public.ceo_score_history;
 CREATE POLICY "Admins can manage CEO scores"
 ON public.ceo_score_history
 FOR ALL
 USING (has_role(auth.uid(), 'admin'::app_role));
 
+DROP POLICY IF EXISTS "Anyone can view CEO scores" ON public.ceo_score_history;
 CREATE POLICY "Anyone can view CEO scores"
 ON public.ceo_score_history
 FOR SELECT
 USING (true);
 
+DROP POLICY IF EXISTS "Service role can insert CEO scores" ON public.ceo_score_history;
 CREATE POLICY "Service role can insert CEO scores"
 ON public.ceo_score_history
 FOR INSERT
 WITH CHECK (true);
 
 -- Add triggers for updated_at
+DROP TRIGGER IF EXISTS update_llm_configuration_updated_at ON public.llm_configuration;
 CREATE TRIGGER update_llm_configuration_updated_at
   BEFORE UPDATE ON public.llm_configuration
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_lockdown_rules_updated_at ON public.lockdown_rules;
 CREATE TRIGGER update_lockdown_rules_updated_at
   BEFORE UPDATE ON public.lockdown_rules
   FOR EACH ROW

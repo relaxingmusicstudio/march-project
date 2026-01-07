@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { loadFlightMode, type FlightMode } from "@/lib/flightMode";
-import { newRequestId, recordUiAttempt, type ProofSpineEntry } from "@/lib/proofSpine";
+import { newRequestId, recordUiAttempt, recordEdgeResponse, type ProofSpineEntry } from "@/lib/proofSpine";
 import { 
   MessageSquare, 
   Send, 
@@ -196,6 +196,9 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
   const [actionPromptedInputs, setActionPromptedInputs] = useState<Record<string, boolean>>({});
   const [actionLogStates, setActionLogStates] = useState<Record<string, ActionLogState>>({});
   const [lastAttempt, setLastAttempt] = useState<ProofSpineEntry | null>(null);
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey =
+    import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialLoadRef = useRef(false);
 
@@ -254,6 +257,10 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
 
   const saveConversation = useCallback(async (newMessages: Message[]) => {
     try {
+      if (!userId) {
+        console.error("No user id available to save conversation.");
+        return;
+      }
       const messagesToSave = newMessages.map(m => ({
         role: m.role,
         content: m.content,
@@ -280,6 +287,7 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
         const { data, error } = await supabase
           .from('ceo_conversations')
           .insert([{
+            user_id: userId,
             messages: messagesToSave,
             is_active: true,
             last_message_at: new Date().toISOString()
@@ -294,7 +302,7 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
     } catch (err) {
       console.error('Failed to save conversation:', err);
     }
-  }, [conversationId]);
+  }, [conversationId, userId]);
 
   const buildRequiredInputs = useCallback(
     (intent: string, envelopeId: string) => {
@@ -424,6 +432,17 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
     });
     setLastAttempt(attempt);
 
+    if (!supabaseUrl || !supabaseAnonKey) {
+      recordEdgeResponse({
+        request_id: requestId,
+        edge_url: `${supabaseUrl ?? "missing"}/functions/v1/ceo-agent`,
+        status: "error",
+        error: { message: "Missing Supabase configuration." },
+      });
+      toast.error("Missing Supabase configuration.");
+      return;
+    }
+
     if (isConversationEnding(query)) {
       setConversationComplete(true);
       const userMessage: Message = { role: "user", content: query, timestamp: new Date() };
@@ -467,16 +486,24 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
         setPendingCorrection(null);
       }
       
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ceo-agent`, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/ceo-agent`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${supabaseAnonKey}`,
         },
         body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        recordEdgeResponse({
+          request_id: requestId,
+          edge_url: `${supabaseUrl}/functions/v1/ceo-agent`,
+          status: "error",
+          http_status: response.status,
+          response: errorText,
+        });
         if (response.status === 429) {
           toast.error("Rate limited. Please try again in a moment.");
           return;
@@ -487,6 +514,14 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
         }
         throw new Error("Failed to get response");
       }
+
+      recordEdgeResponse({
+        request_id: requestId,
+        edge_url: `${supabaseUrl}/functions/v1/ceo-agent`,
+        status: "ok",
+        http_status: response.status,
+        response: { stream: true },
+      });
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No reader");
@@ -543,6 +578,15 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
       setIsReturningUser(true);
     } catch (error) {
       console.error("CEO Chat error:", error);
+      recordEdgeResponse({
+        request_id: requestId,
+        edge_url: `${supabaseUrl}/functions/v1/ceo-agent`,
+        status: "error",
+        error: {
+          message: error instanceof Error ? error.message : "unknown error",
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      });
       toast.error("Failed to get AI response");
     } finally {
       setIsLoading(false);
@@ -556,6 +600,17 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
       .replace(/\*\*(.+?)\*\*/g, '<strong class="text-foreground">$1</strong>')
       .replace(/\n/g, '<br/>');
   };
+
+  const sendDisabledReason = !supabaseUrl
+    ? "Disabled: missing VITE_SUPABASE_URL."
+    : !supabaseAnonKey
+      ? "Disabled: missing VITE_SUPABASE_ANON_KEY."
+      : isLoading
+        ? "Disabled: request in progress."
+        : !input.trim()
+          ? "Disabled: empty message."
+          : null;
+  const sendDisabled = Boolean(sendDisabledReason);
 
   const handleVoiceTranscript = (text: string, role: "user" | "assistant") => {
     const newMessage: Message = { role, content: text, timestamp: new Date() };
@@ -941,10 +996,13 @@ export const CEOChatPanel = ({ onInsightGenerated, className = "" }: CEOChatPane
               disabled={isLoading}
               className="text-sm"
             />
-            <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
+            <Button type="submit" size="icon" disabled={sendDisabled} title={sendDisabledReason ?? undefined}>
               <Send className="h-4 w-4" />
             </Button>
           </form>
+          {sendDisabled && sendDisabledReason && (
+            <div className="mt-2 text-[11px] text-amber-700">{sendDisabledReason}</div>
+          )}
         </div>
         </CardContent>
       </Card>

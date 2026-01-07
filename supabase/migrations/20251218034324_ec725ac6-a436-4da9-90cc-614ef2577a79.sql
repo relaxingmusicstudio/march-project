@@ -176,6 +176,3 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- Revoke from PUBLIC, grant only to service_role and authenticated
-REVOKE EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) TO service_role, authenticated;

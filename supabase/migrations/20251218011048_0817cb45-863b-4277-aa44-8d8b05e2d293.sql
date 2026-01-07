@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION public.normalize_email(raw_email text)
 RETURNS text
 LANGUAGE plpgsql
 IMMUTABLE
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 BEGIN
   IF raw_email IS NULL OR raw_email = '' THEN
@@ -57,7 +57,7 @@ CREATE OR REPLACE FUNCTION public.compute_lead_fingerprint(
 RETURNS text
 LANGUAGE plpgsql
 IMMUTABLE
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   norm_email text;

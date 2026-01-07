@@ -92,9 +92,6 @@ BEGIN
 END;
 $$;
 
--- Grant execute to authenticated and service_role
-GRANT EXECUTE ON FUNCTION public.check_and_increment_rate_limit(text, integer, integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.check_and_increment_rate_limit(text, integer, integer) TO service_role;
 
 -- Fix 4: Update normalize_lead_atomic to use correct type
 -- Drop and recreate with correct lead_temperature_type reference
@@ -272,6 +269,3 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- Grant execute permissions
-GRANT EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) TO service_role;

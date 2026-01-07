@@ -1,5 +1,5 @@
 -- CEO Decisions table for tracking executive decision-making
-CREATE TABLE public.ceo_decisions (
+CREATE TABLE IF NOT EXISTS public.ceo_decisions (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   tenant_id UUID REFERENCES public.tenants(id),
   decision TEXT NOT NULL,
@@ -19,41 +19,59 @@ CREATE TABLE public.ceo_decisions (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
+DO $$
+BEGIN
+  IF to_regclass('public.ceo_decisions') IS NOT NULL THEN
+    ALTER TABLE public.ceo_decisions ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES public.tenants(id);
+    ALTER TABLE public.ceo_decisions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
+    ALTER TABLE public.ceo_decisions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
+  END IF;
+END $$;
+
 -- Index for efficient querying
-CREATE INDEX idx_ceo_decisions_tenant_created ON public.ceo_decisions(tenant_id, created_at DESC);
-CREATE INDEX idx_ceo_decisions_purpose ON public.ceo_decisions(purpose);
-CREATE INDEX idx_ceo_decisions_status ON public.ceo_decisions(status);
+CREATE INDEX IF NOT EXISTS idx_ceo_decisions_tenant_created ON public.ceo_decisions(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ceo_decisions_purpose ON public.ceo_decisions(purpose);
+CREATE INDEX IF NOT EXISTS idx_ceo_decisions_status ON public.ceo_decisions(status);
 
 -- Enable RLS
 ALTER TABLE public.ceo_decisions ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies for ceo_decisions
+DROP POLICY IF EXISTS "Users can view their tenant's decisions" ON public.ceo_decisions;
 CREATE POLICY "Users can view their tenant's decisions"
   ON public.ceo_decisions
   FOR SELECT
   USING (tenant_id = public.get_user_tenant_id() OR public.is_platform_admin());
 
+DROP POLICY IF EXISTS "System can insert decisions" ON public.ceo_decisions;
 CREATE POLICY "System can insert decisions"
   ON public.ceo_decisions
   FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can update their tenant's decisions" ON public.ceo_decisions;
 CREATE POLICY "Users can update their tenant's decisions"
   ON public.ceo_decisions
   FOR UPDATE
   USING (tenant_id = public.get_user_tenant_id() OR public.is_platform_admin());
 
 -- Add trigger for updated_at
+DROP TRIGGER IF EXISTS update_ceo_decisions_updated_at ON public.ceo_decisions;
 CREATE TRIGGER update_ceo_decisions_updated_at
   BEFORE UPDATE ON public.ceo_decisions
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
 
 -- Add purpose column to agent_cost_tracking if not exists
-ALTER TABLE public.agent_cost_tracking 
-  ADD COLUMN IF NOT EXISTS purpose TEXT,
-  ADD COLUMN IF NOT EXISTS model TEXT,
-  ADD COLUMN IF NOT EXISTS provider TEXT;
+DO $$
+BEGIN
+  IF to_regclass('public.agent_cost_tracking') IS NOT NULL THEN
+    ALTER TABLE public.agent_cost_tracking 
+      ADD COLUMN IF NOT EXISTS purpose TEXT,
+      ADD COLUMN IF NOT EXISTS model TEXT,
+      ADD COLUMN IF NOT EXISTS provider TEXT;
+  END IF;
+END $$;
 
 -- Create index for cost tracking by purpose
 CREATE INDEX IF NOT EXISTS idx_agent_cost_tracking_purpose ON public.agent_cost_tracking(purpose);

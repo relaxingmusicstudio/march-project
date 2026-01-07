@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION public.compute_lead_fingerprint(
 RETURNS text
 LANGUAGE plpgsql
 IMMUTABLE
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   norm_email text;

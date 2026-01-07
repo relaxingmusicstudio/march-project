@@ -10,7 +10,7 @@
 
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Bell, User, LogOut, Settings, Phone, Home } from "lucide-react";
+import { Bell, Bug, User, LogOut, Settings, Phone, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,10 +19,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { useRoleNavigation } from "@/hooks/useRoleNavigation";
 import { describeFlightMode, loadFlightMode, saveFlightMode, type FlightMode } from "@/lib/flightMode";
+import DebugProofPanel from "@/components/DebugProofPanel";
 
 export function AppHeader() {
   const { signOut, userId, email } = useAuth();
@@ -32,6 +43,9 @@ export function AppHeader() {
   const [confirmText, setConfirmText] = useState("");
   const [modeNotice, setModeNotice] = useState<string | null>(null);
   const [liveReady, setLiveReady] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const liveLocked = true;
 
   const handleSignOut = async () => {
     await signOut();
@@ -49,23 +63,48 @@ export function AppHeader() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setLiveReady(window.localStorage.getItem("ppp:preflightReady") === "true");
+    const readReady = () => {
+      const raw = window.localStorage.getItem("ppp:preflight");
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as { ok?: boolean };
+          return Boolean(parsed?.ok);
+        } catch {
+          // ignore parse failures
+        }
+      }
+      return window.localStorage.getItem("ppp:preflightReady") === "true";
+    };
+    const update = () => setLiveReady(readReady());
+    update();
+    window.addEventListener("ppp:preflight", update);
+    return () => window.removeEventListener("ppp:preflight", update);
   }, []);
 
   const requestMode = (mode: FlightMode) => {
+    if (mode === "LIVE" && liveLocked) {
+      setModeNotice("Live Mode is locked in SIM-only mode.");
+      return;
+    }
     setPendingMode(mode);
     setConfirmText("");
     setModeNotice(null);
+    setConfirmOpen(true);
   };
 
   const cancelModeChange = () => {
     setPendingMode(null);
     setConfirmText("");
     setModeNotice(null);
+    setConfirmOpen(false);
   };
 
   const confirmModeChange = () => {
     if (!pendingMode) return;
+    if (pendingMode === "LIVE" && liveLocked) {
+      setModeNotice("Live Mode is locked in SIM-only mode.");
+      return;
+    }
     if (pendingMode === "LIVE" && !liveReady) {
       setModeNotice("Live Mode requires preflight readiness.");
       return;
@@ -78,6 +117,12 @@ export function AppHeader() {
     setFlightMode(pendingMode);
     cancelModeChange();
   };
+
+  const liveDisabledReason = liveLocked
+    ? "Disabled: LIVE execution locked in SIM-only mode."
+    : liveReady
+      ? null
+      : "Disabled: preflight checks not passed.";
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-background border-b border-border">
@@ -130,31 +175,15 @@ export function AppHeader() {
                   variant={flightMode === "LIVE" ? "default" : "outline"}
                   size="sm"
                   onClick={() => requestMode("LIVE")}
-                  disabled={!liveReady}
+                  disabled={liveLocked || !liveReady}
+                  title={liveDisabledReason ?? undefined}
                 >
                   Live Flight
                 </Button>
+                {(liveLocked || !liveReady) && (
+                  <div className="text-[11px] text-amber-700">{liveDisabledReason}</div>
+                )}
               </div>
-              {pendingMode && (
-                <div className="px-2 pb-2 text-xs text-foreground">
-                  <div className="mb-1 font-semibold">Confirm {pendingMode} Mode</div>
-                  <div className="mb-2 text-muted-foreground">Type {pendingMode} to acknowledge.</div>
-                  <input
-                    className="mb-2 w-full rounded-md border border-border px-2 py-1 text-xs"
-                    value={confirmText}
-                    onChange={(event) => setConfirmText(event.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={confirmModeChange}>
-                      Confirm
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={cancelModeChange}>
-                      Cancel
-                    </Button>
-                  </div>
-                  {modeNotice && <div className="mt-2 text-amber-700">{modeNotice}</div>}
-                </div>
-              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -175,6 +204,17 @@ export function AppHeader() {
               <Home className="w-4 h-4 mr-1" />
               Back to Site
             </Link>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex"
+            onClick={() => setDebugOpen(true)}
+            title="Open Debug Proof Panel"
+          >
+            <Bug className="w-4 h-4 mr-1" />
+            Debug
           </Button>
 
           {/* Notifications */}
@@ -211,6 +251,43 @@ export function AppHeader() {
           </DropdownMenu>
         </div>
       </div>
+      <DebugProofPanel open={debugOpen} onOpenChange={setDebugOpen} flightModeLabel={flightMode} />
+      <AlertDialog
+        open={confirmOpen && Boolean(pendingMode)}
+        onOpenChange={(open) => {
+          if (!open) {
+            cancelModeChange();
+          } else {
+            setConfirmOpen(true);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm {pendingMode} Mode</AlertDialogTitle>
+            <AlertDialogDescription>
+              Type {pendingMode} to acknowledge and switch modes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <input
+            className="w-full rounded-md border border-border px-2 py-1 text-sm"
+            value={confirmText}
+            onChange={(event) => setConfirmText(event.target.value)}
+          />
+          {modeNotice && <div className="text-xs text-amber-700">{modeNotice}</div>}
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelModeChange}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                confirmModeChange();
+              }}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 }

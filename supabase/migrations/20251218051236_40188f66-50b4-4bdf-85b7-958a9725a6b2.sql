@@ -1,4 +1,4 @@
--- Fix compute_lead_fingerprint to use extensions.digest explicitly
+-- Fix compute_lead_fingerprint to use digest with extensions-aware search_path
 CREATE OR REPLACE FUNCTION public.compute_lead_fingerprint(p_email text, p_phone text, p_company_name text)
 RETURNS text
 LANGUAGE plpgsql
@@ -15,6 +15,6 @@ BEGIN
   v_phone := COALESCE(public.normalize_phone(p_phone), '');
   v_company := COALESCE(lower(trim(p_company_name)), '');
   v_raw := v_email || '|' || v_phone || '|' || v_company;
-  RETURN LEFT(encode(extensions.digest(v_raw::bytea, 'sha256'), 'hex'), 32);
+  RETURN LEFT(encode(digest(v_raw::bytea, 'sha256'), 'hex'), 32);
 END;
 $function$;

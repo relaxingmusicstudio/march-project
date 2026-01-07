@@ -40,3 +40,13 @@ proofgate-local.txt
 .env
 .env.*
 
+# Supabase local artifacts
+supabase/.temp/
+supabase/.branches/
+supabase/.cache/
+supabase/.seed/
+
+# Proof artifacts (keep README)
+proof/*
+!proof/README.md
+

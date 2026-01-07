@@ -16,16 +16,25 @@ CREATE TABLE IF NOT EXISTS public.onboarding_state (
 
 ALTER TABLE public.onboarding_state ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own onboarding_state" ON public.onboarding_state;
 CREATE POLICY "Users can view own onboarding_state" ON public.onboarding_state
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own onboarding_state" ON public.onboarding_state;
 CREATE POLICY "Users can update own onboarding_state" ON public.onboarding_state
   FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own onboarding_state" ON public.onboarding_state;
 CREATE POLICY "Users can insert own onboarding_state" ON public.onboarding_state
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-CREATE TRIGGER update_onboarding_state_updated_at
-  BEFORE UPDATE ON public.onboarding_state
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at_column();
+DO $$
+BEGIN
+  IF to_regprocedure('public.update_updated_at_column()') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS update_onboarding_state_updated_at ON public.onboarding_state;
+    CREATE TRIGGER update_onboarding_state_updated_at
+      BEFORE UPDATE ON public.onboarding_state
+      FOR EACH ROW
+      EXECUTE FUNCTION public.update_updated_at_column();
+  END IF;
+END $$;

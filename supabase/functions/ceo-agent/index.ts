@@ -7,35 +7,114 @@ const baseCorsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
 };
 
-const resolveAllowedOrigin = (req: Request) => {
-  const configured = Deno.env.get("APP_ORIGIN") ?? Deno.env.get("CORS_ORIGIN");
-  if (!configured || configured === "*") return "*";
-  const allowed = configured
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-  const requestOrigin = req.headers.get("origin");
-  if (!requestOrigin) return allowed[0] ?? "*";
-  if (allowed.includes(requestOrigin)) return requestOrigin;
-  return allowed[0] ?? requestOrigin;
+type CorsConfig = {
+  origins: string[];
+  regexes: RegExp[];
+  allowedList: string[];
 };
 
-const buildCorsHeaders = (req: Request) => ({
+const parseCorsConfig = (): CorsConfig => {
+  const origins: string[] = [];
+  const singleOrigin = Deno.env.get("CORS_ORIGIN") ?? Deno.env.get("APP_ORIGIN");
+  if (singleOrigin) origins.push(singleOrigin);
+  const originList = Deno.env.get("CORS_ORIGINS");
+  if (originList) {
+    originList.split(",").forEach((item) => origins.push(item));
+  }
+
+  const regexes: RegExp[] = [];
+  const rawRegex = Deno.env.get("CORS_ORIGIN_REGEX");
+  if (rawRegex) {
+    rawRegex
+      .split(",")
+      .map((pattern) => pattern.trim())
+      .filter(Boolean)
+      .forEach((pattern) => {
+        try {
+          regexes.push(new RegExp(pattern));
+        } catch {
+          // ignore invalid regex
+        }
+      });
+  }
+
+  const normalizedOrigins = origins.map((origin) => origin.trim()).filter(Boolean);
+  const allowedList = Array.from(
+    new Set([
+      ...normalizedOrigins,
+      ...regexes.map((regex) => `regex:${regex.source}`),
+    ])
+  );
+  return { origins: normalizedOrigins, regexes, allowedList };
+};
+
+const hostMatches = (patternHost: string, originHost: string) => {
+  if (patternHost.startsWith("*.")) {
+    return originHost.endsWith(patternHost.slice(1));
+  }
+  return patternHost === originHost;
+};
+
+const originMatchesPattern = (pattern: string, origin: string) => {
+  if (pattern === "*") return true;
+  if (!origin) return false;
+  try {
+    const originUrl = new URL(origin);
+    if (pattern.includes("*")) {
+      if (pattern.includes("://")) {
+        const [scheme, hostPattern] = pattern.split("://");
+        if (`${originUrl.protocol.replace(":", "")}` !== scheme) return false;
+        return hostMatches(hostPattern, originUrl.hostname);
+      }
+      return hostMatches(pattern, originUrl.hostname);
+    }
+    return origin === pattern;
+  } catch {
+    return origin === pattern;
+  }
+};
+
+const getCorsDecision = (req: Request) => {
+  const config = parseCorsConfig();
+  const origin = req.headers.get("origin");
+  if (config.origins.length === 0 && config.regexes.length === 0) {
+    return { allowed: true, allowOrigin: "*", origin, allowedList: ["*"] };
+  }
+  if (!origin) {
+    return {
+      allowed: true,
+      allowOrigin: config.origins[0] ?? "*",
+      origin,
+      allowedList: config.allowedList,
+    };
+  }
+  const allowed =
+    config.origins.some((pattern) => originMatchesPattern(pattern, origin)) ||
+    config.regexes.some((regex) => regex.test(origin));
+  return {
+    allowed,
+    allowOrigin: allowed ? origin : "null",
+    origin,
+    allowedList: config.allowedList,
+  };
+};
+
+const buildCorsHeaders = (allowOrigin: string) => ({
   ...baseCorsHeaders,
-  "Access-Control-Allow-Origin": resolveAllowedOrigin(req),
+  "Access-Control-Allow-Origin": allowOrigin,
 });
 
-const withCors = (req: Request, init: ResponseInit = {}) => {
+const withCors = (allowOrigin: string, init: ResponseInit = {}) => {
   const headers = new Headers(init.headers ?? {});
-  const cors = buildCorsHeaders(req);
+  const cors = buildCorsHeaders(allowOrigin);
   Object.entries(cors).forEach(([key, value]) => headers.set(key, value));
   return { ...init, headers };
 };
 
-const jsonResponse = (req: Request, payload: unknown, init: ResponseInit = {}) => {
+const jsonResponse = (allowOrigin: string, payload: unknown, init: ResponseInit = {}) => {
   const headers = new Headers(init.headers ?? {});
   headers.set("Content-Type", "application/json");
-  return new Response(JSON.stringify(payload), withCors(req, { ...init, headers }));
+  return new Response(JSON.stringify(payload), withCors(allowOrigin, { ...init, headers }));
 };
 
 const createRequestId = () => {
@@ -487,9 +566,33 @@ serve(async (req) => {
   const requestIdFromQuery = url.searchParams.get("request_id");
   const origin = req.headers.get("origin");
   const hasAuth = Boolean(req.headers.get("authorization"));
+  const corsDecision = getCorsDecision(req);
 
   if (req.method === "OPTIONS") {
-    return new Response(null, withCors(req, { status: 200 }));
+    if (!corsDecision.allowed) {
+      return jsonResponse(
+        corsDecision.allowOrigin,
+        {
+          error: "CORS_ORIGIN_NOT_ALLOWED",
+          origin: corsDecision.origin,
+          allowed: corsDecision.allowedList,
+        },
+        { status: 403 }
+      );
+    }
+    return new Response(null, withCors(corsDecision.allowOrigin, { status: 204 }));
+  }
+
+  if (!corsDecision.allowed) {
+    return jsonResponse(
+      corsDecision.allowOrigin,
+      {
+        error: "CORS_ORIGIN_NOT_ALLOWED",
+        origin: corsDecision.origin,
+        allowed: corsDecision.allowedList,
+      },
+      { status: 403 }
+    );
   }
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -497,7 +600,7 @@ serve(async (req) => {
   const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
-    return jsonResponse(req, { error: "Supabase configuration missing." }, { status: 500 });
+    return jsonResponse(corsDecision.allowOrigin, { error: "Supabase configuration missing." }, { status: 500 });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -528,7 +631,7 @@ serve(async (req) => {
       mode: "sim",
       payload: { request_id: requestId, latency_ms: Date.now() - requestStart },
     });
-    return jsonResponse(req, payload);
+    return jsonResponse(corsDecision.allowOrigin, payload);
   }
 
   let body: Record<string, unknown>;
@@ -542,7 +645,7 @@ serve(async (req) => {
       mode: "sim",
       payload: { request_id: requestId, error_message: "Invalid JSON", error_code: "invalid_json" },
     });
-    return jsonResponse(req, { error: "Invalid JSON" }, { status: 400 });
+    return jsonResponse(corsDecision.allowOrigin, { error: "Invalid JSON" }, { status: 400 });
   }
 
   const requestId =
@@ -820,7 +923,7 @@ INSTRUCTIONS:
 
         return new Response(
           readableStream,
-          withCors(req, { headers: { "Content-Type": "text/event-stream" } })
+          withCors(corsDecision.allowOrigin, { headers: { "Content-Type": "text/event-stream" } })
         );
       } catch (streamErr) {
         const aiError = parseAIError(streamErr);
@@ -835,7 +938,7 @@ INSTRUCTIONS:
               error_code: aiError.code ?? "rate_limited",
             },
           });
-          return jsonResponse(req, { error: "Rate limited" }, { status: 429 });
+          return jsonResponse(corsDecision.allowOrigin, { error: "Rate limited" }, { status: 429 });
         }
         throw streamErr;
       }
@@ -956,7 +1059,7 @@ INSTRUCTIONS:
       mode,
       payload: { request_id: requestId, latency_ms: Date.now() - requestStart },
     });
-    return jsonResponse(req, result);
+    return jsonResponse(corsDecision.allowOrigin, result);
   } catch (error) {
     console.error("CEO Agent error:", error);
     await logActionEvent(supabase, {
@@ -970,7 +1073,7 @@ INSTRUCTIONS:
       },
     });
     return jsonResponse(
-      req,
+      corsDecision.allowOrigin,
       {
         error: error instanceof Error ? error.message : "Unknown error",
         response: "I'm having trouble right now. Please try again.",

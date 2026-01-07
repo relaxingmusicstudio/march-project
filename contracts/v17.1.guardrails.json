@@ -1,0 +1,93 @@
+{
+  "version": "v17.1",
+  "required_db": {
+    "types": [
+      {
+        "name": "public.app_role"
+      }
+    ],
+    "functions": [
+      {
+        "name": "public.has_role",
+        "args": [
+          "text",
+          "uuid"
+        ],
+        "returns": "boolean"
+      },
+      {
+        "name": "public.db_to_regclass",
+        "args": [
+          "text"
+        ],
+        "returns": "text"
+      },
+      {
+        "name": "public.db_to_regtype",
+        "args": [
+          "text"
+        ],
+        "returns": "text"
+      },
+      {
+        "name": "public.db_to_regprocedure",
+        "args": [
+          "text"
+        ],
+        "returns": "text"
+      }
+    ],
+    "tables": [
+      "public.visitors",
+      "public.action_logs",
+      "public.ceo_conversations",
+      "public.onboarding_state"
+    ]
+  },
+  "endpoints": {
+    "/api/health": {
+      "method": "GET",
+      "response": {
+        "status": "ok",
+        "sha": "<git sha or null>"
+      }
+    },
+    "/api/diagnostics": {
+      "method": "GET",
+      "auth": "admin",
+      "response": {
+        "sha": "<git sha or null>",
+        "db_ok": "boolean",
+        "guardrails_ok": "boolean",
+        "required_functions": {
+          "app_role": "boolean",
+          "has_role": "boolean"
+        },
+        "env_ok": {
+          "VITE_SUPABASE_URL": "boolean",
+          "VITE_SUPABASE_ANON_KEY": "boolean",
+          "SUPABASE_URL": "boolean",
+          "SUPABASE_ANON_KEY": "boolean",
+          "DIAGNOSTICS_ADMIN_TOKEN": "boolean"
+        }
+      }
+    }
+  },
+  "proof": {
+    "api_smoke": {
+      "allow_not_run": true,
+      "require_pass_when_reachable": true
+    },
+    "db_push": {
+      "allow_skip_without_credentials": true,
+      "credentials": [
+        "SUPABASE_ACCESS_TOKEN",
+        "SUPABASE_DB_PASSWORD"
+      ]
+    },
+    "skip_is_pass_for_dependencies": true
+  },
+  "notes": [
+    "TODO: make proof scripts contract-driven for DB and endpoint checks."
+  ]
+}

@@ -68,8 +68,26 @@ import { DEFAULT_AGENT_IDS } from "@/lib/ceoPilot/agents";
 import { deriveTaskClass, estimateActionCostCents } from "@/lib/ceoPilot/costUtils";
 import { deriveActionCost } from "@/lib/ceoPilot/economics/costModel";
 import CEOChatPanel from "@/components/CEOChatPanel";
-import { newRequestId, recordUiAttempt, getProofSpineTail, type ProofSpineEntry } from "@/lib/proofSpine";
+import {
+  newRequestId,
+  recordUiAttempt,
+  recordEdgeResponse,
+  getProofSpineTail,
+  type ProofSpineEntry,
+} from "@/lib/proofSpine";
 import { toast } from "sonner";
+
+type SimResult = {
+  request_id: string;
+  intent: string;
+  mode: string;
+  ts: string;
+  db_ok?: boolean;
+  note?: string;
+  status: "pending" | "completed" | "error";
+  outcome?: string;
+  error?: string;
+};
 
 export default function CEOHome() {
   const { email, role, signOut, userId } = useAuth();
@@ -125,6 +143,7 @@ export default function CEOHome() {
     loadPreflightIntent(userId, email)
   );
   const [intentNotice, setIntentNotice] = useState<string | null>(null);
+  const [simResult, setSimResult] = useState<SimResult | null>(null);
   const [lastAttempt, setLastAttempt] = useState<ProofSpineEntry | null>(null);
   const [bufferTail, setBufferTail] = useState<ProofSpineEntry[]>([]);
   const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(() =>
@@ -204,6 +223,16 @@ export default function CEOHome() {
         ? "Build or Join a Pod"
         : "I Own a Business"
     : "Not selected";
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey =
+    import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const simulationDisabledReason = !supabaseUrl
+    ? "Disabled: missing VITE_SUPABASE_URL."
+    : !supabaseAnonKey
+      ? "Disabled: missing VITE_SUPABASE_ANON_KEY."
+      : null;
+  const simulationButtonsDisabled = Boolean(simulationDisabledReason);
+  const queueDisabledReason = "Disabled: Live Flight queue locked until preflight pass.";
 
   useEffect(() => {
     const mockFlag =
@@ -720,15 +749,29 @@ export default function CEOHome() {
     });
     setLastAttempt(attempt);
     setBufferTail(getProofSpineTail());
+    const note = typeof attempt.payload?.note === "string" ? attempt.payload.note : undefined;
+    setSimResult({
+      request_id: attempt.request_id,
+      intent: attempt.intent,
+      mode: attempt.mode,
+      ts: attempt.ts,
+      db_ok: attempt.db_ok,
+      note,
+      status: "pending",
+    });
 
     if (flightMode !== "SIM") {
       toast.warning("Switch to Sim Mode to run simulations.");
       return;
     }
 
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    if (!supabaseUrl || !anonKey) {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      recordEdgeResponse({
+        request_id: requestId,
+        edge_url: `${supabaseUrl ?? "missing"}/functions/v1/ceo-agent`,
+        status: "error",
+        error: { message: "Missing Supabase configuration." },
+      });
       toast.warning("Integration missing.");
       return;
     }
@@ -740,12 +783,32 @@ export default function CEOHome() {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${anonKey}`,
+          Authorization: `Bearer ${supabaseAnonKey}`,
           "X-Request-Id": requestId,
         },
       });
+      const pingText = await pingResponse.text();
+      const pingPayload = (() => {
+        try {
+          return pingText ? JSON.parse(pingText) : null;
+        } catch {
+          return pingText;
+        }
+      })();
+      recordEdgeResponse({
+        request_id: requestId,
+        edge_url: pingUrl.toString(),
+        status: pingResponse.ok ? "ok" : "error",
+        http_status: pingResponse.status,
+        response: pingPayload,
+      });
 
       if (!pingResponse.ok) {
+        setSimResult((prev) =>
+          prev && prev.request_id === requestId
+            ? { ...prev, status: "error", error: `Ping failed (${pingResponse.status}).` }
+            : prev
+        );
         toast.warning("Gateway unreachable.");
         return;
       }
@@ -765,17 +828,77 @@ export default function CEOHome() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${anonKey}`,
+          Authorization: `Bearer ${supabaseAnonKey}`,
           "X-Request-Id": requestId,
         },
         body: JSON.stringify(requestBody),
       });
+      const responseText = await response.text();
+      const responsePayload = (() => {
+        try {
+          return responseText ? JSON.parse(responseText) : null;
+        } catch {
+          return responseText;
+        }
+      })();
+      recordEdgeResponse({
+        request_id: requestId,
+        edge_url: `${supabaseUrl}/functions/v1/ceo-agent`,
+        status: response.ok ? "ok" : "error",
+        http_status: response.status,
+        response: responsePayload,
+      });
 
       if (!response.ok) {
+        setSimResult((prev) =>
+          prev && prev.request_id === requestId
+            ? {
+                ...prev,
+                status: "error",
+                error:
+                  typeof responsePayload === "string"
+                    ? responsePayload
+                    : (responsePayload as { error?: string } | null)?.error ??
+                      `Request failed (${response.status}).`,
+              }
+            : prev
+        );
         toast.warning("Gateway unreachable.");
+      } else {
+        const outcome =
+          responsePayload && typeof responsePayload === "object" && "response" in responsePayload
+            ? (responsePayload as { response?: string }).response
+            : null;
+        setSimResult((prev) =>
+          prev && prev.request_id === requestId
+            ? {
+                ...prev,
+                status: outcome ? "completed" : "pending",
+                outcome: outcome ?? undefined,
+              }
+            : prev
+        );
       }
     } catch (error) {
       console.error("[command_center] simulation call failed", error);
+      recordEdgeResponse({
+        request_id: requestId,
+        edge_url: `${supabaseUrl}/functions/v1/ceo-agent`,
+        status: "error",
+        error: {
+          message: error instanceof Error ? error.message : "unknown error",
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      });
+      setSimResult((prev) =>
+        prev && prev.request_id === requestId
+          ? {
+              ...prev,
+              status: "error",
+              error: error instanceof Error ? error.message : "Unknown error.",
+            }
+          : prev
+      );
       toast.warning("Gateway unreachable.");
     }
   };
@@ -979,6 +1102,58 @@ export default function CEOHome() {
           >
             Copy Debug JSON
           </button>
+        </div>
+      )}
+
+      {simResult && (
+        <div
+          style={{
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid rgba(0,0,0,0.12)",
+            background: "white",
+            marginBottom: 16,
+          }}
+          data-testid="sim-result-panel"
+        >
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>Simulation Result</div>
+          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+            <div>
+              <span style={{ fontWeight: 700 }}>request_id:</span> {simResult.request_id}
+            </div>
+            <div>
+              <span style={{ fontWeight: 700 }}>intent:</span> {simResult.intent}
+            </div>
+            <div>
+              <span style={{ fontWeight: 700 }}>mode:</span> {simResult.mode}
+            </div>
+            <div>
+              <span style={{ fontWeight: 700 }}>ts:</span> {new Date(simResult.ts).toLocaleString()}
+            </div>
+            <div>
+              <span style={{ fontWeight: 700 }}>db_ok:</span>{" "}
+              {simResult.db_ok === undefined ? "unknown" : simResult.db_ok ? "true" : "false"}
+            </div>
+            <div>
+              <span style={{ fontWeight: 700 }}>note:</span> {simResult.note ?? "none"}
+            </div>
+            <div>
+              <span style={{ fontWeight: 700 }}>status:</span> {simResult.status}
+            </div>
+            {simResult.error && (
+              <div style={{ color: "#b45309" }}>
+                <span style={{ fontWeight: 700 }}>error:</span> {simResult.error}
+              </div>
+            )}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Predicted outcome</div>
+            {simResult.outcome ? (
+              <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{simResult.outcome}</pre>
+            ) : (
+              <div style={{ color: "#6b7280" }}>Queued / pending. No outcome returned yet.</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1439,64 +1614,84 @@ export default function CEOHome() {
             <li>Practice preflight decisions without executing real actions.</li>
           </ul>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => handleSimulationNote("Simulation queued. No live actions executed.", "run_simulation")}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,0,0,0.15)",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              <div style={{ display: "grid", gap: 2 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  Run Simulation <ModePill mode={flightMode} />
-                </span>
-                <span style={{ fontSize: 11, opacity: 0.7 }}>
-                  No execution now. Reversible. Affects this workspace only.
-                </span>
-              </div>
-            </button>
-            <button
-              onClick={() => handleSimulationNote("Predicted outcome ready (simulation only).", "view_predicted_outcome")}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,0,0,0.15)",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              <div style={{ display: "grid", gap: 2 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  View Predicted Outcome <ModePill mode={flightMode} />
-                </span>
-                <span style={{ fontSize: 11, opacity: 0.7 }}>
-                  Read-only preview. Reversible. Affects this workspace only.
-                </span>
-              </div>
-            </button>
-            <button
-              disabled
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,0,0,0.15)",
-                cursor: "not-allowed",
-                fontWeight: 700,
-                opacity: 0.5,
-              }}
-            >
-              <div style={{ display: "grid", gap: 2 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  Queue for Live Flight <ModePill mode={flightMode} />
-                </span>
-                <span style={{ fontSize: 11, opacity: 0.7 }}>
-                  Blocked in TEST MODE. No execution now. Reversible; affects real-world only after approval.
-                </span>
-              </div>
-            </button>
+            <div style={{ display: "grid", gap: 4 }}>
+              <button
+                onClick={() => handleSimulationNote("Simulation queued. No live actions executed.", "run_simulation")}
+                disabled={simulationButtonsDisabled}
+                title={simulationButtonsDisabled ? simulationDisabledReason ?? undefined : undefined}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  cursor: simulationButtonsDisabled ? "not-allowed" : "pointer",
+                  fontWeight: 700,
+                  opacity: simulationButtonsDisabled ? 0.6 : 1,
+                }}
+              >
+                <div style={{ display: "grid", gap: 2 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    Run Simulation <ModePill mode={flightMode} />
+                  </span>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>
+                    No execution now. Reversible. Affects this workspace only.
+                  </span>
+                </div>
+              </button>
+              {simulationButtonsDisabled && simulationDisabledReason && (
+                <div style={{ fontSize: 11, color: "#b45309" }}>{simulationDisabledReason}</div>
+              )}
+            </div>
+            <div style={{ display: "grid", gap: 4 }}>
+              <button
+                onClick={() => handleSimulationNote("Predicted outcome ready (simulation only).", "view_predicted_outcome")}
+                disabled={simulationButtonsDisabled}
+                title={simulationButtonsDisabled ? simulationDisabledReason ?? undefined : undefined}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  cursor: simulationButtonsDisabled ? "not-allowed" : "pointer",
+                  fontWeight: 700,
+                  opacity: simulationButtonsDisabled ? 0.6 : 1,
+                }}
+              >
+                <div style={{ display: "grid", gap: 2 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    View Predicted Outcome <ModePill mode={flightMode} />
+                  </span>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>
+                    Read-only preview. Reversible. Affects this workspace only.
+                  </span>
+                </div>
+              </button>
+              {simulationButtonsDisabled && simulationDisabledReason && (
+                <div style={{ fontSize: 11, color: "#b45309" }}>{simulationDisabledReason}</div>
+              )}
+            </div>
+            <div style={{ display: "grid", gap: 4 }}>
+              <button
+                disabled
+                title={queueDisabledReason}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  cursor: "not-allowed",
+                  fontWeight: 700,
+                  opacity: 0.5,
+                }}
+              >
+                <div style={{ display: "grid", gap: 2 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    Queue for Live Flight <ModePill mode={flightMode} />
+                  </span>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>
+                    Blocked in TEST MODE. No execution now. Reversible; affects real-world only after approval.
+                  </span>
+                </div>
+              </button>
+              <div style={{ fontSize: 11, color: "#b45309" }}>{queueDisabledReason}</div>
+            </div>
           </div>
         </div>
       )}
@@ -1523,66 +1718,86 @@ export default function CEOHome() {
             <span style={{ fontWeight: 700 }}>Simulated revenue:</span> $12,500 / month (preflight)
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => handleSimulationNote("Pod simulation queued. No live actions executed.", "run_simulation")}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,0,0,0.15)",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              <div style={{ display: "grid", gap: 2 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  Run Simulation <ModePill mode={flightMode} />
-                </span>
-                <span style={{ fontSize: 11, opacity: 0.7 }}>
-                  No execution now. Reversible. Affects this workspace only.
-                </span>
-              </div>
-            </button>
-            <button
-              onClick={() =>
-                handleSimulationNote("Predicted pod outcome ready (simulation only).", "view_predicted_outcome")
-              }
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,0,0,0.15)",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              <div style={{ display: "grid", gap: 2 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  View Predicted Outcome <ModePill mode={flightMode} />
-                </span>
-                <span style={{ fontSize: 11, opacity: 0.7 }}>
-                  Read-only preview. Reversible. Affects this workspace only.
-                </span>
-              </div>
-            </button>
-            <button
-              disabled
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,0,0,0.15)",
-                cursor: "not-allowed",
-                fontWeight: 700,
-                opacity: 0.5,
-              }}
-            >
-              <div style={{ display: "grid", gap: 2 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  Queue for Live Flight <ModePill mode={flightMode} />
-                </span>
-                <span style={{ fontSize: 11, opacity: 0.7 }}>
-                  Blocked in TEST MODE. No execution now. Reversible; affects real-world only after approval.
-                </span>
-              </div>
-            </button>
+            <div style={{ display: "grid", gap: 4 }}>
+              <button
+                onClick={() => handleSimulationNote("Pod simulation queued. No live actions executed.", "run_simulation")}
+                disabled={simulationButtonsDisabled}
+                title={simulationButtonsDisabled ? simulationDisabledReason ?? undefined : undefined}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  cursor: simulationButtonsDisabled ? "not-allowed" : "pointer",
+                  fontWeight: 700,
+                  opacity: simulationButtonsDisabled ? 0.6 : 1,
+                }}
+              >
+                <div style={{ display: "grid", gap: 2 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    Run Simulation <ModePill mode={flightMode} />
+                  </span>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>
+                    No execution now. Reversible. Affects this workspace only.
+                  </span>
+                </div>
+              </button>
+              {simulationButtonsDisabled && simulationDisabledReason && (
+                <div style={{ fontSize: 11, color: "#b45309" }}>{simulationDisabledReason}</div>
+              )}
+            </div>
+            <div style={{ display: "grid", gap: 4 }}>
+              <button
+                onClick={() =>
+                  handleSimulationNote("Predicted pod outcome ready (simulation only).", "view_predicted_outcome")
+                }
+                disabled={simulationButtonsDisabled}
+                title={simulationButtonsDisabled ? simulationDisabledReason ?? undefined : undefined}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  cursor: simulationButtonsDisabled ? "not-allowed" : "pointer",
+                  fontWeight: 700,
+                  opacity: simulationButtonsDisabled ? 0.6 : 1,
+                }}
+              >
+                <div style={{ display: "grid", gap: 2 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    View Predicted Outcome <ModePill mode={flightMode} />
+                  </span>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>
+                    Read-only preview. Reversible. Affects this workspace only.
+                  </span>
+                </div>
+              </button>
+              {simulationButtonsDisabled && simulationDisabledReason && (
+                <div style={{ fontSize: 11, color: "#b45309" }}>{simulationDisabledReason}</div>
+              )}
+            </div>
+            <div style={{ display: "grid", gap: 4 }}>
+              <button
+                disabled
+                title={queueDisabledReason}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  cursor: "not-allowed",
+                  fontWeight: 700,
+                  opacity: 0.5,
+                }}
+              >
+                <div style={{ display: "grid", gap: 2 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    Queue for Live Flight <ModePill mode={flightMode} />
+                  </span>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>
+                    Blocked in TEST MODE. No execution now. Reversible; affects real-world only after approval.
+                  </span>
+                </div>
+              </button>
+              <div style={{ fontSize: 11, color: "#b45309" }}>{queueDisabledReason}</div>
+            </div>
           </div>
         </div>
       )}

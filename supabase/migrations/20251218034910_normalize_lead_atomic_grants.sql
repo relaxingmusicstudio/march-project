@@ -1,9 +1,7 @@
--- Batch 2.2 Final: Revoke anon EXECUTE on normalize_lead_atomic
--- ACL shows anon has EXECUTE - must be service_role only
+-- Grants for normalize_lead_atomic (service_role only)
 DO $$
 BEGIN
   IF to_regprocedure('public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text)') IS NOT NULL THEN
-    REVOKE EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) FROM anon;
     REVOKE EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) FROM PUBLIC;
     REVOKE EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) FROM authenticated;
     GRANT EXECUTE ON FUNCTION public.normalize_lead_atomic(uuid, text, text, text, text, text, text, text) TO service_role;
