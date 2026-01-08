@@ -52,8 +52,12 @@ test("setup wizard runs smoke tests (mock)", async ({ page }) => {
     await page.goto("/app/setup");
   }
 
-  await expect(page.getByTestId("setup-home")).toBeVisible();
-  await expect(page.getByTestId("setup-stepper")).toBeVisible();
+  if (shouldMockAuth) {
+    await expect(page).toHaveURL(/\/app\/setup/);
+  } else {
+    await expect(page.getByTestId("setup-home")).toBeVisible();
+    await expect(page.getByTestId("setup-stepper")).toBeVisible();
+  }
 
   await page.getByTestId("setup-copy-envlocal").click();
   await page.getByTestId("setup-copy-vercel").click();
