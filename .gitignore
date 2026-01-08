@@ -50,3 +50,7 @@ supabase/.seed/
 proof/*
 !proof/README.md
 
+.tools/
+supabase/docker/
+supabase/.temp/
+.env
