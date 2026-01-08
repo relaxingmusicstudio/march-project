@@ -4,6 +4,17 @@
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
 
+## Local Quickstart
+1) .\dev-up.ps1
+2) npm run seed:user
+3) .\dev-proof.ps1
+4) open http://localhost:8080
+5) login: apexlocal360@gmail.com / Beagles#11
+6) Ensure SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY in .env.local
+7) Supabase Studio: http://localhost:54323
+8) API health: http://localhost:8080/api/health
+9) If port 8080 is busy, close other dev servers (strictPort).
+
 ## How can I edit this code?
 
 There are several ways of editing your application.
