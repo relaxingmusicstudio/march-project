@@ -27,6 +27,7 @@
     "proofgate": "node scripts/proofgate.cjs",
     "proof:quick": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/proof-quick.ps1",
     "proof:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/proof-full.ps1",
+    "proof": "powershell -ExecutionPolicy Bypass -File .\\scripts\\scan-secrets.ps1 && npm test && node -e \"const fs=require('fs'); const {spawnSync}=require('child_process'); if(!fs.existsSync('tsconfig.json')){console.log('[SKIP] typecheck - tsconfig.json not found'); process.exit(0);} console.log('[RUN] typecheck'); const r=spawnSync('tsc',['-p','.','--noEmit'],{stdio:'inherit',shell:true}); process.exit(r.status ?? 1);\" && node -e \"const fs=require('fs'); const {spawnSync}=require('child_process'); const pkg=JSON.parse(fs.readFileSync('package.json','utf8')); if(!(pkg.scripts && pkg.scripts.lint)){console.log('[SKIP] lint - no lint script'); process.exit(0);} console.log('[RUN] lint'); const r=spawnSync('npm',['run','lint'],{stdio:'inherit',shell:true}); process.exit(r.status ?? 1);\"",
     "sim": "node scripts/sim.mjs --runs=500 --years=50",
     "release:gate": "node scripts/release-gate.cjs",
     "vercel:build-selftest": "node scripts/vercel-build-selftest.cjs",
