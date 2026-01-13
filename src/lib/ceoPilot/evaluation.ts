@@ -10,7 +10,7 @@ import {
   FailureType,
   ExecutionPlan,
   validateContract,
-} from "./contracts";
+} from "../../kernel/contracts.js";
 import { createMemoryStore, retrieveMemory, writeMemory } from "./memory";
 import { createBudgetTracker, evaluateSafetyGate } from "./safety";
 import { createToolUsageStore, recommendTool } from "./adaptation";

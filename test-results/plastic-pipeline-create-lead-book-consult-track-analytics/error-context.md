@@ -1,0 +1,142 @@
+# Page snapshot
+
+```yaml
+- generic:
+  - generic:
+    - list
+    - region "Notifications alt+T"
+    - generic: BOOT OK
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - img
+            - generic:
+              - heading [level=3]: We value your privacy
+              - paragraph:
+                - text: We use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic. Read our
+                - link:
+                  - /url: /cookies
+                  - text: Cookie Policy
+                - text: and
+                - link:
+                  - /url: /privacy
+                  - text: Privacy Policy
+                - text: .
+          - generic:
+            - button:
+              - img
+              - text: Customize
+            - button: Reject All
+            - button: Accept All
+    - generic:
+      - generic:
+        - generic:
+          - heading [level=3]:
+            - img
+            - text: CEO Agent Onboarding
+          - generic:
+            - generic: Business basics
+            - generic: Step 1 / 3
+          - progressbar
+        - generic:
+          - paragraph: Tell us who you are and where you operate.
+          - generic:
+            - generic:
+              - generic: Business name
+              - textbox:
+                - /placeholder: Pipeline Pros LLC
+            - generic:
+              - generic: Industry
+              - textbox:
+                - /placeholder: HVAC, Plumbing, etc.
+            - generic:
+              - generic: Service area
+              - textbox:
+                - /placeholder: Austin, TX
+          - generic:
+            - generic:
+              - button:
+                - img
+                - text: Start over
+              - generic:
+                - button [disabled]: Back
+                - button:
+                  - text: Next
+                  - img
+            - generic:
+              - generic: Summary
+              - list:
+                - listitem:
+                  - strong: "Business:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Industry:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Service area:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Goal:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Offer:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Target:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Lead sources:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Calendar:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Phone:"
+                  - text: "-"
+                - listitem:
+                  - strong: "Status:"
+                  - text: not_started
+  - dialog "Unlock Personalized Insights" [ref=e2]:
+    - generic [ref=e4]:
+      - heading "Unlock Personalized Insights" [level=2] [ref=e5]:
+        - img [ref=e6]
+        - text: Unlock Personalized Insights
+      - paragraph [ref=e8]: Get tailored recommendations and help us improve your experience
+    - generic [ref=e9]:
+      - img [ref=e10]
+      - paragraph [ref=e13]: Enable all for the best experience — it's anonymous & secure
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - img [ref=e19]
+            - text: Enhanced Analytics
+          - paragraph [ref=e22]: Track patterns to improve UX • Fully anonymized
+        - switch [active] [ref=e23] [cursor=pointer]
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - img [ref=e28]
+            - text: Smart Personalization
+          - paragraph [ref=e30]: AI-powered recommendations • Just for you
+        - switch [checked] [ref=e31] [cursor=pointer]
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - img [ref=e36]
+            - text: Product Updates
+          - paragraph [ref=e39]: New features & tips • Unsubscribe anytime
+        - switch [ref=e40] [cursor=pointer]
+    - generic [ref=e41]:
+      - button "Enable All & Continue" [ref=e42] [cursor=pointer]:
+        - img
+        - text: Enable All & Continue
+      - generic [ref=e43]:
+        - button "Save My Choices" [ref=e44] [cursor=pointer]
+        - button "Decline All" [ref=e45] [cursor=pointer]
+    - paragraph [ref=e46]: You can change these preferences anytime in Settings.
+    - button "Close" [ref=e47] [cursor=pointer]:
+      - img [ref=e48]
+      - generic [ref=e51]: Close
+```

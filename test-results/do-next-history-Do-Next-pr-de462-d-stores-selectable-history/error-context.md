@@ -1,0 +1,79 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e3]: BOOT OK
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - heading "CEO Agent Onboarding" [level=3] [ref=e7]:
+        - img [ref=e8]
+        - text: CEO Agent Onboarding
+      - generic [ref=e18]:
+        - generic [ref=e19]: Business basics
+        - generic [ref=e20]: Step 1 / 3
+      - progressbar [ref=e21]
+    - generic [ref=e23]:
+      - paragraph [ref=e24]: Tell us who you are and where you operate.
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]: Business name
+          - textbox "Business name" [ref=e28]:
+            - /placeholder: Pipeline Pros LLC
+            - text: Pipeline Pros
+        - generic [ref=e29]:
+          - generic [ref=e30]: Industry
+          - textbox "Industry" [ref=e31]:
+            - /placeholder: HVAC, Plumbing, etc.
+            - text: HVAC
+        - generic [ref=e32]:
+          - generic [ref=e33]: Service area
+          - textbox "Service area" [ref=e34]:
+            - /placeholder: Austin, TX
+            - text: Austin
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - button "Start over" [ref=e37] [cursor=pointer]:
+            - img
+            - text: Start over
+          - generic [ref=e38]:
+            - button "Back" [disabled]
+            - button "Next" [ref=e39] [cursor=pointer]:
+              - text: Next
+              - img
+        - generic [ref=e40]:
+          - generic [ref=e41]: Summary
+          - list [ref=e42]:
+            - listitem [ref=e43]:
+              - strong [ref=e44]: "Business:"
+              - text: Pipeline Pros
+            - listitem [ref=e45]:
+              - strong [ref=e46]: "Industry:"
+              - text: HVAC
+            - listitem [ref=e47]:
+              - strong [ref=e48]: "Service area:"
+              - text: Austin
+            - listitem [ref=e49]:
+              - strong [ref=e50]: "Goal:"
+              - text: Increase demos
+            - listitem [ref=e51]:
+              - strong [ref=e52]: "Offer:"
+              - text: Tune-up $129
+            - listitem [ref=e53]:
+              - strong [ref=e54]: "Target:"
+              - text: Homeowners
+            - listitem [ref=e55]:
+              - strong [ref=e56]: "Lead sources:"
+              - text: Google Ads
+            - listitem [ref=e57]:
+              - strong [ref=e58]: "Calendar:"
+              - text: https://cal.com/demo
+            - listitem [ref=e59]:
+              - strong [ref=e60]: "Phone:"
+              - text: 555-555-5555
+            - listitem [ref=e61]:
+              - strong [ref=e62]: "Status:"
+              - text: in_progress
+```
