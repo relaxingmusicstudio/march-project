@@ -1,6 +1,6 @@
 export const API_PREFIX = "/api";
 
-export const PUBLIC_ROUTES = ["/", "/login", "/auth", "/blog", "/privacy", "/terms", "/cookies"];
+export const PUBLIC_ROUTES = ["/", "/login", "/auth", "/blog", "/privacy", "/terms", "/cookies", "/chat"];
 
 export const PROTECTED_PREFIXES = ["/app", "/platform", "/admin", "/ceo"];
 
@@ -10,6 +10,7 @@ export const LEGACY_REDIRECTS: Record<string, string> = {};
 
 export const API_ROUTES = [
   "/api/health",
+  "/api/chat",
   "/api/build",
   "/api/_routes",
   "/api/alex-chat",

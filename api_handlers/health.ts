@@ -1,4 +1,5 @@
 import { jsonErr, jsonOk } from "../src/kernel/apiJson.js";
+import { KERNEL_VERSION } from "../src/kernel/version.js";
 
 type ApiRequest = {
   method?: string;
@@ -63,9 +64,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const dbCheck = await checkDb(supabaseUrl, serviceRoleKey);
 
   jsonOk(res, {
+    service: "march-project",
+    kernelVersion: KERNEL_VERSION,
     node: process.version,
-    ts: Date.now(),
-    version: "v14",
+    ts: new Date().toISOString(),
+    status: "ok",
     db: dbCheck.ok,
     ...(dbCheck.ok ? {} : { db_error: dbCheck.reason }),
   });

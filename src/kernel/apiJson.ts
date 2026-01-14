@@ -1,10 +1,17 @@
 import { fail, ok } from "./envelope.js";
-import type { ErrorCode } from "./errorCodes.js";
+import { ErrorCode } from "./errorCodes.js";
 
 export type ApiResponse = {
   statusCode: number;
   setHeader: (name: string, value: string) => void;
   end: (body?: string) => void;
+};
+
+export type ApiRequest = AsyncIterable<Uint8Array | string> & {
+  method?: string;
+  url?: string;
+  headers?: Record<string, string | string[] | undefined>;
+  body?: unknown;
 };
 
 const setJsonHeaders = (res: ApiResponse) => {
@@ -29,3 +36,13 @@ export const jsonErr = (
   setJsonHeaders(res);
   res.end(JSON.stringify(fail(status, errorCode, message, extra)));
 };
+
+export const safeHandler =
+  (handler: (req: ApiRequest, res: ApiResponse) => Promise<void> | void) =>
+  async (req: ApiRequest, res: ApiResponse) => {
+    try {
+      await handler(req, res);
+    } catch {
+      jsonErr(res, 500, ErrorCode.HANDLER_FAILED, "handler_failed");
+    }
+  };

@@ -18,6 +18,7 @@ import Index from "./pages/Index";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import Auth from "./pages/Auth";
+import Chat from "./pages/Chat";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import CookiePolicy from "./pages/CookiePolicy";
@@ -146,6 +147,7 @@ const App = () => {
                   <Route path="/cookies" element={<CookiePolicy />} />
                   <Route path="/auth" element={<Auth />} />
                   <Route path="/login" element={<Auth />} />
+                  <Route path="/chat" element={<Chat />} />
                   <Route path="/ceo" element={<ProtectedRoute><CEOHome /></ProtectedRoute>} />
                   
                   {/* Onboarding - New user flow (AuthRouter handles routing) */}

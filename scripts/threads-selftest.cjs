@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
+const { resolve } = require("node:path");
 
 async function main() {
   const {
@@ -91,6 +93,16 @@ async function main() {
     limit: 1,
   });
   assert.equal(publicAccess.ok, true, "PUBLIC threads must be accessible across owners.");
+
+  const healthSource = readFileSync(resolve(__dirname, "..", "api", "health.ts"), "utf8");
+  assert.ok(healthSource.includes('service: "march-project"'), "Health must include service name.");
+  assert.ok(healthSource.includes("kernelVersion"), "Health must include kernel version.");
+  assert.ok(healthSource.includes("jsonOk"), "Health must return JSON via jsonOk.");
+
+  const chatSource = readFileSync(resolve(__dirname, "..", "api", "chat.ts"), "utf8");
+  assert.ok(chatSource.includes("needsConfig: true"), "Chat mock must signal needsConfig.");
+  assert.ok(chatSource.includes("needsConfig: false"), "Chat configured path must clear needsConfig.");
+  assert.ok(chatSource.includes("https://api.openai.com/v1/chat/completions"), "Chat must call OpenAI.");
 
   console.log("Threads selftest: PASS");
 }

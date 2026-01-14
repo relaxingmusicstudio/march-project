@@ -29,6 +29,7 @@ export const ROUTE_GUARDS: RouteGuard[] = [
   { path: "/cookies", requires: "public", description: "Cookie policy" },
   { path: "/auth", requires: "public", description: "Authentication" },
   { path: "/login", requires: "public", description: "Login" },
+  { path: "/chat", requires: "public", description: "Chat" },
   
   // App routes - Owner required
   { path: "/app", requires: "owner", description: "CEO Dashboard" },
