@@ -12,6 +12,50 @@ $contractPath = Join-Path $repoRoot "contracts/v17.1.guardrails.json"
 $contractLoaded = $false
 $contract = $null
 $script:dbCredsAvailable = $false
+$script:firstFailure = $null
+
+function Redact-Message {
+  param([string]$Text)
+  if (-not $Text) { return $Text }
+  $redacted = $Text
+  Get-ChildItem Env: |
+    Where-Object { $_.Name -match "KEY|TOKEN|SECRET" } |
+    ForEach-Object {
+      if ($_.Value) {
+        $redacted = $redacted.Replace($_.Value, "[REDACTED]")
+      }
+    }
+  return $redacted
+}
+
+function Register-Failure {
+  param(
+    [string]$Step,
+    [string]$Reason
+  )
+  if (-not $script:firstFailure) {
+    $script:firstFailure = [ordered]@{
+      step = $Step
+      reason = $Reason
+    }
+  }
+}
+
+function Write-StepFailure {
+  param(
+    [string]$Step,
+    [string]$Check,
+    [string]$Message,
+    [int]$StatusCode
+  )
+  $safeMessage = Redact-Message -Text $Message
+  $safeCheck = Redact-Message -Text $Check
+  $summary = if ($safeMessage) { "FAIL: $Step - $safeMessage" } else { "FAIL: $Step" }
+  Write-Host $summary
+  if ($safeCheck) { Write-Host "Check: $safeCheck" }
+  if ($StatusCode) { Write-Host "HTTP: $StatusCode" }
+  Register-Failure -Step $Step -Reason ($safeMessage | ForEach-Object { $_ })
+}
 
 function Import-DotEnv {
   param([string]$Path)
@@ -101,6 +145,11 @@ function Run-Command {
     $status = "fail"
   }
   Add-StepResult -Name $Name -Status $status -Command $Command -OutFile $OutFile -ExitCode $exitCode -Notes ""
+  return [ordered]@{
+    status = $status
+    exit_code = $exitCode
+    output = $outPath
+  }
 }
 
 function Run-SupabaseDbPush {
@@ -110,9 +159,16 @@ function Run-SupabaseDbPush {
   $accessToken = [Environment]::GetEnvironmentVariable("SUPABASE_ACCESS_TOKEN", "Process")
   $commandLabel = ".\\supabase\\supabase.exe db push --yes"
   $commandArgs = @("db", "push", "--yes")
+  $errorMessage = ""
   if (-not $script:dbCredsAvailable) {
     Add-SkipStep -Name "supabase db push" -Command $commandLabel -OutFile $OutFile -Notes "no DB credentials provided (local proof mode)"
-    return $false
+    return [ordered]@{
+      status = "skip"
+      exit_code = 0
+      command = $commandLabel
+      notes = "no DB credentials provided (local proof mode)"
+      error = ""
+    }
   }
   if ($password) {
     $commandArgs += @("--password", $password)
@@ -128,6 +184,7 @@ function Run-SupabaseDbPush {
     if ($null -eq $exitCode) { $exitCode = 0 }
     if ($exitCode -ne 0) { $status = "fail" }
   } catch {
+    $errorMessage = $_.Exception.Message
     $_ | Out-File -FilePath $outPath -Encoding utf8
     $exitCode = 1
     $status = "fail"
@@ -138,7 +195,13 @@ function Run-SupabaseDbPush {
   }
 
   Add-StepResult -Name "supabase db push" -Status $status -Command $commandLabel -OutFile $OutFile -ExitCode $exitCode -Notes $notes
-  return ($status -eq "pass")
+  return [ordered]@{
+    status = $status
+    exit_code = $exitCode
+    command = $commandLabel
+    notes = $notes
+    error = $errorMessage
+  }
 }
 
 function Invoke-RpcCheck {
@@ -168,11 +231,16 @@ function Invoke-RpcCheck {
   $response = $null
   $ok = $false
   $notes = ""
+  $statusCode = $null
   try {
     $response = Invoke-RestMethod -Method Post -Uri "$sbUrl/rest/v1/rpc/$RpcName" -Headers $headers -ContentType "application/json" -Body $body -TimeoutSec 20
     $ok = & $Validate $response
   } catch {
     $notes = $_.Exception.Message
+    $resp = $_.Exception.Response
+    if ($resp -and $resp -is [System.Net.HttpWebResponse]) {
+      $statusCode = [int]$resp.StatusCode
+    }
     $ok = $false
   }
 
@@ -184,7 +252,14 @@ function Invoke-RpcCheck {
   if ($notes) { $logLines += "error: $notes" }
   $logLines | Out-File -FilePath $outPath -Encoding utf8
 
-  Add-StepResult -Name $Name -Status ($(if ($ok) { "pass" } else { "fail" })) -Command $RpcName -OutFile $OutFile -ExitCode ($(if ($ok) { 0 } else { 1 })) -Notes $notes
+  $status = $(if ($ok) { "pass" } else { "fail" })
+  Add-StepResult -Name $Name -Status $status -Command $RpcName -OutFile $OutFile -ExitCode ($(if ($ok) { 0 } else { 1 })) -Notes $notes
+  return [ordered]@{
+    status = $status
+    status_code = $statusCode
+    notes = $notes
+    command = $RpcName
+  }
 }
 
 function Get-DevBaseFromLogs {
@@ -276,8 +351,24 @@ function Invoke-ApiHealth {
   return $result
 }
 
-Run-Command -Name "git status --short" -Command "git status --short" -Action { git status --short } -OutFile "git_status.txt"
-Run-SupabaseDbPush -OutFile "supabase_db_push.txt"
+try {
+  $gitResult = Run-Command -Name "git status --short" -Command "git status --short" -Action { git status --short } -OutFile "git_status.txt"
+  if ($gitResult.status -eq "fail") {
+    Write-StepFailure -Step "git status --short" -Check "git status --short" -Message "exit_code=$($gitResult.exit_code)"
+  }
+} catch {
+  Write-StepFailure -Step "git status --short" -Check "git status --short" -Message $_.Exception.Message
+}
+
+try {
+  $dbPushResult = Run-SupabaseDbPush -OutFile "supabase_db_push.txt"
+  if ($dbPushResult.status -eq "fail") {
+    $reason = if ($dbPushResult.error) { $dbPushResult.error } elseif ($dbPushResult.notes) { $dbPushResult.notes } else { "exit_code=$($dbPushResult.exit_code)" }
+    Write-StepFailure -Step "supabase db push" -Check $dbPushResult.command -Message $reason
+  }
+} catch {
+  Write-StepFailure -Step "supabase db push" -Check ".\\supabase\\supabase.exe db push --yes" -Message $_.Exception.Message
+}
 
 $typeName = "public.app_role"
 if ($contractLoaded -and $contract.required_db -and $contract.required_db.types -and $contract.required_db.types.Count -gt 0) {
@@ -287,10 +378,26 @@ if (-not $script:dbCredsAvailable) {
   Add-SkipStep -Name "db app_role type" -Command "db_to_regtype" -OutFile "db_app_role.txt" -Notes "no DB credentials provided (local proof mode)"
   Add-SkipStep -Name "db has_role signature" -Command "db_to_regprocedure" -OutFile "db_has_role_sig.txt" -Notes "no DB credentials provided (local proof mode)"
 } else {
-  Invoke-RpcCheck -Name "db app_role type" -RpcName "db_to_regtype" -Payload @{ p_name = $typeName } -Validate { param($resp) return -not [string]::IsNullOrEmpty($resp) } -OutFile "db_app_role.txt"
+  try {
+    $appRoleResult = Invoke-RpcCheck -Name "db app_role type" -RpcName "db_to_regtype" -Payload @{ p_name = $typeName } -Validate { param($resp) return -not [string]::IsNullOrEmpty($resp) } -OutFile "db_app_role.txt"
+    if ($appRoleResult.status -eq "fail") {
+      $reason = if ($appRoleResult.notes) { $appRoleResult.notes } else { "rpc_failed" }
+      Write-StepFailure -Step "db app_role type" -Check "db_to_regtype" -Message $reason -StatusCode $appRoleResult.status_code
+    }
+  } catch {
+    Write-StepFailure -Step "db app_role type" -Check "db_to_regtype" -Message $_.Exception.Message
+  }
 
   $sig = "public.has_role(text, uuid)"
-  Invoke-RpcCheck -Name "db has_role signature" -RpcName "db_to_regprocedure" -Payload @{ p_name = $sig } -Validate { param($resp) return -not [string]::IsNullOrEmpty($resp) } -OutFile "db_has_role_sig.txt"
+  try {
+    $hasRoleResult = Invoke-RpcCheck -Name "db has_role signature" -RpcName "db_to_regprocedure" -Payload @{ p_name = $sig } -Validate { param($resp) return -not [string]::IsNullOrEmpty($resp) } -OutFile "db_has_role_sig.txt"
+    if ($hasRoleResult.status -eq "fail") {
+      $reason = if ($hasRoleResult.notes) { $hasRoleResult.notes } else { "rpc_failed" }
+      Write-StepFailure -Step "db has_role signature" -Check "db_to_regprocedure" -Message $reason -StatusCode $hasRoleResult.status_code
+    }
+  } catch {
+    Write-StepFailure -Step "db has_role signature" -Check "db_to_regprocedure" -Message $_.Exception.Message
+  }
 }
 
 $apiOut = Join-Path $rawRoot "api_smoke.txt"
@@ -394,6 +501,10 @@ $logLines | Out-File -FilePath $apiOut -Encoding utf8
 
 $apiExit = if ($apiStatus -eq "fail") { 1 } else { 0 }
 Add-StepResult -Name "api smoke check" -Status $apiStatus -Command $apiCommand -OutFile "api_smoke.txt" -ExitCode $apiExit -Notes $apiNotes
+if ($apiStatus -eq "fail") {
+  $statusCode = if ($selected) { $selected.status_code } else { $null }
+  Write-StepFailure -Step "api smoke check" -Check $apiCommand -Message $apiNotes -StatusCode $statusCode
+}
 
 $status = if ($failed) { "fail" } else { "pass" }
 $endAt = Get-Date
@@ -434,5 +545,13 @@ foreach ($step in $steps) {
 
 $mdLines | Out-File -FilePath (Join-Path $proofRoot "proof.md") -Encoding utf8
 
-if ($failed) { exit 1 }
+if ($failed) {
+  if ($script:firstFailure) {
+    Write-Host ("FAIL: {0} - {1}" -f $script:firstFailure.step, $script:firstFailure.reason)
+  } else {
+    Write-Host "FAIL: proof:quick"
+  }
+  exit 1
+}
+Write-Host "PASS: proof:quick"
 exit 0
